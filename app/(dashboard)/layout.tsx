@@ -1,8 +1,13 @@
 import { createClient } from "@/lib/supabase-server";
 import { redirect } from "next/navigation";
+import { ReactNode } from "react";
 
-export default async function DashboardLayout({ children }) {
-  const supabase = await createClient(); // Add await here!
+interface DashboardLayoutProps {
+  children: ReactNode;
+}
+
+export default async function DashboardLayout({ children }: DashboardLayoutProps) {
+  const supabase = await createClient();
 
   const {
     data: { user },

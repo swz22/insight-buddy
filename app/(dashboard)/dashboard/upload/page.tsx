@@ -1,21 +1,29 @@
 "use client";
 
-import { useState } from "react";
+import { useState, FormEvent } from "react";
 import { useRouter } from "next/navigation";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { useCreateMeeting } from "@/hooks/use-meetings";
 
+interface FormData {
+  title: string;
+  description: string;
+}
+
 export default function UploadPage() {
   const router = useRouter();
   const createMeeting = useCreateMeeting();
-  const [formData, setFormData] = useState({
-    title: "",
-    description: "",
-  });
+  const [formData, setFormData] =
+    useState <
+    FormData >
+    {
+      title: "",
+      description: "",
+    };
 
-  const handleSubmit = async (e) => {
+  const handleSubmit = async (e: FormEvent<HTMLFormElement>) => {
     e.preventDefault();
 
     try {
