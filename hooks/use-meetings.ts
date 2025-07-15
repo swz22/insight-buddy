@@ -1,9 +1,13 @@
 "use client";
 
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
+import { Database } from "@/types/supabase";
+
+type Meeting = Database["public"]["Tables"]["meetings"]["Row"];
+type MeetingInsert = Database["public"]["Tables"]["meetings"]["Insert"];
 
 export function useMeetings() {
-  return useQuery({
+  return useQuery<Meeting[]>({
     queryKey: ["meetings"],
     queryFn: async () => {
       const response = await fetch("/api/meetings");
@@ -16,7 +20,7 @@ export function useMeetings() {
 export function useCreateMeeting() {
   const queryClient = useQueryClient();
 
-  return useMutation({
+  return useMutation<Meeting, Error, MeetingInsert>({
     mutationFn: async (data) => {
       const response = await fetch("/api/meetings", {
         method: "POST",

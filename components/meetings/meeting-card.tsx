@@ -4,14 +4,23 @@ import { formatDistanceToNow } from "date-fns";
 import { Clock, Users, FileText } from "lucide-react";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
+import { Database } from "@/types/supabase";
 
-export function MeetingCard({ meeting, onView, onDelete }) {
+type Meeting = Database["public"]["Tables"]["meetings"]["Row"];
+
+interface MeetingCardProps {
+  meeting: Meeting;
+  onView: (meeting: Meeting) => void;
+  onDelete: (id: string) => void;
+}
+
+export function MeetingCard({ meeting, onView, onDelete }: MeetingCardProps) {
   return (
     <Card className="hover:shadow-lg transition-shadow">
       <CardHeader>
         <CardTitle className="text-lg">{meeting.title}</CardTitle>
         <CardDescription>
-          {meeting.recordedAt && formatDistanceToNow(new Date(meeting.recordedAt), { addSuffix: true })}
+          {meeting.recorded_at && formatDistanceToNow(new Date(meeting.recorded_at), { addSuffix: true })}
         </CardDescription>
       </CardHeader>
       <CardContent>
