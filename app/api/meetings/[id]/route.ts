@@ -1,12 +1,19 @@
 import { NextResponse } from "next/server";
 import { createRouteHandlerClient } from "@supabase/auth-helpers-nextjs";
 import { cookies } from "next/headers";
+import { Database } from "@/types/supabase";
 
-export async function GET(request, { params: paramsPromise }) {
+interface RouteParams {
+  params: Promise<{
+    id: string;
+  }>;
+}
+
+export async function GET(request: Request, { params: paramsPromise }: RouteParams) {
   const params = await paramsPromise;
   try {
     const cookieStore = await cookies();
-    const supabase = createRouteHandlerClient({ cookies: () => cookieStore });
+    const supabase = createRouteHandlerClient<Database>({ cookies: () => cookieStore });
     const {
       data: { user },
     } = await supabase.auth.getUser();
@@ -33,11 +40,11 @@ export async function GET(request, { params: paramsPromise }) {
   }
 }
 
-export async function PATCH(request, { params: paramsPromise }) {
+export async function PATCH(request: Request, { params: paramsPromise }: RouteParams) {
   const params = await paramsPromise;
   try {
     const cookieStore = await cookies();
-    const supabase = createRouteHandlerClient({ cookies: () => cookieStore });
+    const supabase = createRouteHandlerClient<Database>({ cookies: () => cookieStore });
     const {
       data: { user },
     } = await supabase.auth.getUser();
@@ -67,11 +74,11 @@ export async function PATCH(request, { params: paramsPromise }) {
   }
 }
 
-export async function DELETE(request, { params: paramsPromise }) {
+export async function DELETE(request: Request, { params: paramsPromise }: RouteParams) {
   const params = await paramsPromise;
   try {
     const cookieStore = await cookies();
-    const supabase = createRouteHandlerClient({ cookies: () => cookieStore });
+    const supabase = createRouteHandlerClient<Database>({ cookies: () => cookieStore });
     const {
       data: { user },
     } = await supabase.auth.getUser();
@@ -80,7 +87,11 @@ export async function DELETE(request, { params: paramsPromise }) {
       return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
     }
 
-    const { error } = await supabase.from("meetings").delete().eq("id", params.id).eq("user_id", user.id);
+    const { error } = await supabase
+      .from("meetings")
+      .delete()
+      .eq("id", params.id)
+      .eq("user_id", user.id);
 
     if (error) {
       return NextResponse.json({ error: "Failed to delete meeting" }, { status: 500 });

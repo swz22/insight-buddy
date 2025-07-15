@@ -1,11 +1,12 @@
 import { NextResponse } from "next/server";
 import { createRouteHandlerClient } from "@supabase/auth-helpers-nextjs";
 import { cookies } from "next/headers";
+import { Database } from "@/types/supabase";
 
 export async function GET() {
   try {
     const cookieStore = await cookies();
-    const supabase = createRouteHandlerClient({ cookies: () => cookieStore });
+    const supabase = createRouteHandlerClient<Database>({ cookies: () => cookieStore });
     const {
       data: { user },
     } = await supabase.auth.getUser();
@@ -29,10 +30,10 @@ export async function GET() {
   }
 }
 
-export async function POST(request) {
+export async function POST(request: Request) {
   try {
     const cookieStore = await cookies();
-    const supabase = createRouteHandlerClient({ cookies: () => cookieStore });
+    const supabase = createRouteHandlerClient<Database>({ cookies: () => cookieStore });
     const {
       data: { user },
     } = await supabase.auth.getUser();
@@ -63,7 +64,7 @@ export async function POST(request) {
     return NextResponse.json(
       {
         error: "Failed to create meeting",
-        details: error.message,
+        details: (error as Error).message,
       },
       { status: 500 }
     );
