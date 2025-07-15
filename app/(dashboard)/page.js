@@ -1,5 +1,9 @@
 import { createClient } from "@/lib/supabase-server";
 import { redirect } from "next/navigation";
+import { MeetingsList } from "@/components/meetings/meetings-list";
+import { Button } from "@/components/ui/button";
+import Link from "next/link";
+import { prisma } from "@/lib/prisma";
 
 export default async function DashboardPage() {
   const supabase = createClient();
@@ -12,20 +16,34 @@ export default async function DashboardPage() {
     redirect("/login");
   }
 
-  return (
-    <div className="min-h-screen bg-gray-50">
-      <div className="max-w-7xl mx-auto py-6 sm:px-6 lg:px-8">
-        <div className="px-4 py-6 sm:px-0">
-          <h1 className="text-3xl font-bold text-gray-900">Dashboard</h1>
-          <p className="mt-2 text-gray-600">Welcome back, {user.email}!</p>
+  // Sync user to Prisma database
+  let dbUser = await prisma.user.findUnique({
+    where: { id: user.id },
+  });
 
-          <div className="mt-8 bg-white overflow-hidden shadow rounded-lg">
-            <div className="px-4 py-5 sm:p-6">
-              <h2 className="text-lg font-medium text-gray-900">Your Meetings</h2>
-              <p className="mt-1 text-sm text-gray-500">No meetings yet. Upload your first recording to get started!</p>
-            </div>
+  if (!dbUser) {
+    dbUser = await prisma.user.create({
+      data: {
+        id: user.id,
+        email: user.email,
+      },
+    });
+  }
+
+  return (
+    <div className="max-w-7xl mx-auto py-6 sm:px-6 lg:px-8">
+      <div className="px-4 sm:px-0">
+        <div className="flex justify-between items-center mb-8">
+          <div>
+            <h1 className="text-3xl font-bold text-gray-900">Your Meetings</h1>
+            <p className="mt-2 text-gray-600">Welcome back, {user.email}!</p>
           </div>
+          <Link href="/dashboard/upload">
+            <Button>Upload Recording</Button>
+          </Link>
         </div>
+
+        <MeetingsList />
       </div>
     </div>
   );

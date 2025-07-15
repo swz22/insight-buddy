@@ -2,7 +2,7 @@ import { createClient } from "@/lib/supabase-server";
 import { redirect } from "next/navigation";
 
 export default async function DashboardLayout({ children }) {
-  const supabase = createClient();
+  const supabase = await createClient(); // Add await here!
 
   const {
     data: { user },

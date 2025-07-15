@@ -5,7 +5,7 @@ import { Button } from "@/components/ui/button";
 import Link from "next/link";
 
 export default async function DashboardPage() {
-  const supabase = createClient();
+  const supabase = await createClient();
 
   const {
     data: { user },
@@ -14,6 +14,8 @@ export default async function DashboardPage() {
   if (!user) {
     redirect("/login");
   }
+
+  // Remove all Prisma code - we don't need it here
 
   return (
     <div className="max-w-7xl mx-auto py-6 sm:px-6 lg:px-8">

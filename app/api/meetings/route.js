@@ -1,11 +1,11 @@
 import { NextResponse } from "next/server";
 import { createRouteHandlerClient } from "@supabase/auth-helpers-nextjs";
 import { cookies } from "next/headers";
-import { prisma } from "@/lib/prisma";
 
 export async function GET() {
   try {
-    const supabase = createRouteHandlerClient({ cookies });
+    const cookieStore = await cookies();
+    const supabase = createRouteHandlerClient({ cookies: () => cookieStore });
     const {
       data: { user },
     } = await supabase.auth.getUser();
@@ -14,12 +14,15 @@ export async function GET() {
       return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
     }
 
-    const meetings = await prisma.meeting.findMany({
-      where: { userId: user.id },
-      orderBy: { createdAt: "desc" },
-    });
+    const { data: meetings, error } = await supabase
+      .from("meetings")
+      .select("*")
+      .eq("user_id", user.id)
+      .order("created_at", { ascending: false });
 
-    return NextResponse.json(meetings);
+    if (error) throw error;
+
+    return NextResponse.json(meetings || []);
   } catch (error) {
     console.error("Error fetching meetings:", error);
     return NextResponse.json({ error: "Failed to fetch meetings" }, { status: 500 });
@@ -28,7 +31,8 @@ export async function GET() {
 
 export async function POST(request) {
   try {
-    const supabase = createRouteHandlerClient({ cookies });
+    const cookieStore = await cookies();
+    const supabase = createRouteHandlerClient({ cookies: () => cookieStore });
     const {
       data: { user },
     } = await supabase.auth.getUser();
@@ -40,18 +44,28 @@ export async function POST(request) {
     const body = await request.json();
     const { title, description, recordedAt } = body;
 
-    const meeting = await prisma.meeting.create({
-      data: {
+    const { data: meeting, error } = await supabase
+      .from("meetings")
+      .insert({
         title,
         description,
-        recordedAt: recordedAt ? new Date(recordedAt) : new Date(),
-        userId: user.id,
-      },
-    });
+        recorded_at: recordedAt || new Date().toISOString(),
+        user_id: user.id,
+      })
+      .select()
+      .single();
+
+    if (error) throw error;
 
     return NextResponse.json(meeting);
   } catch (error) {
     console.error("Error creating meeting:", error);
-    return NextResponse.json({ error: "Failed to create meeting" }, { status: 500 });
+    return NextResponse.json(
+      {
+        error: "Failed to create meeting",
+        details: error.message,
+      },
+      { status: 500 }
+    );
   }
 }

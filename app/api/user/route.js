@@ -5,7 +5,8 @@ import { prisma } from "@/lib/prisma";
 
 export async function GET() {
   try {
-    const supabase = createRouteHandlerClient({ cookies });
+    const cookieStore = await cookies();
+    const supabase = createRouteHandlerClient({ cookies: () => cookieStore });
     const {
       data: { user: authUser },
     } = await supabase.auth.getUser();
