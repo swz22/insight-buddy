@@ -1,9 +1,9 @@
 import { NextResponse } from "next/server";
 import { createRouteHandlerClient } from "@supabase/auth-helpers-nextjs";
 import { cookies } from "next/headers";
-import { prisma } from "@/lib/prisma";
 
-export async function GET(request, { params }) {
+export async function GET(request, { params: paramsPromise }) {
+  const params = await paramsPromise;
   try {
     const cookieStore = await cookies();
     const supabase = createRouteHandlerClient({ cookies: () => cookieStore });
@@ -15,14 +15,14 @@ export async function GET(request, { params }) {
       return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
     }
 
-    const meeting = await prisma.meeting.findFirst({
-      where: {
-        id: params.id,
-        userId: user.id,
-      },
-    });
+    const { data: meeting, error } = await supabase
+      .from("meetings")
+      .select("*")
+      .eq("id", params.id)
+      .eq("user_id", user.id)
+      .single();
 
-    if (!meeting) {
+    if (error || !meeting) {
       return NextResponse.json({ error: "Meeting not found" }, { status: 404 });
     }
 
@@ -33,7 +33,8 @@ export async function GET(request, { params }) {
   }
 }
 
-export async function PATCH(request, { params }) {
+export async function PATCH(request, { params: paramsPromise }) {
+  const params = await paramsPromise;
   try {
     const cookieStore = await cookies();
     const supabase = createRouteHandlerClient({ cookies: () => cookieStore });
@@ -47,30 +48,27 @@ export async function PATCH(request, { params }) {
 
     const body = await request.json();
 
-    const meeting = await prisma.meeting.updateMany({
-      where: {
-        id: params.id,
-        userId: user.id,
-      },
-      data: body,
-    });
+    const { data: meeting, error } = await supabase
+      .from("meetings")
+      .update(body)
+      .eq("id", params.id)
+      .eq("user_id", user.id)
+      .select()
+      .single();
 
-    if (meeting.count === 0) {
-      return NextResponse.json({ error: "Meeting not found" }, { status: 404 });
+    if (error || !meeting) {
+      return NextResponse.json({ error: "Meeting not found or update failed" }, { status: 404 });
     }
 
-    const updatedMeeting = await prisma.meeting.findUnique({
-      where: { id: params.id },
-    });
-
-    return NextResponse.json(updatedMeeting);
+    return NextResponse.json(meeting);
   } catch (error) {
     console.error("Error updating meeting:", error);
     return NextResponse.json({ error: "Failed to update meeting" }, { status: 500 });
   }
 }
 
-export async function DELETE(request, { params }) {
+export async function DELETE(request, { params: paramsPromise }) {
+  const params = await paramsPromise;
   try {
     const cookieStore = await cookies();
     const supabase = createRouteHandlerClient({ cookies: () => cookieStore });
@@ -82,15 +80,10 @@ export async function DELETE(request, { params }) {
       return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
     }
 
-    const meeting = await prisma.meeting.deleteMany({
-      where: {
-        id: params.id,
-        userId: user.id,
-      },
-    });
+    const { error } = await supabase.from("meetings").delete().eq("id", params.id).eq("user_id", user.id);
 
-    if (meeting.count === 0) {
-      return NextResponse.json({ error: "Meeting not found" }, { status: 404 });
+    if (error) {
+      return NextResponse.json({ error: "Failed to delete meeting" }, { status: 500 });
     }
 
     return NextResponse.json({ success: true });
