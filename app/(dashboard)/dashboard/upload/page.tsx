@@ -32,13 +32,21 @@ export default function UploadPage() {
   const uploadFile = async (file: File): Promise<string | null> => {
     const supabase = createClient();
     try {
+      // Get current user
+      const {
+        data: { user },
+        error: userError,
+      } = await supabase.auth.getUser();
+
+      if (userError || !user) {
+        throw new Error("No user found");
+      }
+
       const fileExt = file.name.split(".").pop();
       const fileName = `${Date.now()}-${Math.random().toString(36).substring(7)}.${fileExt}`;
-      const filePath = `${fileName}`;
+      const filePath = `${user.id}/${fileName}`;
 
-      console.log("Uploading file:", { fileName, fileSize: file.size, fileType: file.type });
-
-      // Upload to Supabase Storage with progress tracking
+      // Upload to Supabase Storage
       const { error: uploadError, data } = await supabase.storage.from("meeting-recordings").upload(filePath, file, {
         cacheControl: "3600",
         upsert: false,
@@ -49,12 +57,15 @@ export default function UploadPage() {
         throw uploadError;
       }
 
-      console.log("Upload successful:", data);
+      // Get authenticated URL (since bucket is now private)
+      const {
+        data: { signedUrl },
+        error: urlError,
+      } = await supabase.storage.from("meeting-recordings").createSignedUrl(filePath, 60 * 60 * 24 * 365); // 1 year expiry
 
-      // Get public URL
-      const { data: urlData } = supabase.storage.from("meeting-recordings").getPublicUrl(filePath);
+      if (urlError || !signedUrl) throw new Error("Failed to get file URL");
 
-      return urlData.publicUrl;
+      return signedUrl;
     } catch (error) {
       console.error("Upload error details:", error);
       toast.error("Failed to upload file");

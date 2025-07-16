@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { createClient } from "@/lib/supabase/server";
 import { Database } from "@/types/supabase";
+import { extractFilePath, deleteFile, STORAGE_BUCKET } from "@/lib/services/storage";
 
 export const dynamic = "force-dynamic";
 
@@ -85,10 +86,31 @@ export async function DELETE(request: Request, { params: paramsPromise }: RouteP
       return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
     }
 
+    // Get meeting to find the audio file
+    const { data: meeting } = await supabase
+      .from("meetings")
+      .select("audio_url")
+      .eq("id", params.id)
+      .eq("user_id", user.id)
+      .single();
+
+    // Delete the meeting record
     const { error } = await supabase.from("meetings").delete().eq("id", params.id).eq("user_id", user.id);
 
     if (error) {
       return NextResponse.json({ error: "Failed to delete meeting" }, { status: 500 });
+    }
+
+    // Delete the associated audio file if it exists
+    if (meeting?.audio_url) {
+      const filePath = extractFilePath(meeting.audio_url);
+      if (filePath) {
+        const { error: storageError } = await supabase.storage.from(STORAGE_BUCKET).remove([filePath]);
+
+        if (storageError) {
+          console.error("Failed to delete audio file:", storageError);
+        }
+      }
     }
 
     return NextResponse.json({ success: true });
