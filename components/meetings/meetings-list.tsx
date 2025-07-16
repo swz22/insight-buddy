@@ -63,7 +63,7 @@ export function MeetingsList({ userEmail }: MeetingsListProps) {
       {!isLoading && !error && !meetings?.length && (
         <div className="text-center py-12">
           <p className="text-gray-500 mb-4">No meetings yet.</p>
-          <p className="text-sm text-gray-400">Click "Upload Recording" above to get started.</p>
+          <p className="text-sm text-gray-400">Click &quot;Upload Recording&quot; above to get started.</p>
         </div>
       )}
 
