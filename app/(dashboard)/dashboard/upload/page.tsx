@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, FormEvent } from "react";
+import { useState, FormEvent, useRef } from "react";
 import { useRouter } from "next/navigation";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -9,6 +9,7 @@ import { FileUpload } from "@/components/upload/file-upload";
 import { useCreateMeeting } from "@/hooks/use-meetings";
 import { useToast } from "@/hooks/use-toast";
 import { useAppStore } from "@/stores/app-store";
+import { uploadFile } from "@/lib/services/upload";
 
 interface FormData {
   title: string;
@@ -20,6 +21,7 @@ export default function UploadPage() {
   const toast = useToast();
   const createMeeting = useCreateMeeting();
   const setUploadProgress = useAppStore((state) => state.setUploadProgress);
+  const abortControllerRef = useRef<AbortController | null>(null);
 
   const [formData, setFormData] = useState<FormData>({
     title: "",
@@ -27,30 +29,6 @@ export default function UploadPage() {
   });
   const [selectedFile, setSelectedFile] = useState<File | null>(null);
   const [isUploading, setIsUploading] = useState(false);
-
-  const uploadFile = async (file: File): Promise<string | null> => {
-    try {
-      const formData = new FormData();
-      formData.append("file", file);
-
-      const response = await fetch("/api/upload", {
-        method: "POST",
-        body: formData,
-      });
-
-      if (!response.ok) {
-        const error = await response.json();
-        throw new Error(error.error || "Upload failed");
-      }
-
-      const data = await response.json();
-      return data.url;
-    } catch (error) {
-      console.error("Upload error:", error);
-      toast.error(error instanceof Error ? error.message : "Failed to upload file");
-      return null;
-    }
-  };
 
   const handleSubmit = async (e: FormEvent<HTMLFormElement>) => {
     e.preventDefault();
@@ -61,31 +39,27 @@ export default function UploadPage() {
     }
 
     setIsUploading(true);
+    abortControllerRef.current = new AbortController();
 
     try {
-      // Simulate progress for demo (in production, use chunked uploads)
-      setUploadProgress(10);
-
-      // Upload file
-      setUploadProgress(30);
-      const audioUrl = await uploadFile(selectedFile);
-
-      if (!audioUrl) {
-        throw new Error("Failed to upload file");
-      }
-
-      setUploadProgress(70);
+      // Upload file with real progress tracking
+      const uploadResult = await uploadFile(
+        selectedFile,
+        (progress) => {
+          setUploadProgress(progress.percentage);
+        },
+        abortControllerRef.current.signal
+      );
 
       // Create meeting record
       await createMeeting.mutateAsync({
         title: formData.title,
         description: formData.description || null,
-        audio_url: audioUrl,
+        audio_url: uploadResult.url,
         participants: [],
         recorded_at: new Date().toISOString(),
       });
 
-      setUploadProgress(100);
       toast.success("Meeting uploaded successfully!");
 
       // Reset progress after a delay
@@ -94,10 +68,29 @@ export default function UploadPage() {
       router.push("/dashboard");
     } catch (error) {
       console.error("Failed to create meeting:", error);
-      toast.error("Failed to create meeting. Please try again.");
+
+      if (error instanceof Error) {
+        if (error.message === "Upload cancelled") {
+          toast.info("Upload cancelled");
+        } else {
+          toast.error(error.message || "Failed to create meeting");
+        }
+      } else {
+        toast.error("Failed to create meeting. Please try again.");
+      }
+
       setUploadProgress(0);
     } finally {
       setIsUploading(false);
+      abortControllerRef.current = null;
+    }
+  };
+
+  const handleCancel = () => {
+    if (abortControllerRef.current && isUploading) {
+      abortControllerRef.current.abort();
+    } else {
+      router.push("/dashboard");
     }
   };
 
@@ -147,8 +140,8 @@ export default function UploadPage() {
               <Button type="submit" disabled={createMeeting.isPending || isUploading || !selectedFile}>
                 {isUploading ? "Uploading..." : "Upload Meeting"}
               </Button>
-              <Button type="button" variant="outline" onClick={() => router.push("/dashboard")} disabled={isUploading}>
-                Cancel
+              <Button type="button" variant="outline" onClick={handleCancel} disabled={createMeeting.isPending}>
+                {isUploading ? "Cancel Upload" : "Cancel"}
               </Button>
             </div>
           </form>

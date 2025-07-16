@@ -7,6 +7,7 @@ import { useRouter } from "next/navigation";
 import { useQueryClient } from "@tanstack/react-query";
 import { Database } from "@/types/supabase";
 import Link from "next/link";
+import { useToast } from "@/hooks/use-toast";
 
 type Meeting = Database["public"]["Tables"]["meetings"]["Row"];
 
@@ -17,6 +18,7 @@ interface MeetingsListProps {
 export function MeetingsList({ userEmail }: MeetingsListProps) {
   const router = useRouter();
   const queryClient = useQueryClient();
+  const toast = useToast();
   const { data: meetings, isLoading, error } = useMeetings();
 
   const handleView = (meeting: Meeting) => {
@@ -28,13 +30,16 @@ export function MeetingsList({ userEmail }: MeetingsListProps) {
 
     try {
       const response = await fetch(`/api/meetings/${id}`, { method: "DELETE" });
-      if (!response.ok) throw new Error("Failed to delete");
+      if (!response.ok) {
+        const error = await response.json();
+        throw new Error(error.error || "Failed to delete");
+      }
 
-      // Invalidate and refetch the meetings query
       queryClient.invalidateQueries({ queryKey: ["meetings"] });
+      toast.success("Meeting deleted successfully");
     } catch (error) {
       console.error("Failed to delete meeting:", error);
-      alert("Failed to delete meeting. Please try again.");
+      toast.error(error instanceof Error ? error.message : "Failed to delete meeting");
     }
   };
 
