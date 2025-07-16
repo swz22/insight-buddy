@@ -15,13 +15,10 @@ interface FormData {
 export default function UploadPage() {
   const router = useRouter();
   const createMeeting = useCreateMeeting();
-  const [formData, setFormData] =
-    useState <
-    FormData >
-    {
-      title: "",
-      description: "",
-    };
+  const [formData, setFormData] = useState<FormData>({
+    title: "",
+    description: "",
+  });
 
   const handleSubmit = async (e: FormEvent<HTMLFormElement>) => {
     e.preventDefault();
@@ -30,7 +27,8 @@ export default function UploadPage() {
       await createMeeting.mutateAsync({
         title: formData.title,
         description: formData.description,
-        recordedAt: new Date().toISOString(),
+        recorded_at: new Date().toISOString(),
+        user_id: "", // This will be set by the API
       });
 
       router.push("/dashboard");
