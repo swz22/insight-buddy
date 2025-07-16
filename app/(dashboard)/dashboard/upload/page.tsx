@@ -9,7 +9,7 @@ import { FileUpload } from "@/components/upload/file-upload";
 import { useCreateMeeting } from "@/hooks/use-meetings";
 import { useToast } from "@/hooks/use-toast";
 import { useAppStore } from "@/stores/app-store";
-import { supabase } from "@/lib/supabase";
+import { createClient } from "@/lib/supabase/client";
 
 interface FormData {
   title: string;
@@ -30,6 +30,7 @@ export default function UploadPage() {
   const [isUploading, setIsUploading] = useState(false);
 
   const uploadFile = async (file: File): Promise<string | null> => {
+    const supabase = createClient();
     try {
       const fileExt = file.name.split(".").pop();
       const fileName = `${Date.now()}-${Math.random().toString(36).substring(7)}.${fileExt}`;

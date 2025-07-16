@@ -2,7 +2,7 @@
 
 import { useState, FormEvent } from "react";
 import { useRouter } from "next/navigation";
-import { supabase } from "@/lib/supabase";
+import { createClient } from "@/lib/supabase/client";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { useToast } from "@/hooks/use-toast";
@@ -18,6 +18,8 @@ export function LoginForm() {
   const handleSubmit = async (e: FormEvent<HTMLFormElement>) => {
     e.preventDefault();
     setIsLoading(true);
+
+    const supabase = createClient();
 
     try {
       if (isSignUp) {
@@ -47,6 +49,7 @@ export function LoginForm() {
   };
 
   const handleGoogleLogin = async () => {
+    const supabase = createClient();
     try {
       const { error } = await supabase.auth.signInWithOAuth({
         provider: "google",
