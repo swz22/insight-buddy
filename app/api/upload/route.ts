@@ -1,6 +1,7 @@
-import { NextRequest, NextResponse } from "next/server";
+import { NextRequest } from "next/server";
 import { createClient } from "@/lib/supabase/server";
 import { validateUploadedFile, sanitizeFileName } from "@/lib/utils/validation";
+import { apiError, apiSuccess } from "@/lib/api/response";
 
 export async function POST(request: NextRequest) {
   try {
@@ -10,14 +11,14 @@ export async function POST(request: NextRequest) {
       data: { user },
     } = await supabase.auth.getUser();
     if (!user) {
-      return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+      return apiError("Unauthorized", 401, "AUTH_REQUIRED");
     }
 
     const formData = await request.formData();
     const file = formData.get("file") as File;
 
     if (!file) {
-      return NextResponse.json({ error: "No file provided" }, { status: 400 });
+      return apiError("No file provided", 400, "NO_FILE");
     }
 
     const validation = validateUploadedFile({
@@ -27,7 +28,7 @@ export async function POST(request: NextRequest) {
     });
 
     if (!validation.valid) {
-      return NextResponse.json({ error: validation.error }, { status: 400 });
+      return apiError(validation.error || "Invalid file", 400, "INVALID_FILE");
     }
 
     const fileExt = file.name.split(".").pop() || "bin";
@@ -48,7 +49,7 @@ export async function POST(request: NextRequest) {
 
     if (uploadError) {
       console.error("Upload error:", uploadError);
-      return NextResponse.json({ error: "Failed to upload file" }, { status: 500 });
+      return apiError("Failed to upload file", 500, "UPLOAD_ERROR", uploadError.message);
     }
 
     const { data: signedUrlData, error: urlError } = await supabase.storage
@@ -56,10 +57,10 @@ export async function POST(request: NextRequest) {
       .createSignedUrl(filePath, 60 * 60 * 24 * 365); // 1 year
 
     if (urlError || !signedUrlData?.signedUrl) {
-      return NextResponse.json({ error: "Failed to generate URL" }, { status: 500 });
+      return apiError("Failed to generate URL", 500, "URL_ERROR", urlError?.message);
     }
 
-    return NextResponse.json({
+    return apiSuccess({
       success: true,
       url: signedUrlData.signedUrl,
       path: filePath,
@@ -68,6 +69,6 @@ export async function POST(request: NextRequest) {
     });
   } catch (error) {
     console.error("Upload error:", error);
-    return NextResponse.json({ error: "Internal server error" }, { status: 500 });
+    return apiError("Internal server error", 500, "INTERNAL_ERROR", error instanceof Error ? error.message : undefined);
   }
 }

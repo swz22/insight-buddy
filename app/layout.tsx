@@ -5,6 +5,7 @@ import { Metadata } from "next";
 import { ReactNode } from "react";
 import { Toaster } from "@/components/ui/toast";
 import { UploadProgress } from "@/components/upload/upload-progress";
+import { ErrorBoundary } from "@/components/error-boundary";
 
 const inter = Inter({ subsets: ["latin"] });
 
@@ -21,9 +22,11 @@ export default function RootLayout({ children }: RootLayoutProps) {
   return (
     <html lang="en">
       <body className={inter.className}>
-        <Providers>{children}</Providers>
-        <Toaster />
-        <UploadProgress />
+        <ErrorBoundary>
+          <Providers>{children}</Providers>
+          <Toaster />
+          <UploadProgress />
+        </ErrorBoundary>
       </body>
     </html>
   );

@@ -1,6 +1,5 @@
-import { NextResponse } from "next/server";
 import { createClient } from "@/lib/supabase/server";
-import { Database } from "@/types/supabase";
+import { apiError, apiSuccess } from "@/lib/api/response";
 
 export const dynamic = "force-dynamic";
 
@@ -12,7 +11,7 @@ export async function GET() {
     } = await supabase.auth.getUser();
 
     if (!user) {
-      return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+      return apiError("Unauthorized", 401, "AUTH_REQUIRED");
     }
 
     const { data: meetings, error } = await supabase
@@ -23,10 +22,10 @@ export async function GET() {
 
     if (error) throw error;
 
-    return NextResponse.json(meetings || []);
+    return apiSuccess(meetings || []);
   } catch (error) {
     console.error("Error fetching meetings:", error);
-    return NextResponse.json({ error: "Failed to fetch meetings" }, { status: 500 });
+    return apiError("Failed to fetch meetings", 500, "FETCH_ERROR", error instanceof Error ? error.message : undefined);
   }
 }
 
@@ -38,15 +37,14 @@ export async function POST(request: Request) {
     } = await supabase.auth.getUser();
 
     if (!user) {
-      return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+      return apiError("Unauthorized", 401, "AUTH_REQUIRED");
     }
 
     const body = await request.json();
     const { title, description, recorded_at, participants, audio_url } = body;
 
-    // Ensure required fields
     if (!title) {
-      return NextResponse.json({ error: "Title is required" }, { status: 400 });
+      return apiError("Title is required", 400, "VALIDATION_ERROR");
     }
 
     const { data: meeting, error } = await supabase
@@ -67,15 +65,14 @@ export async function POST(request: Request) {
       throw error;
     }
 
-    return NextResponse.json(meeting);
+    return apiSuccess(meeting, 201);
   } catch (error) {
     console.error("Error creating meeting:", error);
-    return NextResponse.json(
-      {
-        error: "Failed to create meeting",
-        details: (error as Error).message,
-      },
-      { status: 500 }
+    return apiError(
+      "Failed to create meeting",
+      500,
+      "CREATE_ERROR",
+      error instanceof Error ? error.message : undefined
     );
   }
 }

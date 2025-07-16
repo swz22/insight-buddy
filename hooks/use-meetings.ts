@@ -2,6 +2,7 @@
 
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { Database } from "@/types/supabase";
+import { ApiClientError, parseApiError } from "@/lib/types/error";
 
 type Meeting = Database["public"]["Tables"]["meetings"]["Row"];
 type MeetingInsert = Omit<
@@ -14,7 +15,10 @@ export function useMeetings() {
     queryKey: ["meetings"],
     queryFn: async () => {
       const response = await fetch("/api/meetings");
-      if (!response.ok) throw new Error("Failed to fetch meetings");
+      if (!response.ok) {
+        const error = await response.json();
+        throw new ApiClientError(parseApiError(error), response.status, error.code);
+      }
       return response.json();
     },
   });
@@ -32,7 +36,7 @@ export function useCreateMeeting() {
       });
       if (!response.ok) {
         const error = await response.json();
-        throw new Error(error.details || "Failed to create meeting");
+        throw new ApiClientError(parseApiError(error), response.status, error.code);
       }
       return response.json();
     },
