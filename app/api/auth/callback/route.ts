@@ -10,10 +10,7 @@ export async function GET(request: NextRequest) {
   if (code) {
     try {
       const supabase = createRouteHandlerClient({
-        cookies: async () => {
-          const cookieStore = await cookies();
-          return cookieStore;
-        },
+        cookies,
       });
 
       const { error } = await supabase.auth.exchangeCodeForSession(code);
@@ -27,5 +24,7 @@ export async function GET(request: NextRequest) {
       return NextResponse.redirect(`${requestUrl.origin}/login?error=callback_error`);
     }
   }
+
+  // Always redirect to dashboard after processing
   return NextResponse.redirect(`${requestUrl.origin}/dashboard`);
 }
