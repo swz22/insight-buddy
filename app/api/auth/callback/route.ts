@@ -9,11 +9,15 @@ export async function GET(request: NextRequest) {
 
   if (code) {
     try {
-      const cookieStore = await cookies();
-      const supabase = createRouteHandlerClient({ cookies: () => cookieStore });
-      
+      const supabase = createRouteHandlerClient({
+        cookies: async () => {
+          const cookieStore = await cookies();
+          return cookieStore;
+        },
+      });
+
       const { error } = await supabase.auth.exchangeCodeForSession(code);
-      
+
       if (error) {
         console.error("Error exchanging code for session:", error);
         return NextResponse.redirect(`${requestUrl.origin}/login?error=auth_failed`);
@@ -23,7 +27,5 @@ export async function GET(request: NextRequest) {
       return NextResponse.redirect(`${requestUrl.origin}/login?error=callback_error`);
     }
   }
-
-  // Redirect to dashboard after successful authentication
   return NextResponse.redirect(`${requestUrl.origin}/dashboard`);
 }
