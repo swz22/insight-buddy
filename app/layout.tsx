@@ -3,6 +3,7 @@ import "./globals.css";
 import { Providers } from "./providers";
 import { Metadata } from "next";
 import { ReactNode } from "react";
+import { Toaster } from "@/components/ui/toast";
 
 const inter = Inter({ subsets: ["latin"] });
 
@@ -20,6 +21,7 @@ export default function RootLayout({ children }: RootLayoutProps) {
     <html lang="en">
       <body className={inter.className}>
         <Providers>{children}</Providers>
+        <Toaster />
       </body>
     </html>
   );
