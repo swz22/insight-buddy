@@ -5,49 +5,29 @@ import { Upload, File, X } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
 import { useToast } from "@/hooks/use-toast";
+import { validateUploadedFile, ALLOWED_MIME_TYPES, MAX_FILE_SIZE } from "@/lib/utils/validation";
 
 interface FileUploadProps {
   onFileSelect: (file: File) => void;
   accept?: string;
-  maxSizeMB?: number;
   disabled?: boolean;
 }
 
-export function FileUpload({
-  onFileSelect,
-  accept = "audio/*,video/*",
-  maxSizeMB = 500,
-  disabled = false,
-}: FileUploadProps) {
+export function FileUpload({ onFileSelect, accept = "audio/*,video/*", disabled = false }: FileUploadProps) {
   const [isDragging, setIsDragging] = useState(false);
   const [selectedFile, setSelectedFile] = useState<File | null>(null);
   const inputRef = useRef<HTMLInputElement>(null);
   const toast = useToast();
 
   const validateFile = (file: File): boolean => {
-    // Check file type
-    const validTypes = [
-      "audio/mpeg",
-      "audio/mp3",
-      "audio/wav",
-      "audio/x-wav",
-      "audio/m4a",
-      "audio/x-m4a",
-      "audio/webm",
-      "video/mp4",
-      "video/webm",
-      "video/quicktime",
-    ];
+    const validation = validateUploadedFile({
+      type: file.type,
+      size: file.size,
+      name: file.name,
+    });
 
-    if (!validTypes.includes(file.type)) {
-      toast.error(`Invalid file type. Please upload an audio or video file.`);
-      return false;
-    }
-
-    // Check file size
-    const maxSizeBytes = maxSizeMB * 1024 * 1024;
-    if (file.size > maxSizeBytes) {
-      toast.error(`File too large. Maximum size is ${maxSizeMB}MB.`);
+    if (!validation.valid) {
+      toast.error(validation.error || "Invalid file");
       return false;
     }
 
@@ -144,7 +124,7 @@ export function FileUpload({
           </Button>
 
           <p className="text-xs text-gray-500 mt-4">
-            Supported formats: MP3, WAV, M4A, MP4, WebM • Max size: {maxSizeMB}MB
+            Supported formats: MP3, WAV, M4A, MP4, WebM • Max size: {MAX_FILE_SIZE / (1024 * 1024)}MB
           </p>
         </div>
       ) : (

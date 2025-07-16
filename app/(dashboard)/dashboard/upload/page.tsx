@@ -9,7 +9,6 @@ import { FileUpload } from "@/components/upload/file-upload";
 import { useCreateMeeting } from "@/hooks/use-meetings";
 import { useToast } from "@/hooks/use-toast";
 import { useAppStore } from "@/stores/app-store";
-import { createClient } from "@/lib/supabase/client";
 
 interface FormData {
   title: string;
