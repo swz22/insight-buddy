@@ -1,7 +1,7 @@
-import { NextResponse } from "next/server";
 import { createClient } from "@/lib/supabase/server";
 import { Database } from "@/types/supabase";
-import { extractFilePath, deleteFile, STORAGE_BUCKET } from "@/lib/services/storage";
+import { extractFilePath, STORAGE_BUCKET } from "@/lib/services/storage";
+import { apiError, apiSuccess } from "@/lib/api/response";
 
 export const dynamic = "force-dynamic";
 
@@ -20,7 +20,7 @@ export async function GET(request: Request, { params: paramsPromise }: RoutePara
     } = await supabase.auth.getUser();
 
     if (!user) {
-      return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+      return apiError("Unauthorized", 401, "AUTH_REQUIRED");
     }
 
     const { data: meeting, error } = await supabase
@@ -31,13 +31,13 @@ export async function GET(request: Request, { params: paramsPromise }: RoutePara
       .single();
 
     if (error || !meeting) {
-      return NextResponse.json({ error: "Meeting not found" }, { status: 404 });
+      return apiError("Meeting not found", 404, "NOT_FOUND");
     }
 
-    return NextResponse.json(meeting);
+    return apiSuccess(meeting);
   } catch (error) {
     console.error("Error fetching meeting:", error);
-    return NextResponse.json({ error: "Failed to fetch meeting" }, { status: 500 });
+    return apiError("Failed to fetch meeting", 500, "FETCH_ERROR", error instanceof Error ? error.message : undefined);
   }
 }
 
@@ -50,7 +50,7 @@ export async function PATCH(request: Request, { params: paramsPromise }: RoutePa
     } = await supabase.auth.getUser();
 
     if (!user) {
-      return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+      return apiError("Unauthorized", 401, "AUTH_REQUIRED");
     }
 
     const body = await request.json();
@@ -64,13 +64,18 @@ export async function PATCH(request: Request, { params: paramsPromise }: RoutePa
       .single();
 
     if (error || !meeting) {
-      return NextResponse.json({ error: "Meeting not found or update failed" }, { status: 404 });
+      return apiError("Meeting not found or update failed", 404, "UPDATE_FAILED");
     }
 
-    return NextResponse.json(meeting);
+    return apiSuccess(meeting);
   } catch (error) {
     console.error("Error updating meeting:", error);
-    return NextResponse.json({ error: "Failed to update meeting" }, { status: 500 });
+    return apiError(
+      "Failed to update meeting",
+      500,
+      "UPDATE_ERROR",
+      error instanceof Error ? error.message : undefined
+    );
   }
 }
 
@@ -83,10 +88,9 @@ export async function DELETE(request: Request, { params: paramsPromise }: RouteP
     } = await supabase.auth.getUser();
 
     if (!user) {
-      return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+      return apiError("Unauthorized", 401, "AUTH_REQUIRED");
     }
 
-    // Get meeting to find the audio file
     const { data: meeting } = await supabase
       .from("meetings")
       .select("audio_url")
@@ -94,14 +98,12 @@ export async function DELETE(request: Request, { params: paramsPromise }: RouteP
       .eq("user_id", user.id)
       .single();
 
-    // Delete the meeting record
     const { error } = await supabase.from("meetings").delete().eq("id", params.id).eq("user_id", user.id);
 
     if (error) {
-      return NextResponse.json({ error: "Failed to delete meeting" }, { status: 500 });
+      return apiError("Failed to delete meeting", 500, "DELETE_ERROR", error.message);
     }
 
-    // Delete the associated audio file if it exists
     if (meeting?.audio_url) {
       const filePath = extractFilePath(meeting.audio_url);
       if (filePath) {
@@ -113,9 +115,14 @@ export async function DELETE(request: Request, { params: paramsPromise }: RouteP
       }
     }
 
-    return NextResponse.json({ success: true });
+    return apiSuccess({ success: true });
   } catch (error) {
     console.error("Error deleting meeting:", error);
-    return NextResponse.json({ error: "Failed to delete meeting" }, { status: 500 });
+    return apiError(
+      "Failed to delete meeting",
+      500,
+      "DELETE_ERROR",
+      error instanceof Error ? error.message : undefined
+    );
   }
 }

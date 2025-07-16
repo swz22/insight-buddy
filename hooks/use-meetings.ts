@@ -24,6 +24,21 @@ export function useMeetings() {
   });
 }
 
+export function useMeeting(id: string) {
+  return useQuery<Meeting>({
+    queryKey: ["meetings", id],
+    queryFn: async () => {
+      const response = await fetch(`/api/meetings/${id}`);
+      if (!response.ok) {
+        const error = await response.json();
+        throw new ApiClientError(parseApiError(error), response.status, error.code);
+      }
+      return response.json();
+    },
+    enabled: !!id,
+  });
+}
+
 export function useCreateMeeting() {
   const queryClient = useQueryClient();
 
