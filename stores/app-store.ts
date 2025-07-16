@@ -21,19 +21,16 @@ interface AppStore {
   setCurrentMeeting: (meeting: Meeting | null) => void;
 }
 
-export const useAppStore =
-  create <
-  AppStore >
-  ((set) => ({
-    // UI state
-    sidebarOpen: true,
-    toggleSidebar: () => set((state) => ({ sidebarOpen: !state.sidebarOpen })),
+export const useAppStore = create<AppStore>((set) => ({
+  // UI state
+  sidebarOpen: true,
+  toggleSidebar: () => set((state) => ({ sidebarOpen: !state.sidebarOpen })),
 
-    // Upload state
-    uploadProgress: 0,
-    setUploadProgress: (progress) => set({ uploadProgress: progress }),
+  // Upload state
+  uploadProgress: 0,
+  setUploadProgress: (progress) => set({ uploadProgress: progress }),
 
-    // Current meeting being viewed
-    currentMeeting: null,
-    setCurrentMeeting: (meeting) => set({ currentMeeting: meeting }),
-  }));
+  // Current meeting being viewed
+  currentMeeting: null,
+  setCurrentMeeting: (meeting) => set({ currentMeeting: meeting }),
+}));
