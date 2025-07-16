@@ -4,6 +4,7 @@ import { Providers } from "./providers";
 import { Metadata } from "next";
 import { ReactNode } from "react";
 import { Toaster } from "@/components/ui/toast";
+import { UploadProgress } from "@/components/upload/upload-progress";
 
 const inter = Inter({ subsets: ["latin"] });
 
@@ -22,6 +23,7 @@ export default function RootLayout({ children }: RootLayoutProps) {
       <body className={inter.className}>
         <Providers>{children}</Providers>
         <Toaster />
+        <UploadProgress />
       </body>
     </html>
   );
