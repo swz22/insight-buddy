@@ -6,6 +6,7 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { useCreateMeeting } from "@/hooks/use-meetings";
+import { useToast } from "@/hooks/use-toast";
 
 interface FormData {
   title: string;
@@ -14,6 +15,7 @@ interface FormData {
 
 export default function UploadPage() {
   const router = useRouter();
+  const toast = useToast();
   const createMeeting = useCreateMeeting();
   const [formData, setFormData] = useState<FormData>({
     title: "",
@@ -26,15 +28,16 @@ export default function UploadPage() {
     try {
       await createMeeting.mutateAsync({
         title: formData.title,
-        description: formData.description,
+        description: formData.description || null,
+        participants: [],
         recorded_at: new Date().toISOString(),
-        user_id: "", // This will be set by the API
       });
 
+      toast.success("Meeting created successfully!");
       router.push("/dashboard");
     } catch (error) {
       console.error("Failed to create meeting:", error);
-      alert("Failed to create meeting. Please try again.");
+      toast.error("Failed to create meeting. Please try again.");
     }
   };
 

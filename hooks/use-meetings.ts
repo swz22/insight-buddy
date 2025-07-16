@@ -4,7 +4,10 @@ import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { Database } from "@/types/supabase";
 
 type Meeting = Database["public"]["Tables"]["meetings"]["Row"];
-type MeetingInsert = Database["public"]["Tables"]["meetings"]["Insert"];
+type MeetingInsert = Omit<
+  Database["public"]["Tables"]["meetings"]["Insert"],
+  "id" | "user_id" | "created_at" | "updated_at"
+>;
 
 export function useMeetings() {
   return useQuery<Meeting[]>({
@@ -27,7 +30,10 @@ export function useCreateMeeting() {
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify(data),
       });
-      if (!response.ok) throw new Error("Failed to create meeting");
+      if (!response.ok) {
+        const error = await response.json();
+        throw new Error(error.details || "Failed to create meeting");
+      }
       return response.json();
     },
     onSuccess: () => {
