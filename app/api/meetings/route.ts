@@ -3,6 +3,8 @@ import { createRouteHandlerClient } from "@supabase/auth-helpers-nextjs";
 import { cookies } from "next/headers";
 import { Database } from "@/types/supabase";
 
+export const dynamic = "force-dynamic";
+
 export async function GET() {
   try {
     const supabase = createRouteHandlerClient<Database>({ cookies });
@@ -41,7 +43,7 @@ export async function POST(request: Request) {
     }
 
     const body = await request.json();
-    const { title, description, recorded_at, participants } = body;
+    const { title, description, recorded_at, participants, audio_url } = body;
 
     // Ensure required fields
     if (!title) {
@@ -56,6 +58,7 @@ export async function POST(request: Request) {
         recorded_at: recorded_at || new Date().toISOString(),
         user_id: user.id,
         participants: participants || [],
+        audio_url: audio_url || null,
       })
       .select()
       .single();
