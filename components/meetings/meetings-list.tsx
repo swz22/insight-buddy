@@ -3,8 +3,10 @@
 import { useState } from "react";
 import { Button } from "@/components/ui/button";
 import { useMeetings } from "@/hooks/use-meetings";
+import { useMeetingFilters } from "@/hooks/use-meeting-filters";
 import { MeetingCard } from "./meeting-card";
 import { EditMeetingDialog } from "./edit-meeting-dialog";
+import { MeetingFilters } from "./meeting-filters";
 import { useRouter } from "next/navigation";
 import { useQueryClient } from "@tanstack/react-query";
 import { Database } from "@/types/supabase";
@@ -23,6 +25,9 @@ export function MeetingsList({ userEmail }: MeetingsListProps) {
   const toast = useToast();
   const { data: meetings, isLoading, error } = useMeetings();
   const [editingMeeting, setEditingMeeting] = useState<Meeting | null>(null);
+
+  const { searchTerm, setSearchTerm, dateRange, setDateRange, filteredMeetings, clearFilters, hasActiveFilters } =
+    useMeetingFilters(meetings);
 
   const handleView = (meeting: Meeting) => {
     router.push(`/dashboard/meetings/${meeting.id}`);
@@ -55,7 +60,10 @@ export function MeetingsList({ userEmail }: MeetingsListProps) {
       <div className="flex justify-between items-center mb-8">
         <div>
           <h1 className="text-3xl font-bold text-gray-900">Your Meetings</h1>
-          <p className="mt-2 text-gray-600">Welcome back, {userEmail}!</p>
+          <p className="mt-2 text-gray-600">
+            Welcome back, {userEmail}!
+            {meetings && meetings.length > 0 && <span className="ml-2">• {meetings.length} total meetings</span>}
+          </p>
         </div>
         <Link href="/dashboard/upload">
           <Button>Upload Recording</Button>
@@ -72,25 +80,51 @@ export function MeetingsList({ userEmail }: MeetingsListProps) {
 
       {error && <div className="text-center py-8 text-red-600">Failed to load meetings. Please try again.</div>}
 
-      {!isLoading && !error && !meetings?.length && (
-        <div className="text-center py-12">
-          <p className="text-gray-500 mb-4">No meetings yet.</p>
-          <p className="text-sm text-gray-400">Click &quot;Upload Recording&quot; above to get started.</p>
-        </div>
-      )}
+      {!isLoading && !error && meetings && (
+        <>
+          <MeetingFilters
+            searchTerm={searchTerm}
+            onSearchChange={setSearchTerm}
+            dateRange={dateRange}
+            onDateRangeChange={setDateRange}
+            onClearFilters={clearFilters}
+          />
 
-      {!isLoading && !error && meetings && meetings.length > 0 && (
-        <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-3">
-          {meetings.map((meeting) => (
-            <MeetingCard
-              key={meeting.id}
-              meeting={meeting}
-              onView={handleView}
-              onEdit={handleEdit}
-              onDelete={handleDelete}
-            />
-          ))}
-        </div>
+          {filteredMeetings.length === 0 ? (
+            <div className="text-center py-12">
+              {hasActiveFilters ? (
+                <>
+                  <p className="text-gray-500 mb-4">No meetings match your filters.</p>
+                  <Button variant="outline" onClick={clearFilters}>
+                    Clear filters
+                  </Button>
+                </>
+              ) : (
+                <>
+                  <p className="text-gray-500 mb-4">No meetings yet.</p>
+                  <p className="text-sm text-gray-400">Click &quot;Upload Recording&quot; above to get started.</p>
+                </>
+              )}
+            </div>
+          ) : (
+            <>
+              <div className="mb-4 text-sm text-gray-600">
+                Showing {filteredMeetings.length} of {meetings.length} meetings
+              </div>
+              <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-3">
+                {filteredMeetings.map((meeting) => (
+                  <MeetingCard
+                    key={meeting.id}
+                    meeting={meeting}
+                    onView={handleView}
+                    onEdit={handleEdit}
+                    onDelete={handleDelete}
+                  />
+                ))}
+              </div>
+            </>
+          )}
+        </>
       )}
 
       {editingMeeting && (
