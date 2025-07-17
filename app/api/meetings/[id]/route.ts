@@ -1,7 +1,8 @@
 import { createClient } from "@/lib/supabase/server";
-import { Database } from "@/types/supabase";
 import { extractFilePath, STORAGE_BUCKET } from "@/lib/services/storage";
 import { apiError, apiSuccess } from "@/lib/api/response";
+import { validateRequest } from "@/lib/validations/utils";
+import { updateMeetingSchema } from "@/lib/validations/meeting";
 
 export const dynamic = "force-dynamic";
 
@@ -55,9 +56,15 @@ export async function PATCH(request: Request, { params: paramsPromise }: RoutePa
 
     const body = await request.json();
 
+    // Validate request body
+    const validation = validateRequest(updateMeetingSchema, body);
+    if (!validation.success) {
+      return validation.error;
+    }
+
     const { data: meeting, error } = await supabase
       .from("meetings")
-      .update(body)
+      .update(validation.data)
       .eq("id", params.id)
       .eq("user_id", user.id)
       .select()

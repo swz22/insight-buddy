@@ -6,6 +6,8 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { useToast } from "@/hooks/use-toast";
 import { Database } from "@/types/supabase";
+import { meetingFormSchema, type MeetingFormData } from "@/lib/validations/meeting";
+import { z } from "zod";
 
 type Meeting = Database["public"]["Tables"]["meetings"]["Row"];
 
@@ -28,6 +30,17 @@ export function EditMeetingDialog({ meeting, isOpen, onClose, onUpdate }: EditMe
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
+
+    // Validate form data
+    try {
+      meetingFormSchema.parse(formData);
+    } catch (error) {
+      if (error instanceof z.ZodError) {
+        toast.error(error.issues[0]?.message || "Validation error");
+        return;
+      }
+    }
+
     setIsSubmitting(true);
 
     try {

@@ -1,5 +1,7 @@
 import { createClient } from "@/lib/supabase/server";
 import { apiError, apiSuccess } from "@/lib/api/response";
+import { validateRequest } from "@/lib/validations/utils";
+import { createMeetingSchema } from "@/lib/validations/meeting";
 
 export const dynamic = "force-dynamic";
 
@@ -41,11 +43,14 @@ export async function POST(request: Request) {
     }
 
     const body = await request.json();
-    const { title, description, recorded_at, participants, audio_url } = body;
 
-    if (!title) {
-      return apiError("Title is required", 400, "VALIDATION_ERROR");
+    // Validate request body
+    const validation = validateRequest(createMeetingSchema, body);
+    if (!validation.success) {
+      return validation.error;
     }
+
+    const { title, description, recorded_at, participants, audio_url } = validation.data;
 
     const { data: meeting, error } = await supabase
       .from("meetings")

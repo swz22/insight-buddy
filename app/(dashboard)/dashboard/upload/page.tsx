@@ -10,6 +10,8 @@ import { useCreateMeeting } from "@/hooks/use-meetings";
 import { useToast } from "@/hooks/use-toast";
 import { useAppStore } from "@/stores/app-store";
 import { uploadFile } from "@/lib/services/upload";
+import { meetingFormSchema, type MeetingFormData } from "@/lib/validations/meeting";
+import { z } from "zod";
 
 interface FormData {
   title: string;
@@ -36,6 +38,16 @@ export default function UploadPage() {
     if (!selectedFile) {
       toast.error("Please select an audio or video file");
       return;
+    }
+
+    // Validate form data
+    try {
+      meetingFormSchema.parse(formData);
+    } catch (error) {
+      if (error instanceof z.ZodError) {
+        toast.error(error.issues[0]?.message || "Validation error");
+        return;
+      }
     }
 
     setIsUploading(true);
