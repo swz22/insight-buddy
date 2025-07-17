@@ -8,6 +8,7 @@ import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Database } from "@/types/supabase";
 import { EditMeetingDialog } from "./edit-meeting-dialog";
+import { AudioPlayer } from "@/components/audio/audio-player";
 
 type Meeting = Database["public"]["Tables"]["meetings"]["Row"];
 
@@ -82,12 +83,7 @@ export function MeetingDetail({ meeting: initialMeeting }: MeetingDetailProps) {
             <CardTitle>Recording</CardTitle>
           </CardHeader>
           <CardContent>
-            <audio controls className="w-full">
-              <source src={meeting.audio_url} type="audio/mpeg" />
-              <source src={meeting.audio_url} type="audio/wav" />
-              <source src={meeting.audio_url} type="video/mp4" />
-              Your browser does not support the audio element.
-            </audio>
+            <AudioPlayer url={meeting.audio_url} />
           </CardContent>
         </Card>
       )}

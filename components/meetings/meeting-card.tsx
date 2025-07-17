@@ -5,6 +5,7 @@ import { Clock, Users, FileText } from "lucide-react";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Database } from "@/types/supabase";
+import { MiniAudioPlayer } from "@/components/audio/mini-audio-player";
 
 type Meeting = Database["public"]["Tables"]["meetings"]["Row"];
 
@@ -47,6 +48,12 @@ export function MeetingCard({ meeting, onView, onEdit, onDelete }: MeetingCardPr
             </div>
           )}
         </div>
+
+        {meeting.audio_url && (
+          <div className="mb-4">
+            <MiniAudioPlayer url={meeting.audio_url} />
+          </div>
+        )}
 
         <div className="flex gap-2">
           <Button size="sm" onClick={() => onView(meeting)}>
