@@ -2,11 +2,12 @@
 
 import { useState } from "react";
 import { format } from "date-fns";
-import { ArrowLeft, Clock, Users, Download, FileText, ListChecks, Lightbulb } from "lucide-react";
+import { ArrowLeft, Clock, Users, Download, FileText, ListChecks, Lightbulb, Edit2 } from "lucide-react";
 import Link from "next/link";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Database } from "@/types/supabase";
+import { EditMeetingDialog } from "./edit-meeting-dialog";
 
 type Meeting = Database["public"]["Tables"]["meetings"]["Row"];
 
@@ -14,8 +15,10 @@ interface MeetingDetailProps {
   meeting: Meeting;
 }
 
-export function MeetingDetail({ meeting }: MeetingDetailProps) {
+export function MeetingDetail({ meeting: initialMeeting }: MeetingDetailProps) {
+  const [meeting, setMeeting] = useState(initialMeeting);
   const [activeTab, setActiveTab] = useState<"transcript" | "summary" | "actions">("transcript");
+  const [isEditDialogOpen, setIsEditDialogOpen] = useState(false);
 
   const formatDuration = (seconds: number | null) => {
     if (!seconds) return "N/A";
@@ -31,14 +34,20 @@ export function MeetingDetail({ meeting }: MeetingDetailProps) {
           <ArrowLeft className="w-4 h-4 mr-2" />
           Back to meetings
         </Link>
-        {meeting.audio_url && (
-          <Button variant="outline" size="sm" asChild>
-            <a href={meeting.audio_url} download>
-              <Download className="w-4 h-4 mr-2" />
-              Download Recording
-            </a>
+        <div className="flex gap-2">
+          <Button variant="outline" size="sm" onClick={() => setIsEditDialogOpen(true)}>
+            <Edit2 className="w-4 h-4 mr-2" />
+            Edit
           </Button>
-        )}
+          {meeting.audio_url && (
+            <Button variant="outline" size="sm" asChild>
+              <a href={meeting.audio_url} download>
+                <Download className="w-4 h-4 mr-2" />
+                Download
+              </a>
+            </Button>
+          )}
+        </div>
       </div>
 
       <div className="bg-white rounded-lg shadow-sm border p-6">
@@ -226,6 +235,13 @@ export function MeetingDetail({ meeting }: MeetingDetailProps) {
           )}
         </CardContent>
       </Card>
+
+      <EditMeetingDialog
+        meeting={meeting}
+        isOpen={isEditDialogOpen}
+        onClose={() => setIsEditDialogOpen(false)}
+        onUpdate={(updatedMeeting) => setMeeting(updatedMeeting)}
+      />
     </div>
   );
 }

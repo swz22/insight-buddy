@@ -11,10 +11,11 @@ type Meeting = Database["public"]["Tables"]["meetings"]["Row"];
 interface MeetingCardProps {
   meeting: Meeting;
   onView: (meeting: Meeting) => void;
+  onEdit: (meeting: Meeting) => void;
   onDelete: (id: string) => void;
 }
 
-export function MeetingCard({ meeting, onView, onDelete }: MeetingCardProps) {
+export function MeetingCard({ meeting, onView, onEdit, onDelete }: MeetingCardProps) {
   return (
     <Card className="hover:shadow-lg transition-shadow">
       <CardHeader>
@@ -50,6 +51,9 @@ export function MeetingCard({ meeting, onView, onDelete }: MeetingCardProps) {
         <div className="flex gap-2">
           <Button size="sm" onClick={() => onView(meeting)}>
             View Details
+          </Button>
+          <Button size="sm" variant="outline" onClick={() => onEdit(meeting)}>
+            Edit
           </Button>
           <Button size="sm" variant="outline" onClick={() => onDelete(meeting.id)}>
             Delete

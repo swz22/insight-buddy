@@ -1,8 +1,10 @@
 "use client";
 
+import { useState } from "react";
 import { Button } from "@/components/ui/button";
 import { useMeetings } from "@/hooks/use-meetings";
 import { MeetingCard } from "./meeting-card";
+import { EditMeetingDialog } from "./edit-meeting-dialog";
 import { useRouter } from "next/navigation";
 import { useQueryClient } from "@tanstack/react-query";
 import { Database } from "@/types/supabase";
@@ -20,9 +22,14 @@ export function MeetingsList({ userEmail }: MeetingsListProps) {
   const queryClient = useQueryClient();
   const toast = useToast();
   const { data: meetings, isLoading, error } = useMeetings();
+  const [editingMeeting, setEditingMeeting] = useState<Meeting | null>(null);
 
   const handleView = (meeting: Meeting) => {
     router.push(`/dashboard/meetings/${meeting.id}`);
+  };
+
+  const handleEdit = (meeting: Meeting) => {
+    setEditingMeeting(meeting);
   };
 
   const handleDelete = async (id: string) => {
@@ -75,9 +82,27 @@ export function MeetingsList({ userEmail }: MeetingsListProps) {
       {!isLoading && !error && meetings && meetings.length > 0 && (
         <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-3">
           {meetings.map((meeting) => (
-            <MeetingCard key={meeting.id} meeting={meeting} onView={handleView} onDelete={handleDelete} />
+            <MeetingCard
+              key={meeting.id}
+              meeting={meeting}
+              onView={handleView}
+              onEdit={handleEdit}
+              onDelete={handleDelete}
+            />
           ))}
         </div>
+      )}
+
+      {editingMeeting && (
+        <EditMeetingDialog
+          meeting={editingMeeting}
+          isOpen={true}
+          onClose={() => setEditingMeeting(null)}
+          onUpdate={() => {
+            queryClient.invalidateQueries({ queryKey: ["meetings"] });
+            setEditingMeeting(null);
+          }}
+        />
       )}
     </>
   );
