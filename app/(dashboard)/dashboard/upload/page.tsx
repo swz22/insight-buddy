@@ -12,6 +12,8 @@ import { useAppStore } from "@/stores/app-store";
 import { uploadFile } from "@/lib/services/upload";
 import { meetingFormSchema, type MeetingFormData } from "@/lib/validations/meeting";
 import { z } from "zod";
+import { TemplateSelector } from "@/components/templates/template-selector";
+import { ManageTemplatesDialog } from "@/components/templates/manage-templates-dialog";
 
 interface FormData {
   title: string;
@@ -31,6 +33,11 @@ export default function UploadPage() {
   });
   const [selectedFile, setSelectedFile] = useState<File | null>(null);
   const [isUploading, setIsUploading] = useState(false);
+  const [showTemplateManager, setShowTemplateManager] = useState(false);
+
+  const handleTemplateSelect = (title: string, description: string) => {
+    setFormData({ title, description });
+  };
 
   const handleSubmit = async (e: FormEvent<HTMLFormElement>) => {
     e.preventDefault();
@@ -115,6 +122,8 @@ export default function UploadPage() {
         </CardHeader>
         <CardContent>
           <form onSubmit={handleSubmit} className="space-y-6">
+            <TemplateSelector onSelect={handleTemplateSelect} onManageTemplates={() => setShowTemplateManager(true)} />
+
             <div>
               <label htmlFor="title" className="block text-sm font-medium mb-2">
                 Meeting Title
@@ -159,6 +168,8 @@ export default function UploadPage() {
           </form>
         </CardContent>
       </Card>
+
+      <ManageTemplatesDialog isOpen={showTemplateManager} onClose={() => setShowTemplateManager(false)} />
     </div>
   );
 }
