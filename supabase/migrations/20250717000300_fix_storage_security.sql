@@ -6,7 +6,6 @@ DROP POLICY IF EXISTS "Users can upload their own recordings" ON storage.objects
 DROP POLICY IF EXISTS "Users can view their own recordings" ON storage.objects;
 DROP POLICY IF EXISTS "Users can delete their own recordings" ON storage.objects;
 
--- RLS policies for the meeting-recordings bucket
 CREATE POLICY "Authenticated users can upload recordings" ON storage.objects
 FOR INSERT TO authenticated
 WITH CHECK (
