@@ -16,7 +16,17 @@ export function useMeetings() {
     queryFn: async () => {
       const response = await fetch("/api/meetings");
       if (!response.ok) {
-        const error = await response.json();
+        const errorText = await response.text();
+        console.error("Fetch meetings error - Status:", response.status);
+        console.error("Fetch meetings error - Response:", errorText);
+
+        let error;
+        try {
+          error = JSON.parse(errorText);
+        } catch {
+          error = { error: errorText };
+        }
+
         throw new ApiClientError(parseApiError(error), response.status, error.code);
       }
       return response.json();
@@ -30,7 +40,17 @@ export function useMeeting(id: string) {
     queryFn: async () => {
       const response = await fetch(`/api/meetings/${id}`);
       if (!response.ok) {
-        const error = await response.json();
+        const errorText = await response.text();
+        console.error("Fetch meeting error - Status:", response.status);
+        console.error("Fetch meeting error - Response:", errorText);
+
+        let error;
+        try {
+          error = JSON.parse(errorText);
+        } catch {
+          error = { error: errorText };
+        }
+
         throw new ApiClientError(parseApiError(error), response.status, error.code);
       }
       return response.json();
@@ -49,14 +69,31 @@ export function useCreateMeeting() {
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify(data),
       });
+
       if (!response.ok) {
-        const error = await response.json();
+        const errorText = await response.text();
+        console.error("Create meeting error - Status:", response.status);
+        console.error("Create meeting error - Response:", errorText);
+        console.error("Create meeting error - Request data:", data);
+
+        let error;
+        try {
+          error = JSON.parse(errorText);
+        } catch {
+          error = { error: errorText };
+        }
+
         throw new ApiClientError(parseApiError(error), response.status, error.code);
       }
-      return response.json();
+
+      const result = await response.json();
+      return result;
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["meetings"] });
+    },
+    onError: (error) => {
+      console.error("Mutation error:", error);
     },
   });
 }
