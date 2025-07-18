@@ -1,4 +1,5 @@
 import { createClient } from "@/lib/supabase/server";
+import { createServiceRoleClient } from "@/lib/supabase/service";
 import { apiError, apiSuccess } from "@/lib/api/response";
 import { z } from "zod";
 import { validateRequest } from "@/lib/validations/utils";
@@ -23,6 +24,7 @@ const updateTemplateSchema = z.object({
 export async function PATCH(request: Request, { params: paramsPromise }: RouteParams) {
   const params = await paramsPromise;
   try {
+    // Use regular client to check authentication
     const supabase = await createClient();
     const {
       data: { user },
@@ -53,7 +55,10 @@ export async function PATCH(request: Request, { params: paramsPromise }: RoutePa
       }
     }
 
-    const { data: template, error } = await supabase
+    // Use service role client for database operations
+    const serviceSupabase = createServiceRoleClient();
+
+    const { data: template, error } = await serviceSupabase
       .from("meeting_templates")
       .update(validation.data)
       .eq("id", params.id)
@@ -80,6 +85,7 @@ export async function PATCH(request: Request, { params: paramsPromise }: RoutePa
 export async function DELETE(request: Request, { params: paramsPromise }: RouteParams) {
   const params = await paramsPromise;
   try {
+    // Use regular client to check authentication
     const supabase = await createClient();
     const {
       data: { user },
@@ -89,7 +95,14 @@ export async function DELETE(request: Request, { params: paramsPromise }: RouteP
       return apiError("Unauthorized", 401, "AUTH_REQUIRED");
     }
 
-    const { error } = await supabase.from("meeting_templates").delete().eq("id", params.id).eq("user_id", user.id);
+    // Use service role client for database operations
+    const serviceSupabase = createServiceRoleClient();
+
+    const { error } = await serviceSupabase
+      .from("meeting_templates")
+      .delete()
+      .eq("id", params.id)
+      .eq("user_id", user.id);
 
     if (error) {
       return apiError("Failed to delete template", 500, "DELETE_ERROR", error.message);

@@ -1,4 +1,5 @@
 import { createClient } from "@/lib/supabase/server";
+import { createServiceRoleClient } from "@/lib/supabase/service";
 import { apiError, apiSuccess } from "@/lib/api/response";
 import { z } from "zod";
 import { validateRequest } from "@/lib/validations/utils";
@@ -16,16 +17,22 @@ const createTemplateSchema = z.object({
 
 export async function GET() {
   try {
+    // Use regular client to check authentication
     const supabase = await createClient();
+
     const {
       data: { user },
+      error: authError,
     } = await supabase.auth.getUser();
 
     if (!user) {
       return apiError("Unauthorized", 401, "AUTH_REQUIRED");
     }
 
-    const { data: templates, error } = await supabase
+    // Use service role client for database operations
+    const serviceSupabase = createServiceRoleClient();
+
+    const { data: templates, error } = await serviceSupabase
       .from("meeting_templates")
       .select("*")
       .eq("user_id", user.id)
@@ -48,9 +55,12 @@ export async function GET() {
 
 export async function POST(request: Request) {
   try {
+    // Use regular client to check authentication
     const supabase = await createClient();
+
     const {
       data: { user },
+      error: authError,
     } = await supabase.auth.getUser();
 
     if (!user) {
@@ -76,7 +86,10 @@ export async function POST(request: Request) {
       }
     }
 
-    const { data: template, error } = await supabase
+    // Use service role client for database operations
+    const serviceSupabase = createServiceRoleClient();
+
+    const { data: template, error } = await serviceSupabase
       .from("meeting_templates")
       .insert({
         ...validation.data,

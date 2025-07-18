@@ -1,4 +1,5 @@
 import { createClient } from "@/lib/supabase/server";
+import { createServiceRoleClient } from "@/lib/supabase/service";
 import { extractFilePath, STORAGE_BUCKET } from "@/lib/services/storage";
 import { apiError, apiSuccess } from "@/lib/api/response";
 import { validateRequest } from "@/lib/validations/utils";
@@ -15,6 +16,7 @@ interface RouteParams {
 export async function GET(request: Request, { params: paramsPromise }: RouteParams) {
   const params = await paramsPromise;
   try {
+    // Use regular client to check authentication
     const supabase = await createClient();
     const {
       data: { user },
@@ -24,7 +26,10 @@ export async function GET(request: Request, { params: paramsPromise }: RoutePara
       return apiError("Unauthorized", 401, "AUTH_REQUIRED");
     }
 
-    const { data: meeting, error } = await supabase
+    // Use service role client for database operations
+    const serviceSupabase = createServiceRoleClient();
+
+    const { data: meeting, error } = await serviceSupabase
       .from("meetings")
       .select("*")
       .eq("id", params.id)
@@ -45,6 +50,7 @@ export async function GET(request: Request, { params: paramsPromise }: RoutePara
 export async function PATCH(request: Request, { params: paramsPromise }: RouteParams) {
   const params = await paramsPromise;
   try {
+    // Use regular client to check authentication
     const supabase = await createClient();
     const {
       data: { user },
@@ -62,7 +68,10 @@ export async function PATCH(request: Request, { params: paramsPromise }: RoutePa
       return validation.error;
     }
 
-    const { data: meeting, error } = await supabase
+    // Use service role client for database operations
+    const serviceSupabase = createServiceRoleClient();
+
+    const { data: meeting, error } = await serviceSupabase
       .from("meetings")
       .update(validation.data)
       .eq("id", params.id)
@@ -89,6 +98,7 @@ export async function PATCH(request: Request, { params: paramsPromise }: RoutePa
 export async function DELETE(request: Request, { params: paramsPromise }: RouteParams) {
   const params = await paramsPromise;
   try {
+    // Use regular client to check authentication
     const supabase = await createClient();
     const {
       data: { user },
@@ -98,14 +108,17 @@ export async function DELETE(request: Request, { params: paramsPromise }: RouteP
       return apiError("Unauthorized", 401, "AUTH_REQUIRED");
     }
 
-    const { data: meeting } = await supabase
+    // Use service role client for database operations
+    const serviceSupabase = createServiceRoleClient();
+
+    const { data: meeting } = await serviceSupabase
       .from("meetings")
       .select("audio_url")
       .eq("id", params.id)
       .eq("user_id", user.id)
       .single();
 
-    const { error } = await supabase.from("meetings").delete().eq("id", params.id).eq("user_id", user.id);
+    const { error } = await serviceSupabase.from("meetings").delete().eq("id", params.id).eq("user_id", user.id);
 
     if (error) {
       return apiError("Failed to delete meeting", 500, "DELETE_ERROR", error.message);
@@ -114,7 +127,7 @@ export async function DELETE(request: Request, { params: paramsPromise }: RouteP
     if (meeting?.audio_url) {
       const filePath = extractFilePath(meeting.audio_url);
       if (filePath) {
-        const { error: storageError } = await supabase.storage.from(STORAGE_BUCKET).remove([filePath]);
+        const { error: storageError } = await serviceSupabase.storage.from(STORAGE_BUCKET).remove([filePath]);
 
         if (storageError) {
           console.error("Failed to delete audio file:", storageError);
