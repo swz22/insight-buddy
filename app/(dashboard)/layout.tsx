@@ -19,16 +19,21 @@ export default async function DashboardLayout({ children }: DashboardLayoutProps
 
   return (
     <>
-      <div className="min-h-screen bg-gray-50">
-        <nav className="bg-white shadow">
+      <div className="min-h-screen bg-black relative">
+        <nav className="glass border-b border-white/[0.05] sticky top-0 z-50 backdrop-blur-md">
           <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
             <div className="flex justify-between h-16">
               <div className="flex items-center">
-                <h1 className="text-xl font-semibold">Insight Buddy</h1>
+                <h1 className="text-xl font-bold font-display">
+                  <span className="text-white">Insight</span> <span className="gradient-text glow-text">Buddy</span>
+                </h1>
               </div>
               <div className="flex items-center">
                 <form action="/api/auth/signout" method="post">
-                  <button type="submit" className="text-gray-500 hover:text-gray-700">
+                  <button
+                    type="submit"
+                    className="px-4 py-2 text-sm text-white/60 hover:text-white/90 hover:bg-white/5 rounded-lg transition-all duration-200"
+                  >
                     Sign out
                   </button>
                 </form>
@@ -36,7 +41,7 @@ export default async function DashboardLayout({ children }: DashboardLayoutProps
             </div>
           </div>
         </nav>
-        <main>{children}</main>
+        <main className="relative z-10">{children}</main>
       </div>
     </>
   );

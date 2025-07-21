@@ -59,26 +59,30 @@ export function MeetingsList({ userEmail }: MeetingsListProps) {
     <>
       <div className="flex justify-between items-center mb-8">
         <div>
-          <h1 className="text-3xl font-bold text-gray-900">Your Meetings</h1>
-          <p className="mt-2 text-gray-600">
-            Welcome back, {userEmail}!
-            {meetings && meetings.length > 0 && <span className="ml-2">• {meetings.length} total meetings</span>}
+          <h1 className="text-3xl font-bold font-display text-white mb-2">Your Meetings</h1>
+          <p className="text-white/80">
+            Welcome back, <span className="text-white font-medium">{userEmail}</span>
+            {meetings && meetings.length > 0 && (
+              <span className="text-white/60 ml-2">• {meetings.length} total meetings</span>
+            )}
           </p>
         </div>
         <Link href="/dashboard/upload">
-          <Button>Upload Recording</Button>
+          <Button variant="glow" size="lg" className="font-medium">
+            Upload Recording
+          </Button>
         </Link>
       </div>
 
       {isLoading && (
         <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-3">
           {[...Array(3)].map((_, i) => (
-            <div key={i} className="h-48 bg-gray-100 rounded-lg animate-pulse" />
+            <div key={i} className="h-48 glass rounded-xl skeleton-gradient" />
           ))}
         </div>
       )}
 
-      {error && <div className="text-center py-8 text-red-600">Failed to load meetings. Please try again.</div>}
+      {error && <div className="text-center py-8 text-red-400">Failed to load meetings. Please try again.</div>}
 
       {!isLoading && !error && meetings && (
         <>
@@ -94,21 +98,21 @@ export function MeetingsList({ userEmail }: MeetingsListProps) {
             <div className="text-center py-12">
               {hasActiveFilters ? (
                 <>
-                  <p className="text-gray-500 mb-4">No meetings match your filters.</p>
+                  <p className="text-white/60 mb-4">No meetings match your filters.</p>
                   <Button variant="outline" onClick={clearFilters}>
                     Clear filters
                   </Button>
                 </>
               ) : (
                 <>
-                  <p className="text-gray-500 mb-4">No meetings yet.</p>
-                  <p className="text-sm text-gray-400">Click &quot;Upload Recording&quot; above to get started.</p>
+                  <p className="text-white/60 mb-4">No meetings yet.</p>
+                  <p className="text-sm text-white/40">Click "Upload Recording" above to get started.</p>
                 </>
               )}
             </div>
           ) : (
             <>
-              <div className="mb-4 text-sm text-gray-600">
+              <div className="mb-4 text-sm text-white/60">
                 Showing {filteredMeetings.length} of {meetings.length} meetings
               </div>
               <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-3">

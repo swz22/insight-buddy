@@ -18,17 +18,17 @@ interface MeetingCardProps {
 
 export function MeetingCard({ meeting, onView, onEdit, onDelete }: MeetingCardProps) {
   return (
-    <Card className="hover:shadow-lg transition-shadow">
+    <Card className="hover:border-white/[0.1] hover:shadow-2xl hover:shadow-purple-500/10 group">
       <CardHeader>
-        <CardTitle className="text-lg">{meeting.title}</CardTitle>
-        <CardDescription>
+        <CardTitle className="text-lg text-white group-hover:text-white/90">{meeting.title}</CardTitle>
+        <CardDescription className="text-white/60">
           {meeting.recorded_at && formatDistanceToNow(new Date(meeting.recorded_at), { addSuffix: true })}
         </CardDescription>
       </CardHeader>
       <CardContent>
-        <p className="text-sm text-gray-600 mb-4">{meeting.description || "No description provided"}</p>
+        <p className="text-sm text-white/70 mb-4">{meeting.description || "No description provided"}</p>
 
-        <div className="flex items-center gap-4 text-sm text-gray-500 mb-4">
+        <div className="flex items-center gap-4 text-sm text-white/50 mb-4">
           {meeting.duration && (
             <div className="flex items-center gap-1">
               <Clock className="w-4 h-4" />
@@ -56,13 +56,13 @@ export function MeetingCard({ meeting, onView, onEdit, onDelete }: MeetingCardPr
         )}
 
         <div className="flex gap-2">
-          <Button size="sm" onClick={() => onView(meeting)}>
+          <Button size="sm" variant="glow" onClick={() => onView(meeting)}>
             View Details
           </Button>
-          <Button size="sm" variant="outline" onClick={() => onEdit(meeting)}>
+          <Button size="sm" variant="glass" onClick={() => onEdit(meeting)}>
             Edit
           </Button>
-          <Button size="sm" variant="outline" onClick={() => onDelete(meeting.id)}>
+          <Button size="sm" variant="glass" onClick={() => onDelete(meeting.id)}>
             Delete
           </Button>
         </div>
