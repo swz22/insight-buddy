@@ -20,7 +20,7 @@ export default async function DashboardLayout({ children }: DashboardLayoutProps
   return (
     <>
       <div className="min-h-screen bg-black relative">
-        <nav className="glass border-b border-white/[0.05] sticky top-0 z-50 backdrop-blur-md">
+        <nav className="glass border-b border-white/[0.05] top-0 z-50 backdrop-blur-md relative">
           <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
             <div className="flex justify-between h-16">
               <div className="flex items-center">

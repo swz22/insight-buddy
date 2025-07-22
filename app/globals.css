@@ -15,22 +15,37 @@
   --color-muted: #666666;
   --color-border: #333333;
 
-  /* Opacity modifiers */
-  --opacity-5: 0.05;
-  --opacity-10: 0.1;
-  --opacity-20: 0.2;
-  --opacity-30: 0.3;
-  --opacity-40: 0.4;
-  --opacity-50: 0.5;
-  --opacity-60: 0.6;
-  --opacity-70: 0.7;
-  --opacity-80: 0.8;
-  --opacity-90: 0.9;
-
-  /* Gradients */
+  /* Purple shades */
+  --color-purple-400: #c084fc;
   --color-purple-500: #a855f7;
+  --color-purple-600: #9333ea;
+
+  /* Cyan shades */
+  --color-cyan-400: #22d3ee;
   --color-cyan-500: #06b6d4;
+  --color-cyan-600: #0891b2;
+
+  /* Blue shades */
+  --color-blue-400: #60a5fa;
   --color-blue-500: #3b82f6;
+  --color-blue-600: #2563eb;
+
+  /* Indigo shades */
+  --color-indigo-400: #818cf8;
+  --color-indigo-500: #6366f1;
+  --color-indigo-600: #4f46e5;
+
+  /* Green shades */
+  --color-green-400: #4ade80;
+  --color-green-500: #22c55e;
+
+  /* Red shades */
+  --color-red-400: #f87171;
+  --color-red-500: #ef4444;
+
+  /* Yellow shades */
+  --color-yellow-400: #facc15;
+  --color-yellow-500: #eab308;
 
   /* Font families */
   --font-family-sans: "Inter", sans-serif;
