@@ -3,22 +3,25 @@ import { Slot } from "@radix-ui/react-slot";
 import { cn } from "@/lib/utils";
 
 interface ButtonProps extends React.ButtonHTMLAttributes<HTMLButtonElement> {
-  variant?: "default" | "outline" | "ghost";
+  variant?: "default" | "outline" | "ghost" | "glass" | "glow";
   size?: "default" | "sm" | "lg";
   asChild?: boolean;
 }
 
 const buttonVariants = {
-  base: "inline-flex items-center justify-center rounded-md text-sm font-medium ring-offset-background transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 disabled:pointer-events-none disabled:opacity-50",
+  base: "inline-flex items-center justify-center rounded-lg text-sm font-medium transition-all duration-300 focus-ring disabled:pointer-events-none disabled:opacity-50",
   variants: {
-    default: "bg-primary text-primary-foreground hover:bg-primary/90",
-    outline: "border border-input bg-background hover:bg-accent hover:text-accent-foreground",
-    ghost: "hover:bg-accent hover:text-accent-foreground",
+    default:
+      "bg-primary text-primary-foreground hover:bg-primary/90 hover:scale-105 hover:shadow-lg hover:shadow-primary/25",
+    outline: "border border-white/10 bg-transparent hover:bg-white/5 hover:border-white/20 hover:scale-105",
+    ghost: "hover:bg-white/5 hover:scale-105",
+    glass: "glass glass-hover hover:scale-105 hover:shadow-lg hover:shadow-white/10",
+    glow: "gradient-primary text-white hover:scale-105 glow glow-hover",
   },
   sizes: {
-    default: "h-10 px-4 py-2",
-    sm: "h-9 rounded-md px-3",
-    lg: "h-11 rounded-md px-8",
+    default: "h-10 px-6 py-2",
+    sm: "h-9 rounded-md px-4",
+    lg: "h-12 rounded-lg px-8 text-base",
   },
 };
 
@@ -27,12 +30,7 @@ const Button = React.forwardRef<HTMLButtonElement, ButtonProps>(
     const Comp = asChild ? Slot : "button";
     return (
       <Comp
-        className={cn(
-          buttonVariants.base, 
-          buttonVariants.variants[variant], 
-          buttonVariants.sizes[size], 
-          className
-        )}
+        className={cn(buttonVariants.base, buttonVariants.variants[variant], buttonVariants.sizes[size], className)}
         ref={ref}
         {...props}
       />
