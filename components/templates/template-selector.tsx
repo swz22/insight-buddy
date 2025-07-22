@@ -57,14 +57,20 @@ export function TemplateSelector({ onSelect, onManageTemplates }: TemplateSelect
     : [];
 
   if (isLoading) {
-    return <div className="animate-pulse h-10 bg-gray-100 rounded-md" />;
+    return <div className="animate-pulse h-24 bg-white/[0.03] rounded-lg" />;
   }
 
   return (
     <div className="space-y-4">
-      <div className="flex items-center justify-between">
-        <label className="block text-sm font-medium">Meeting Template</label>
-        <Button type="button" variant="ghost" size="sm" onClick={onManageTemplates}>
+      <div className="flex items-center justify-between mb-3">
+        <label className="block text-sm font-medium text-white/90">Meeting Template</label>
+        <Button
+          type="button"
+          variant="ghost"
+          size="sm"
+          onClick={onManageTemplates}
+          className="text-white/60 hover:text-white"
+        >
           <Settings className="w-4 h-4 mr-1" />
           Manage
         </Button>
@@ -75,16 +81,22 @@ export function TemplateSelector({ onSelect, onManageTemplates }: TemplateSelect
           <Button
             key={template.id}
             type="button"
-            variant={selectedTemplate?.id === template.id ? "default" : "outline"}
+            variant={selectedTemplate?.id === template.id ? "glow" : "glass"}
             size="sm"
-            className="justify-start"
+            className={cn("justify-start", selectedTemplate?.id === template.id && "shadow-md")}
             onClick={() => handleTemplateSelect(template)}
           >
             <FileText className="w-4 h-4 mr-2 shrink-0" />
             <span className="truncate">{template.name}</span>
           </Button>
         ))}
-        <Button type="button" variant="outline" size="sm" onClick={onManageTemplates} className="justify-start">
+        <Button
+          type="button"
+          variant="glass"
+          size="sm"
+          onClick={onManageTemplates}
+          className="justify-start hover:border-purple-400/60"
+        >
           <Plus className="w-4 h-4 mr-2" />
           New Template
         </Button>
@@ -92,13 +104,13 @@ export function TemplateSelector({ onSelect, onManageTemplates }: TemplateSelect
 
       {selectedTemplate && (
         <>
-          <div className="bg-gray-50 rounded-md p-3 space-y-2">
-            <p className="text-sm text-gray-600">
-              <strong>Title:</strong> {selectedTemplate.title_template}
+          <div className="bg-white/[0.03] backdrop-blur-sm rounded-lg p-3 space-y-2 border border-white/10">
+            <p className="text-sm text-white/70">
+              <strong className="text-white/90">Title:</strong> {selectedTemplate.title_template}
             </p>
             {selectedTemplate.description_template && (
-              <p className="text-sm text-gray-600">
-                <strong>Description:</strong> {selectedTemplate.description_template}
+              <p className="text-sm text-white/70">
+                <strong className="text-white/90">Description:</strong> {selectedTemplate.description_template}
               </p>
             )}
           </div>

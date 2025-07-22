@@ -1,7 +1,7 @@
 "use client";
 
 import { useState, useRef, DragEvent } from "react";
-import { Upload, File, X } from "lucide-react";
+import { Upload, File, X, FileAudio, FileVideo } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
 import { useToast } from "@/hooks/use-toast";
@@ -91,13 +91,23 @@ export function FileUpload({ onFileSelect, accept = "audio/*,video/*", disabled 
     else return Math.round(bytes / 1048576) + " MB";
   };
 
+  const getFileIcon = (type: string) => {
+    if (type.startsWith("audio/")) return FileAudio;
+    if (type.startsWith("video/")) return FileVideo;
+    return File;
+  };
+
   return (
     <div className="w-full">
       {!selectedFile ? (
         <div
           className={cn(
-            "relative border-2 border-dashed rounded-lg p-8 text-center transition-colors",
-            isDragging ? "border-blue-500 bg-blue-50" : "border-gray-300 hover:border-gray-400",
+            "relative rounded-xl p-8 text-center transition-all duration-300",
+            "bg-white/[0.02] backdrop-blur-sm",
+            "border-2 border-dashed",
+            isDragging
+              ? "border-purple-400/60 bg-purple-500/10 scale-[1.02]"
+              : "border-white/20 hover:border-white/30 hover:bg-white/[0.03]",
             disabled && "opacity-50 cursor-not-allowed"
           )}
           onDragEnter={handleDragIn}
@@ -114,32 +124,64 @@ export function FileUpload({ onFileSelect, accept = "audio/*,video/*", disabled 
             disabled={disabled}
           />
 
-          <Upload className="w-12 h-12 text-gray-400 mx-auto mb-4" />
+          <div
+            className={cn(
+              "w-16 h-16 rounded-full mx-auto mb-4 flex items-center justify-center transition-all duration-300",
+              "bg-gradient-to-br from-purple-500/20 to-cyan-500/20",
+              isDragging && "scale-110 from-purple-500/30 to-cyan-500/30"
+            )}
+          >
+            <Upload
+              className={cn("w-8 h-8 transition-all duration-300", isDragging ? "text-purple-400" : "text-white/40")}
+            />
+          </div>
 
-          <p className="text-lg mb-2">Drag and drop your audio/video file here</p>
-          <p className="text-sm text-gray-500 mb-4">or</p>
+          <p className="text-lg mb-2 text-white/90">
+            {isDragging ? "Drop your file here" : "Drag and drop your audio/video file here"}
+          </p>
+          <p className="text-sm text-white/40 mb-4">or</p>
 
-          <Button type="button" variant="outline" onClick={() => inputRef.current?.click()} disabled={disabled}>
+          <Button
+            type="button"
+            variant="glass"
+            onClick={() => inputRef.current?.click()}
+            disabled={disabled}
+            className="hover:border-purple-400/60"
+          >
             Choose File
           </Button>
 
-          <p className="text-xs text-gray-500 mt-4">
+          <p className="text-xs text-white/40 mt-6">
             Supported formats: MP3, WAV, M4A, MP4, WebM • Max size: {MAX_FILE_SIZE / (1024 * 1024)}MB
           </p>
         </div>
       ) : (
-        <div className="border rounded-lg p-4 bg-gray-50">
+        <div className="rounded-xl bg-white/[0.03] backdrop-blur-sm border border-white/20 p-4 group hover:border-white/30 transition-all duration-200">
           <div className="flex items-center justify-between">
             <div className="flex items-center gap-3">
-              <File className="w-8 h-8 text-gray-600" />
+              {(() => {
+                const Icon = getFileIcon(selectedFile.type);
+                return (
+                  <div className="w-12 h-12 rounded-lg bg-gradient-to-br from-purple-500/20 to-cyan-500/20 flex items-center justify-center">
+                    <Icon className="w-6 h-6 text-white/60" />
+                  </div>
+                );
+              })()}
               <div>
-                <p className="font-medium text-sm">{selectedFile.name}</p>
-                <p className="text-xs text-gray-500">
+                <p className="font-medium text-sm text-white/90">{selectedFile.name}</p>
+                <p className="text-xs text-white/50">
                   {formatFileSize(selectedFile.size)} • {selectedFile.type}
                 </p>
               </div>
             </div>
-            <Button type="button" variant="ghost" size="sm" onClick={removeFile} disabled={disabled}>
+            <Button
+              type="button"
+              variant="ghost"
+              size="sm"
+              onClick={removeFile}
+              disabled={disabled}
+              className="hover:bg-red-500/10 hover:text-red-400"
+            >
               <X className="w-4 h-4" />
             </Button>
           </div>

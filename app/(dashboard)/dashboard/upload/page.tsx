@@ -14,6 +14,8 @@ import { meetingFormSchema, type MeetingFormData } from "@/lib/validations/meeti
 import { z } from "zod";
 import { TemplateSelector } from "@/components/templates/template-selector";
 import { ManageTemplatesDialog } from "@/components/templates/manage-templates-dialog";
+import { ArrowLeft } from "lucide-react";
+import Link from "next/link";
 
 interface FormData {
   title: string;
@@ -114,62 +116,91 @@ export default function UploadPage() {
   };
 
   return (
-    <div className="max-w-2xl mx-auto py-8 px-4">
-      <Card>
-        <CardHeader>
-          <CardTitle>Upload Meeting Recording</CardTitle>
-          <CardDescription>Upload an audio or video file from your meeting</CardDescription>
-        </CardHeader>
-        <CardContent>
-          <form onSubmit={handleSubmit} className="space-y-6">
-            <TemplateSelector onSelect={handleTemplateSelect} onManageTemplates={() => setShowTemplateManager(true)} />
+    <div className="min-h-[calc(100vh-4rem)] flex items-center justify-center p-4">
+      <div className="w-full max-w-2xl space-y-6 animate-fade-in">
+        <Link
+          href="/dashboard"
+          className="inline-flex items-center text-white/60 hover:text-white/90 transition-colors group"
+        >
+          <ArrowLeft className="w-4 h-4 mr-2 group-hover:-translate-x-1 transition-transform" />
+          Back to dashboard
+        </Link>
 
-            <div>
-              <label htmlFor="title" className="block text-sm font-medium mb-2">
-                Meeting Title
-              </label>
-              <Input
-                id="title"
-                type="text"
-                required
-                value={formData.title}
-                onChange={(e) => setFormData({ ...formData, title: e.target.value })}
-                placeholder="e.g., Weekly Team Standup"
+        <Card className="shadow-2xl">
+          <CardHeader className="space-y-1 pb-8">
+            <CardTitle className="text-3xl font-display">
+              Upload <span className="gradient-text">Meeting Recording</span>
+            </CardTitle>
+            <CardDescription className="text-white/60 text-base">
+              Upload an audio or video file from your meeting
+            </CardDescription>
+          </CardHeader>
+          <CardContent>
+            <form onSubmit={handleSubmit} className="space-y-6">
+              <TemplateSelector
+                onSelect={handleTemplateSelect}
+                onManageTemplates={() => setShowTemplateManager(true)}
               />
-            </div>
 
-            <div>
-              <label htmlFor="description" className="block text-sm font-medium mb-2">
-                Description (optional)
-              </label>
-              <textarea
-                id="description"
-                className="w-full px-3 py-2 border border-gray-300 rounded-md"
-                rows={3}
-                value={formData.description}
-                onChange={(e) => setFormData({ ...formData, description: e.target.value })}
-                placeholder="Brief description of the meeting..."
-              />
-            </div>
+              <div className="space-y-2">
+                <label htmlFor="title" className="block text-sm font-medium text-white/90">
+                  Meeting Title
+                </label>
+                <Input
+                  id="title"
+                  type="text"
+                  required
+                  value={formData.title}
+                  onChange={(e) => setFormData({ ...formData, title: e.target.value })}
+                  placeholder="e.g., Weekly Team Standup"
+                  className="bg-white/[0.03] border-white/20 text-white placeholder:text-white/40 focus:border-purple-400/60 hover:bg-white/[0.05]"
+                />
+              </div>
 
-            <div>
-              <label className="block text-sm font-medium mb-2">Recording File</label>
-              <FileUpload onFileSelect={setSelectedFile} disabled={isUploading} />
-            </div>
+              <div className="space-y-2">
+                <label htmlFor="description" className="block text-sm font-medium text-white/90">
+                  Description <span className="text-white/40">(optional)</span>
+                </label>
+                <textarea
+                  id="description"
+                  className="w-full px-3 py-2 rounded-lg bg-white/[0.03] backdrop-blur-sm border border-white/20 text-white placeholder:text-white/40 focus:outline-none focus:border-purple-400/60 focus:bg-white/[0.05] hover:border-white/30 hover:bg-white/[0.04] transition-all duration-200 min-h-[100px] resize-none"
+                  rows={3}
+                  value={formData.description}
+                  onChange={(e) => setFormData({ ...formData, description: e.target.value })}
+                  placeholder="Brief description of the meeting..."
+                />
+              </div>
 
-            <div className="flex gap-4">
-              <Button type="submit" disabled={createMeeting.isPending || isUploading || !selectedFile}>
-                {isUploading ? "Uploading..." : "Upload Meeting"}
-              </Button>
-              <Button type="button" variant="outline" onClick={handleCancel} disabled={createMeeting.isPending}>
-                {isUploading ? "Cancel Upload" : "Cancel"}
-              </Button>
-            </div>
-          </form>
-        </CardContent>
-      </Card>
+              <div className="space-y-2">
+                <label className="block text-sm font-medium text-white/90">Recording File</label>
+                <FileUpload onFileSelect={setSelectedFile} disabled={isUploading} />
+              </div>
 
-      <ManageTemplatesDialog isOpen={showTemplateManager} onClose={() => setShowTemplateManager(false)} />
+              <div className="flex gap-4 pt-4">
+                <Button
+                  type="submit"
+                  variant="glow"
+                  disabled={createMeeting.isPending || isUploading || !selectedFile}
+                  className="min-w-[140px] shadow-lg"
+                >
+                  {isUploading ? "Uploading..." : "Upload Meeting"}
+                </Button>
+                <Button
+                  type="button"
+                  variant="glass"
+                  onClick={handleCancel}
+                  disabled={createMeeting.isPending}
+                  className="hover:border-red-400/50 hover:text-red-300"
+                >
+                  {isUploading ? "Cancel Upload" : "Cancel"}
+                </Button>
+              </div>
+            </form>
+          </CardContent>
+        </Card>
+
+        <ManageTemplatesDialog isOpen={showTemplateManager} onClose={() => setShowTemplateManager(false)} />
+      </div>
     </div>
   );
 }
