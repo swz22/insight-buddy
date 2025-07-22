@@ -2,13 +2,25 @@
 
 import { useState } from "react";
 import { format } from "date-fns";
-import { ArrowLeft, Clock, Users, Download, FileText, ListChecks, Lightbulb, Edit2 } from "lucide-react";
+import {
+  ArrowLeft,
+  Clock,
+  Users,
+  Download,
+  FileText,
+  ListChecks,
+  Lightbulb,
+  Edit2,
+  Calendar,
+  User,
+} from "lucide-react";
 import Link from "next/link";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Database } from "@/types/supabase";
 import { EditMeetingDialog } from "./edit-meeting-dialog";
 import { AudioPlayer } from "@/components/audio/audio-player";
+import { cn } from "@/lib/utils";
 
 type Meeting = Database["public"]["Tables"]["meetings"]["Row"];
 
@@ -28,20 +40,34 @@ export function MeetingDetail({ meeting: initialMeeting }: MeetingDetailProps) {
     return `${minutes}:${remainingSeconds.toString().padStart(2, "0")}`;
   };
 
+  const tabs = [
+    { id: "transcript" as const, label: "Transcript", icon: FileText },
+    { id: "summary" as const, label: "Summary", icon: Lightbulb },
+    { id: "actions" as const, label: "Action Items", icon: ListChecks },
+  ];
+
   return (
-    <div className="space-y-6">
+    <div className="space-y-6 animate-fade-in">
       <div className="flex items-center justify-between">
-        <Link href="/dashboard" className="flex items-center text-gray-600 hover:text-gray-900">
-          <ArrowLeft className="w-4 h-4 mr-2" />
+        <Link
+          href="/dashboard"
+          className="inline-flex items-center text-white/60 hover:text-white/90 transition-colors group"
+        >
+          <ArrowLeft className="w-4 h-4 mr-2 group-hover:-translate-x-1 transition-transform" />
           Back to meetings
         </Link>
         <div className="flex gap-2">
-          <Button variant="outline" size="sm" onClick={() => setIsEditDialogOpen(true)}>
+          <Button
+            variant="glass"
+            size="sm"
+            onClick={() => setIsEditDialogOpen(true)}
+            className="hover:border-purple-400/60"
+          >
             <Edit2 className="w-4 h-4 mr-2" />
             Edit
           </Button>
           {meeting.audio_url && (
-            <Button variant="outline" size="sm" asChild>
+            <Button variant="glass" size="sm" asChild className="hover:border-cyan-400/60">
               <a href={meeting.audio_url} download>
                 <Download className="w-4 h-4 mr-2" />
                 Download
@@ -51,36 +77,41 @@ export function MeetingDetail({ meeting: initialMeeting }: MeetingDetailProps) {
         </div>
       </div>
 
-      <div className="bg-white rounded-lg shadow-sm border p-6">
-        <h1 className="text-2xl font-bold mb-2">{meeting.title}</h1>
-        {meeting.description && <p className="text-gray-600 mb-4">{meeting.description}</p>}
-
-        <div className="flex flex-wrap gap-4 text-sm text-gray-500">
-          {meeting.recorded_at && (
-            <div className="flex items-center gap-1">
-              <Clock className="w-4 h-4" />
-              <span>{format(new Date(meeting.recorded_at), "PPP 'at' p")}</span>
-            </div>
+      <Card className="shadow-2xl">
+        <CardHeader>
+          <CardTitle className="text-3xl font-display gradient-text">{meeting.title}</CardTitle>
+          {meeting.description && (
+            <CardDescription className="text-white/70 text-base mt-2">{meeting.description}</CardDescription>
           )}
-          {meeting.duration && (
-            <div className="flex items-center gap-1">
-              <Clock className="w-4 h-4" />
-              <span>{formatDuration(meeting.duration)}</span>
-            </div>
-          )}
-          {meeting.participants && meeting.participants.length > 0 && (
-            <div className="flex items-center gap-1">
-              <Users className="w-4 h-4" />
-              <span>{meeting.participants.join(", ")}</span>
-            </div>
-          )}
-        </div>
-      </div>
+        </CardHeader>
+        <CardContent>
+          <div className="flex flex-wrap gap-6 text-sm">
+            {meeting.recorded_at && (
+              <div className="flex items-center gap-2 text-white/60">
+                <Calendar className="w-4 h-4" />
+                <span>{format(new Date(meeting.recorded_at), "PPP 'at' p")}</span>
+              </div>
+            )}
+            {meeting.duration && (
+              <div className="flex items-center gap-2 text-white/60">
+                <Clock className="w-4 h-4" />
+                <span>{formatDuration(meeting.duration)}</span>
+              </div>
+            )}
+            {meeting.participants && meeting.participants.length > 0 && (
+              <div className="flex items-center gap-2 text-white/60">
+                <Users className="w-4 h-4" />
+                <span>{meeting.participants.join(", ")}</span>
+              </div>
+            )}
+          </div>
+        </CardContent>
+      </Card>
 
       {meeting.audio_url && (
-        <Card>
+        <Card className="shadow-xl">
           <CardHeader>
-            <CardTitle>Recording</CardTitle>
+            <CardTitle className="text-xl font-display">Recording</CardTitle>
           </CardHeader>
           <CardContent>
             <AudioPlayer url={meeting.audio_url} />
@@ -88,88 +119,100 @@ export function MeetingDetail({ meeting: initialMeeting }: MeetingDetailProps) {
         </Card>
       )}
 
-      <Card>
-        <CardHeader>
-          <div className="flex gap-2">
-            <button
-              onClick={() => setActiveTab("transcript")}
-              className={`flex items-center gap-2 px-4 py-2 rounded-md transition-colors ${
-                activeTab === "transcript" ? "bg-primary text-primary-foreground" : "text-gray-600 hover:text-gray-900"
-              }`}
-            >
-              <FileText className="w-4 h-4" />
-              Transcript
-            </button>
-            <button
-              onClick={() => setActiveTab("summary")}
-              className={`flex items-center gap-2 px-4 py-2 rounded-md transition-colors ${
-                activeTab === "summary" ? "bg-primary text-primary-foreground" : "text-gray-600 hover:text-gray-900"
-              }`}
-            >
-              <Lightbulb className="w-4 h-4" />
-              Summary
-            </button>
-            <button
-              onClick={() => setActiveTab("actions")}
-              className={`flex items-center gap-2 px-4 py-2 rounded-md transition-colors ${
-                activeTab === "actions" ? "bg-primary text-primary-foreground" : "text-gray-600 hover:text-gray-900"
-              }`}
-            >
-              <ListChecks className="w-4 h-4" />
-              Action Items
-            </button>
+      <Card className="shadow-xl">
+        <CardHeader className="pb-0">
+          <div className="flex gap-1 p-1 bg-white/[0.03] rounded-lg backdrop-blur-sm">
+            {tabs.map((tab) => {
+              const Icon = tab.icon;
+              return (
+                <button
+                  key={tab.id}
+                  onClick={() => setActiveTab(tab.id)}
+                  className={cn(
+                    "flex items-center gap-2 px-4 py-2.5 rounded-md transition-all duration-200 flex-1",
+                    activeTab === tab.id
+                      ? "bg-gradient-to-r from-purple-500 to-cyan-500 text-white shadow-lg"
+                      : "text-white/60 hover:text-white/90 hover:bg-white/[0.05]"
+                  )}
+                >
+                  <Icon className="w-4 h-4" />
+                  <span className="text-sm font-medium">{tab.label}</span>
+                </button>
+              );
+            })}
           </div>
         </CardHeader>
-        <CardContent>
+        <CardContent className="pt-6">
           {activeTab === "transcript" && (
-            <div className="prose max-w-none">
+            <div className="prose prose-invert max-w-none">
               {meeting.transcript ? (
-                <div className="whitespace-pre-wrap text-gray-700">{meeting.transcript}</div>
+                <div className="whitespace-pre-wrap text-white/80 leading-relaxed">{meeting.transcript}</div>
               ) : (
-                <p className="text-gray-500 italic">Transcript will be available after AI processing is complete.</p>
+                <div className="text-center py-12">
+                  <FileText className="w-12 h-12 text-white/20 mx-auto mb-4" />
+                  <p className="text-white/50 italic">Transcript will be available after AI processing is complete.</p>
+                </div>
               )}
             </div>
           )}
 
           {activeTab === "summary" && (
-            <div className="space-y-4">
+            <div className="space-y-6">
               {meeting.summary ? (
                 <>
-                  <div>
-                    <h3 className="font-semibold mb-2">Overview</h3>
-                    <p className="text-gray-700">{meeting.summary.overview}</p>
+                  <div className="space-y-3">
+                    <h3 className="font-semibold text-white/90 flex items-center gap-2">
+                      <div className="w-1 h-4 bg-gradient-to-b from-purple-500 to-cyan-500 rounded-full" />
+                      Overview
+                    </h3>
+                    <p className="text-white/70 leading-relaxed pl-6">{meeting.summary.overview}</p>
                   </div>
+
                   {meeting.summary.key_points.length > 0 && (
-                    <div>
-                      <h3 className="font-semibold mb-2">Key Points</h3>
-                      <ul className="list-disc list-inside space-y-1">
+                    <div className="space-y-3">
+                      <h3 className="font-semibold text-white/90 flex items-center gap-2">
+                        <div className="w-1 h-4 bg-gradient-to-b from-purple-500 to-cyan-500 rounded-full" />
+                        Key Points
+                      </h3>
+                      <ul className="space-y-2 pl-6">
                         {meeting.summary.key_points.map((point, index) => (
-                          <li key={index} className="text-gray-700">
-                            {point}
+                          <li key={index} className="text-white/70 flex items-start gap-2">
+                            <span className="text-purple-400 mt-1">•</span>
+                            <span className="leading-relaxed">{point}</span>
                           </li>
                         ))}
                       </ul>
                     </div>
                   )}
+
                   {meeting.summary.decisions.length > 0 && (
-                    <div>
-                      <h3 className="font-semibold mb-2">Decisions Made</h3>
-                      <ul className="list-disc list-inside space-y-1">
+                    <div className="space-y-3">
+                      <h3 className="font-semibold text-white/90 flex items-center gap-2">
+                        <div className="w-1 h-4 bg-gradient-to-b from-purple-500 to-cyan-500 rounded-full" />
+                        Decisions Made
+                      </h3>
+                      <ul className="space-y-2 pl-6">
                         {meeting.summary.decisions.map((decision, index) => (
-                          <li key={index} className="text-gray-700">
-                            {decision}
+                          <li key={index} className="text-white/70 flex items-start gap-2">
+                            <span className="text-cyan-400 mt-1">•</span>
+                            <span className="leading-relaxed">{decision}</span>
                           </li>
                         ))}
                       </ul>
                     </div>
                   )}
+
                   {meeting.summary.next_steps.length > 0 && (
-                    <div>
-                      <h3 className="font-semibold mb-2">Next Steps</h3>
-                      <ul className="list-disc list-inside space-y-1">
+                    <div className="space-y-3">
+                      <h3 className="font-semibold text-white/90 flex items-center gap-2">
+                        <div className="w-1 h-4 bg-gradient-to-b from-purple-500 to-cyan-500 rounded-full" />
+                        Next Steps
+                      </h3>
+                      <ul className="space-y-2 pl-6">
                         {meeting.summary.next_steps.map((step, index) => (
-                          <li key={index} className="text-gray-700">
-                            {step}
+                          <li key={index} className="text-white/70 flex items-start gap-2">
+                            <span className="text-green-400 mt-1">→</span>
+                            <span className="leading-relaxed">{step}</span>
                           </li>
                         ))}
                       </ul>
@@ -177,7 +220,10 @@ export function MeetingDetail({ meeting: initialMeeting }: MeetingDetailProps) {
                   )}
                 </>
               ) : (
-                <p className="text-gray-500 italic">Summary will be available after AI processing is complete.</p>
+                <div className="text-center py-12">
+                  <Lightbulb className="w-12 h-12 text-white/20 mx-auto mb-4" />
+                  <p className="text-white/50 italic">Summary will be available after AI processing is complete.</p>
+                </div>
               )}
             </div>
           )}
@@ -188,36 +234,44 @@ export function MeetingDetail({ meeting: initialMeeting }: MeetingDetailProps) {
                 meeting.action_items.map((item) => (
                   <div
                     key={item.id}
-                    className={`p-4 rounded-lg border ${
-                      item.completed ? "bg-gray-50 border-gray-200" : "bg-white border-gray-300"
-                    }`}
+                    className={cn(
+                      "p-4 rounded-lg border transition-all duration-200",
+                      item.completed
+                        ? "bg-white/[0.02] border-white/10 opacity-60"
+                        : "bg-white/[0.03] border-white/20 hover:border-white/30"
+                    )}
                   >
                     <div className="flex items-start justify-between">
-                      <div className="flex-1">
-                        <p className={`font-medium ${item.completed ? "text-gray-500 line-through" : "text-gray-900"}`}>
+                      <div className="flex-1 space-y-2">
+                        <p
+                          className={cn("font-medium", item.completed ? "text-white/50 line-through" : "text-white/90")}
+                        >
                           {item.task}
                         </p>
-                        <div className="flex gap-4 mt-2 text-sm text-gray-500">
+                        <div className="flex gap-4 text-sm">
                           {item.assignee && (
-                            <span>
-                              Assigned to: <strong>{item.assignee}</strong>
-                            </span>
+                            <div className="flex items-center gap-1.5 text-white/50">
+                              <User className="w-3.5 h-3.5" />
+                              <span>{item.assignee}</span>
+                            </div>
                           )}
                           {item.due_date && (
-                            <span>
-                              Due: <strong>{format(new Date(item.due_date), "PPP")}</strong>
-                            </span>
+                            <div className="flex items-center gap-1.5 text-white/50">
+                              <Calendar className="w-3.5 h-3.5" />
+                              <span>{format(new Date(item.due_date), "PPP")}</span>
+                            </div>
                           )}
                         </div>
                       </div>
                       <span
-                        className={`px-2 py-1 text-xs rounded-full ${
+                        className={cn(
+                          "px-2.5 py-1 text-xs rounded-full font-medium",
                           item.priority === "high"
-                            ? "bg-red-100 text-red-700"
+                            ? "bg-red-500/20 text-red-400 border border-red-500/30"
                             : item.priority === "medium"
-                            ? "bg-yellow-100 text-yellow-700"
-                            : "bg-green-100 text-green-700"
-                        }`}
+                            ? "bg-yellow-500/20 text-yellow-400 border border-yellow-500/30"
+                            : "bg-green-500/20 text-green-400 border border-green-500/30"
+                        )}
                       >
                         {item.priority}
                       </span>
@@ -225,7 +279,12 @@ export function MeetingDetail({ meeting: initialMeeting }: MeetingDetailProps) {
                   </div>
                 ))
               ) : (
-                <p className="text-gray-500 italic">Action items will be extracted after AI processing is complete.</p>
+                <div className="text-center py-12">
+                  <ListChecks className="w-12 h-12 text-white/20 mx-auto mb-4" />
+                  <p className="text-white/50 italic">
+                    Action items will be extracted after AI processing is complete.
+                  </p>
+                </div>
               )}
             </div>
           )}
