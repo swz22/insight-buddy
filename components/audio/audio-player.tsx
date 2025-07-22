@@ -34,8 +34,8 @@ export function AudioPlayer({ url, className }: AudioPlayerProps) {
         wavesurfer = WaveSurfer.create({
           container: containerRef.current,
           waveColor: "#94a3b8",
-          progressColor: "#3b82f6",
-          cursorColor: "#1e40af",
+          progressColor: "#a855f7",
+          cursorColor: "#06b6d4",
           barWidth: 2,
           barRadius: 3,
           cursorWidth: 2,
@@ -164,22 +164,22 @@ export function AudioPlayer({ url, className }: AudioPlayerProps) {
 
   if (error) {
     return (
-      <div className={cn("bg-gray-50 rounded-lg p-4", className)}>
-        <div className="text-center text-red-600">
+      <div className={cn("bg-white/[0.03] backdrop-blur-sm rounded-lg p-4 border border-white/10", className)}>
+        <div className="text-center text-red-400">
           <p>{error}</p>
-          <p className="text-sm text-gray-500 mt-2">Please try refreshing the page</p>
+          <p className="text-sm text-white/50 mt-2">Please try refreshing the page</p>
         </div>
       </div>
     );
   }
 
   return (
-    <div className={cn("bg-gray-50 rounded-lg p-4", className)}>
+    <div className={cn("bg-white/[0.03] backdrop-blur-sm rounded-lg p-6 border border-white/10", className)}>
       <div className="mb-4">
         <div ref={containerRef} className="w-full" />
         {isLoading && (
           <div className="h-20 flex items-center justify-center">
-            <div className="text-sm text-gray-500">Loading waveform...</div>
+            <div className="text-sm text-white/50">Loading waveform...</div>
           </div>
         )}
       </div>
@@ -187,39 +187,39 @@ export function AudioPlayer({ url, className }: AudioPlayerProps) {
       {!isLoading && (
         <>
           <div className="space-y-3">
-            <div className="flex items-center justify-between text-sm text-gray-600">
+            <div className="flex items-center justify-between text-sm text-white/60">
               <span>{formatTime(currentTime)}</span>
               <span>{formatTime(duration)}</span>
             </div>
 
             <div className="flex items-center justify-center gap-2">
               <Button
-                variant="outline"
+                variant="glass"
                 size="sm"
                 onClick={() => handleSkip(-10)}
                 disabled={isLoading}
                 title="Skip back 10 seconds"
+                className="hover:bg-purple-500/10 hover:border-purple-400/50"
               >
                 <SkipBack className="w-4 h-4" />
               </Button>
 
-              <Button
-                variant="outline"
-                size="lg"
+              <button
                 onClick={handlePlayPause}
                 disabled={isLoading}
-                className="w-14 h-14"
+                className="relative w-14 h-14 rounded-full bg-gradient-to-r from-purple-500 to-cyan-500 text-white shadow-lg shadow-purple-500/25 hover:scale-105 active:scale-95 transition-transform disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center"
                 title={isPlaying ? "Pause" : "Play"}
               >
                 {isPlaying ? <Pause className="w-6 h-6" /> : <Play className="w-6 h-6" />}
-              </Button>
+              </button>
 
               <Button
-                variant="outline"
+                variant="glass"
                 size="sm"
                 onClick={() => handleSkip(10)}
                 disabled={isLoading}
                 title="Skip forward 10 seconds"
+                className="hover:bg-cyan-500/10 hover:border-cyan-400/50"
               >
                 <SkipForward className="w-4 h-4" />
               </Button>
@@ -227,7 +227,7 @@ export function AudioPlayer({ url, className }: AudioPlayerProps) {
 
             <div className="flex items-center gap-4">
               <Button
-                variant="outline"
+                variant="glass"
                 size="sm"
                 onClick={handlePlaybackRateChange}
                 disabled={isLoading}
@@ -238,7 +238,7 @@ export function AudioPlayer({ url, className }: AudioPlayerProps) {
               </Button>
 
               <div className="flex items-center gap-2 flex-1">
-                <Volume2 className="w-4 h-4 text-gray-600" />
+                <Volume2 className="w-4 h-4 text-white/60" />
                 <input
                   type="range"
                   min="0"
@@ -246,17 +246,17 @@ export function AudioPlayer({ url, className }: AudioPlayerProps) {
                   step="0.1"
                   value={volume}
                   onChange={handleVolumeChange}
-                  className="flex-1"
+                  className="flex-1 accent-purple-500"
                   disabled={isLoading}
                 />
               </div>
             </div>
           </div>
 
-          <div className="mt-4 text-xs text-gray-500 text-center">
-            Press <kbd className="px-1 py-0.5 bg-gray-200 rounded">Space</kbd> to play/pause,{" "}
-            <kbd className="px-1 py-0.5 bg-gray-200 rounded">←</kbd>{" "}
-            <kbd className="px-1 py-0.5 bg-gray-200 rounded">→</kbd> to skip
+          <div className="mt-4 text-xs text-white/40 text-center">
+            Press <kbd className="px-1 py-0.5 bg-white/10 rounded text-white/60">Space</kbd> to play/pause,{" "}
+            <kbd className="px-1 py-0.5 bg-white/10 rounded text-white/60">←</kbd>{" "}
+            <kbd className="px-1 py-0.5 bg-white/10 rounded text-white/60">→</kbd> to skip
           </div>
         </>
       )}
