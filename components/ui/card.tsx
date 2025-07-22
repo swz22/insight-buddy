@@ -5,14 +5,24 @@ const Card = React.forwardRef<HTMLDivElement, React.HTMLAttributes<HTMLDivElemen
   <div
     ref={ref}
     className={cn(
-      "rounded-xl glass animate-fade-in",
-      "border border-white/[0.05] hover:border-white/[0.08]",
-      "transition-all duration-300 hover:shadow-xl hover:shadow-black/20",
+      "rounded-xl",
+      "bg-white/[0.03] backdrop-blur-sm",
+      "shadow-xl",
+      "transition-all duration-300",
+      "hover:bg-white/[0.05]",
+      "hover:shadow-2xl hover:shadow-purple-500/10",
       "relative overflow-hidden",
+      "before:absolute before:inset-0 before:rounded-xl before:p-[1px]",
+      "before:bg-gradient-to-b before:from-white/[0.15] before:to-white/[0.05]",
+      "before:-z-10 before:transition-opacity before:duration-300",
+      "hover:before:from-white/[0.2] hover:before:to-white/[0.08]",
       className
     )}
     {...props}
-  />
+  >
+    <div className="absolute inset-[1px] rounded-xl bg-black/60 -z-10" />
+    {props.children}
+  </div>
 ));
 Card.displayName = "Card";
 
@@ -35,9 +45,7 @@ const CardTitle = React.forwardRef<HTMLParagraphElement, React.HTMLAttributes<HT
 CardTitle.displayName = "CardTitle";
 
 const CardDescription = React.forwardRef<HTMLParagraphElement, React.HTMLAttributes<HTMLParagraphElement>>(
-  ({ className, ...props }, ref) => (
-    <p ref={ref} className={cn("text-sm text-muted-foreground", className)} {...props} />
-  )
+  ({ className, ...props }, ref) => <p ref={ref} className={cn("text-sm text-white/50", className)} {...props} />
 );
 CardDescription.displayName = "CardDescription";
 
