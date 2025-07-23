@@ -24,15 +24,15 @@ export function MeetingFilters({
     <div className="w-full mb-8 space-y-4">
       {/* Search Bar */}
       <div className="relative group">
-        <div className="absolute inset-0 bg-gradient-to-r from-purple-500/10 to-cyan-500/10 rounded-xl blur-xl opacity-0 group-hover:opacity-100 transition-opacity duration-300" />
+        <div className="absolute inset-0 bg-gradient-to-r from-blue-400/10 to-blue-500/10 rounded-xl blur-xl opacity-0 group-hover:opacity-100 group-focus-within:opacity-100 transition-opacity duration-300" />
         <div className="relative">
-          <Search className="absolute left-4 top-1/2 -translate-y-1/2 text-white/40 w-5 h-5 pointer-events-none z-10" />
+          <Search className="absolute left-4 top-1/2 -translate-y-1/2 text-white/40 w-5 h-5 pointer-events-none z-10 transition-all duration-300 group-focus-within:text-blue-400/70 group-focus-within:scale-110" />
           <input
             type="text"
             placeholder="Search meetings..."
             value={searchTerm}
             onChange={(e) => onSearchChange(e.target.value)}
-            className="w-full h-12 pl-12 pr-4 rounded-xl bg-white/[0.03] backdrop-blur-sm text-white placeholder:text-white/40 focus:bg-white/[0.05] transition-all duration-200 focus-ring-cyan smooth-border"
+            className="w-full h-12 pl-12 pr-4 rounded-xl text-white placeholder:text-white/40 transition-all duration-300 smooth-border"
           />
         </div>
       </div>
@@ -41,9 +41,9 @@ export function MeetingFilters({
       <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
         {/* Start Date */}
         <div className="relative group">
-          <div className="absolute inset-0 bg-purple-500/10 rounded-xl blur-lg opacity-0 group-hover:opacity-100 transition-opacity duration-300" />
+          <div className="absolute inset-0 bg-blue-400/5 rounded-xl blur-lg opacity-0 group-hover:opacity-100 group-focus-within:opacity-100 transition-opacity duration-300" />
           <div className="relative">
-            <Calendar className="absolute left-4 top-1/2 -translate-y-1/2 text-white/40 w-5 h-5 pointer-events-none z-10" />
+            <Calendar className="absolute left-4 top-1/2 -translate-y-1/2 text-white/40 w-5 h-5 pointer-events-none z-10 transition-all duration-300 group-focus-within:text-blue-400/70 group-focus-within:scale-110" />
             <input
               type="date"
               value={dateRange.start}
@@ -57,7 +57,7 @@ export function MeetingFilters({
                   }
                 }, 0);
               }}
-              className="w-full h-12 pl-12 pr-4 rounded-xl bg-white/[0.03] backdrop-blur-sm text-white focus:bg-white/[0.05] transition-all duration-200 cursor-pointer focus-ring-cyan smooth-border"
+              className="w-full h-12 pl-12 pr-4 rounded-xl text-white transition-all duration-300 cursor-pointer smooth-border"
               style={{ colorScheme: "dark" }}
             />
             {!dateRange.start && (
@@ -70,9 +70,9 @@ export function MeetingFilters({
 
         {/* End Date */}
         <div className="relative group">
-          <div className="absolute inset-0 bg-cyan-500/10 rounded-xl blur-lg opacity-0 group-hover:opacity-100 transition-opacity duration-300" />
+          <div className="absolute inset-0 bg-blue-500/5 rounded-xl blur-lg opacity-0 group-hover:opacity-100 group-focus-within:opacity-100 transition-opacity duration-300" />
           <div className="relative">
-            <Calendar className="absolute left-4 top-1/2 -translate-y-1/2 text-white/40 w-5 h-5 pointer-events-none z-10" />
+            <Calendar className="absolute left-4 top-1/2 -translate-y-1/2 text-white/40 w-5 h-5 pointer-events-none z-10 transition-all duration-300 group-focus-within:text-blue-400/70 group-focus-within:scale-110" />
             <input
               type="date"
               value={dateRange.end}
@@ -86,7 +86,7 @@ export function MeetingFilters({
                   }
                 }, 0);
               }}
-              className="w-full h-12 pl-12 pr-4 rounded-xl bg-white/[0.03] backdrop-blur-sm text-white focus:bg-white/[0.05] transition-all duration-200 cursor-pointer focus-ring-cyan smooth-border"
+              className="w-full h-12 pl-12 pr-4 rounded-xl text-white transition-all duration-300 cursor-pointer smooth-border"
               style={{ colorScheme: "dark" }}
             />
             {!dateRange.end && (
@@ -104,7 +104,7 @@ export function MeetingFilters({
           <Button
             variant="glass"
             onClick={onClearFilters}
-            className="h-10 px-6 hover:border-red-400/50 hover:text-red-300 hover:bg-red-500/10 group"
+            className="h-10 px-6 border-2 border-red-400/40 text-red-400 hover:border-red-400/70 hover:text-red-300 hover:bg-red-500/15 hover:shadow-lg hover:shadow-red-500/20 group transition-all duration-300"
           >
             <X className="w-4 h-4 mr-2 group-hover:rotate-90 transition-transform duration-300" />
             Clear all filters
