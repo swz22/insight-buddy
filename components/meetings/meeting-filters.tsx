@@ -32,7 +32,7 @@ export function MeetingFilters({
             placeholder="Search meetings..."
             value={searchTerm}
             onChange={(e) => onSearchChange(e.target.value)}
-            className="w-full h-12 pl-12 pr-4 rounded-xl bg-white/[0.03] backdrop-blur-sm border border-white/20 text-white placeholder:text-white/40 focus:outline-none focus:border-cyan-400/60 focus:bg-white/[0.05] hover:border-white/30 hover:bg-white/[0.04] transition-all duration-200"
+            className="w-full h-12 pl-12 pr-4 rounded-xl bg-white/[0.03] backdrop-blur-sm text-white placeholder:text-white/40 focus:bg-white/[0.05] transition-all duration-200 focus-ring-cyan smooth-border"
           />
         </div>
       </div>
@@ -48,7 +48,16 @@ export function MeetingFilters({
               type="date"
               value={dateRange.start}
               onChange={(e) => onDateRangeChange({ ...dateRange, start: e.target.value })}
-              className="w-full h-12 pl-12 pr-4 rounded-xl bg-white/[0.03] backdrop-blur-sm border border-white/20 text-white focus:outline-none focus:border-purple-400/60 focus:bg-white/[0.05] hover:border-white/30 hover:bg-white/[0.04] transition-all duration-200 cursor-pointer"
+              onMouseDown={(e) => {
+                // Prevent text selection but allow normal date picker behavior
+                const input = e.target as HTMLInputElement;
+                setTimeout(() => {
+                  if (document.activeElement !== input) {
+                    input.focus();
+                  }
+                }, 0);
+              }}
+              className="w-full h-12 pl-12 pr-4 rounded-xl bg-white/[0.03] backdrop-blur-sm text-white focus:bg-white/[0.05] transition-all duration-200 cursor-pointer focus-ring-cyan smooth-border"
               style={{ colorScheme: "dark" }}
             />
             {!dateRange.start && (
@@ -68,7 +77,16 @@ export function MeetingFilters({
               type="date"
               value={dateRange.end}
               onChange={(e) => onDateRangeChange({ ...dateRange, end: e.target.value })}
-              className="w-full h-12 pl-12 pr-4 rounded-xl bg-white/[0.03] backdrop-blur-sm border border-white/20 text-white focus:outline-none focus:border-cyan-400/60 focus:bg-white/[0.05] hover:border-white/30 hover:bg-white/[0.04] transition-all duration-200 cursor-pointer"
+              onMouseDown={(e) => {
+                // Prevent text selection but allow normal date picker behavior
+                const input = e.target as HTMLInputElement;
+                setTimeout(() => {
+                  if (document.activeElement !== input) {
+                    input.focus();
+                  }
+                }, 0);
+              }}
+              className="w-full h-12 pl-12 pr-4 rounded-xl bg-white/[0.03] backdrop-blur-sm text-white focus:bg-white/[0.05] transition-all duration-200 cursor-pointer focus-ring-cyan smooth-border"
               style={{ colorScheme: "dark" }}
             />
             {!dateRange.end && (
