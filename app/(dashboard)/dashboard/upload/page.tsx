@@ -67,6 +67,7 @@ export default function UploadPage() {
       const uploadResult = await uploadFile(
         selectedFile,
         (progress) => {
+          console.log("Setting upload progress:", progress.percentage);
           setUploadProgress(progress.percentage);
         },
         abortControllerRef.current.signal

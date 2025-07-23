@@ -1,9 +1,7 @@
 @import url("https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@300;400;500;600;700&family=Inter:wght@300;400;500;600;700&display=swap");
 
-/* Import Tailwind v4 */
 @import "tailwindcss";
 
-/* Theme Configuration for Tailwind v4 */
 @theme {
   --color-white: #ffffff;
   --color-black: #000000;
@@ -288,4 +286,17 @@ input[type="date"]::-webkit-outer-spin-button {
   );
   background-size: 200% 100%;
   animation: skeleton-gradient 1.5s ease-in-out infinite;
+}
+
+@keyframes shimmer {
+  0% {
+    transform: translateX(-100%);
+  }
+  100% {
+    transform: translateX(100%);
+  }
+}
+
+.animate-shimmer {
+  animation: shimmer 2s infinite;
 }
