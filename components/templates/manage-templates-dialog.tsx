@@ -1,13 +1,14 @@
 "use client";
 
 import { useState } from "react";
-import { X, Plus, Edit2, Trash2, Star, StarOff } from "lucide-react";
+import { X, Plus, Edit2, Trash2, Star, StarOff, Save, Loader2 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { useToast } from "@/hooks/use-toast";
 import { useTemplates, useCreateTemplate, useUpdateTemplate, useDeleteTemplate } from "@/hooks/use-templates";
 import { Database } from "@/types/supabase";
 import { z } from "zod";
+import { motion, AnimatePresence } from "framer-motion";
 
 type MeetingTemplate = Database["public"]["Tables"]["meeting_templates"]["Row"];
 
@@ -138,142 +139,242 @@ export function ManageTemplatesDialog({ isOpen, onClose }: ManageTemplatesDialog
   };
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center">
-      <div className="fixed inset-0 bg-black/50" onClick={onClose} />
-      <div className="relative bg-white rounded-lg shadow-xl w-full max-w-2xl mx-4 max-h-[80vh] flex flex-col">
-        <div className="flex items-center justify-between p-4 border-b">
-          <h2 className="text-lg font-semibold">Manage Templates</h2>
-          <button onClick={onClose} className="text-gray-400 hover:text-gray-600 transition-colors">
-            <X className="w-5 h-5" />
-          </button>
-        </div>
+    <AnimatePresence>
+      <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
+        <motion.div
+          initial={{ opacity: 0 }}
+          animate={{ opacity: 1 }}
+          exit={{ opacity: 0 }}
+          className="fixed inset-0 bg-black/60 backdrop-blur-sm"
+          onClick={onClose}
+        />
 
-        <div className="flex-1 overflow-y-auto p-4">
-          {isLoading ? (
-            <div className="space-y-2">
-              {[...Array(3)].map((_, i) => (
-                <div key={i} className="h-16 bg-gray-100 rounded-md animate-pulse" />
-              ))}
-            </div>
-          ) : (
-            <>
-              {!isCreating && !editingTemplate && (
-                <>
-                  <Button onClick={handleCreate} className="mb-4">
-                    <Plus className="w-4 h-4 mr-2" />
-                    Create New Template
-                  </Button>
+        <motion.div
+          initial={{ opacity: 0, scale: 0.95, y: 20 }}
+          animate={{ opacity: 1, scale: 1, y: 0 }}
+          exit={{ opacity: 0, scale: 0.95, y: 20 }}
+          transition={{ type: "spring", duration: 0.3 }}
+          className="relative bg-black/90 backdrop-blur-xl rounded-xl shadow-2xl w-full max-w-2xl max-h-[80vh] border border-white/10 overflow-hidden flex flex-col"
+        >
+          {/* Header */}
+          <div className="flex items-center justify-between p-6 border-b border-white/10">
+            <h2 className="text-xl font-semibold font-display text-white">
+              Manage <span className="gradient-text">Templates</span>
+            </h2>
+            <button
+              onClick={onClose}
+              className="text-white/40 hover:text-white/60 transition-colors p-1 hover:bg-white/5 rounded-lg"
+            >
+              <X className="w-5 h-5" />
+            </button>
+          </div>
 
-                  <div className="space-y-2">
-                    {templates?.map((template) => (
-                      <div
-                        key={template.id}
-                        className="flex items-center justify-between p-3 border rounded-md hover:bg-gray-50"
-                      >
-                        <div className="flex-1">
-                          <div className="flex items-center gap-2">
-                            <h3 className="font-medium">{template.name}</h3>
-                            {template.is_default && (
-                              <span className="text-xs bg-blue-100 text-blue-700 px-2 py-0.5 rounded-full">
-                                Default
-                              </span>
-                            )}
+          {/* Content */}
+          <div className="flex-1 overflow-y-auto p-6">
+            {isLoading ? (
+              <div className="space-y-3">
+                {[...Array(3)].map((_, i) => (
+                  <div key={i} className="h-20 bg-white/[0.03] rounded-lg skeleton-gradient" />
+                ))}
+              </div>
+            ) : (
+              <>
+                {!isCreating && !editingTemplate && (
+                  <>
+                    <Button onClick={handleCreate} variant="glow" className="mb-6 shadow-lg">
+                      <Plus className="w-4 h-4 mr-2" />
+                      Create New Template
+                    </Button>
+
+                    <div className="space-y-3">
+                      {templates?.map((template) => (
+                        <motion.div
+                          key={template.id}
+                          initial={{ opacity: 0, y: 10 }}
+                          animate={{ opacity: 1, y: 0 }}
+                          className="flex items-center justify-between p-4 rounded-lg bg-white/[0.03] backdrop-blur-sm border border-white/10 hover:border-white/20 transition-all duration-200"
+                        >
+                          <div className="flex-1 space-y-1">
+                            <div className="flex items-center gap-2">
+                              <h3 className="font-medium text-white/90">{template.name}</h3>
+                              {template.is_default && (
+                                <span className="text-xs bg-gradient-to-r from-purple-500/20 to-cyan-500/20 text-cyan-400 px-2 py-0.5 rounded-full border border-cyan-500/30">
+                                  Default
+                                </span>
+                              )}
+                            </div>
+                            <p className="text-sm text-white/60">{template.title_template}</p>
                           </div>
-                          <p className="text-sm text-gray-600 mt-1">{template.title_template}</p>
+                          <div className="flex items-center gap-1">
+                            <Button
+                              variant="ghost"
+                              size="sm"
+                              onClick={() => handleSetDefault(template)}
+                              title={template.is_default ? "Remove as default" : "Set as default"}
+                              className="text-white/60 hover:text-white hover:bg-white/10"
+                            >
+                              {template.is_default ? (
+                                <Star className="w-4 h-4 fill-current" />
+                              ) : (
+                                <StarOff className="w-4 h-4" />
+                              )}
+                            </Button>
+                            <Button
+                              variant="ghost"
+                              size="sm"
+                              onClick={() => handleEdit(template)}
+                              className="text-white/60 hover:text-white hover:bg-white/10"
+                            >
+                              <Edit2 className="w-4 h-4" />
+                            </Button>
+                            <Button
+                              variant="ghost"
+                              size="sm"
+                              onClick={() => handleDelete(template)}
+                              className="text-white/60 hover:text-red-400 hover:bg-red-500/10"
+                            >
+                              <Trash2 className="w-4 h-4" />
+                            </Button>
+                          </div>
+                        </motion.div>
+                      ))}
+
+                      {templates?.length === 0 && (
+                        <div className="text-center py-12">
+                          <div className="w-16 h-16 rounded-full bg-gradient-to-r from-purple-500/20 to-cyan-500/20 flex items-center justify-center mx-auto mb-4">
+                            <Plus className="w-8 h-8 text-white/40" />
+                          </div>
+                          <p className="text-white/60">No templates yet. Create your first one!</p>
                         </div>
-                        <div className="flex items-center gap-1">
-                          <Button
-                            variant="ghost"
-                            size="sm"
-                            onClick={() => handleSetDefault(template)}
-                            title={template.is_default ? "Remove as default" : "Set as default"}
+                      )}
+                    </div>
+                  </>
+                )}
+
+                {(isCreating || editingTemplate) && (
+                  <form onSubmit={handleSubmit} className="space-y-5">
+                    <h3 className="font-medium text-lg text-white mb-6">
+                      {editingTemplate ? `Edit Template: ${editingTemplate.name}` : "Create New Template"}
+                    </h3>
+
+                    <div className="space-y-2">
+                      <label htmlFor="name" className="block text-sm font-medium text-white/90">
+                        Template Name
+                      </label>
+                      <Input
+                        id="name"
+                        value={formData.name}
+                        onChange={(e) => setFormData({ ...formData, name: e.target.value })}
+                        placeholder="e.g., Weekly Standup"
+                        required
+                        className="bg-white/[0.03] border-white/20 text-white placeholder:text-white/40 focus:border-purple-400/60"
+                      />
+                    </div>
+
+                    <div className="space-y-2">
+                      <label htmlFor="title_template" className="block text-sm font-medium text-white/90">
+                        Title Template
+                      </label>
+                      <div className="space-y-2">
+                        <Input
+                          id="title_template"
+                          value={formData.title_template}
+                          onChange={(e) => setFormData({ ...formData, title_template: e.target.value })}
+                          placeholder="e.g., Weekly Standup - [Today's Date]"
+                          required
+                          className="bg-white/[0.03] border-white/20 text-white placeholder:text-white/40 focus:border-purple-400/60"
+                        />
+                        <div className="flex flex-wrap gap-2">
+                          <span className="text-xs text-white/60">Quick add:</span>
+                          <button
+                            type="button"
+                            onClick={() =>
+                              setFormData({ ...formData, title_template: formData.title_template + "{date}" })
+                            }
+                            className="text-xs px-2 py-1 rounded bg-purple-500/20 text-purple-300 hover:bg-purple-500/30 transition-colors"
                           >
-                            {template.is_default ? <Star className="w-4 h-4" /> : <StarOff className="w-4 h-4" />}
-                          </Button>
-                          <Button variant="ghost" size="sm" onClick={() => handleEdit(template)}>
-                            <Edit2 className="w-4 h-4" />
-                          </Button>
-                          <Button variant="ghost" size="sm" onClick={() => handleDelete(template)}>
-                            <Trash2 className="w-4 h-4" />
-                          </Button>
+                            + Date
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() =>
+                              setFormData({ ...formData, title_template: formData.title_template + "{participant}" })
+                            }
+                            className="text-xs px-2 py-1 rounded bg-cyan-500/20 text-cyan-300 hover:bg-cyan-500/30 transition-colors"
+                          >
+                            + Participant
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() =>
+                              setFormData({ ...formData, title_template: formData.title_template + "{project}" })
+                            }
+                            className="text-xs px-2 py-1 rounded bg-blue-500/20 text-blue-300 hover:bg-blue-500/30 transition-colors"
+                          >
+                            + Project
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() =>
+                              setFormData({ ...formData, title_template: formData.title_template + "{topic}" })
+                            }
+                            className="text-xs px-2 py-1 rounded bg-green-500/20 text-green-300 hover:bg-green-500/30 transition-colors"
+                          >
+                            + Topic
+                          </button>
                         </div>
                       </div>
-                    ))}
+                    </div>
 
-                    {templates?.length === 0 && (
-                      <p className="text-center text-gray-500 py-8">No templates yet. Create your first one!</p>
-                    )}
-                  </div>
-                </>
-              )}
+                    <div className="space-y-2">
+                      <label htmlFor="description_template" className="block text-sm font-medium text-white/90">
+                        Description Template <span className="text-white/40">(optional)</span>
+                      </label>
+                      <textarea
+                        id="description_template"
+                        className="w-full px-3 py-2 rounded-lg bg-white/[0.03] backdrop-blur-sm border border-white/20 text-white placeholder:text-white/40 focus:outline-none focus:border-purple-400/60 focus:bg-white/[0.05] hover:border-white/30 hover:bg-white/[0.04] transition-all duration-200 min-h-[100px] resize-none"
+                        rows={3}
+                        value={formData.description_template}
+                        onChange={(e) => setFormData({ ...formData, description_template: e.target.value })}
+                        placeholder="e.g., Weekly team sync with {participant}"
+                      />
+                    </div>
 
-              {(isCreating || editingTemplate) && (
-                <form onSubmit={handleSubmit} className="space-y-4">
-                  <h3 className="font-medium mb-4">
-                    {editingTemplate ? `Edit Template: ${editingTemplate.name}` : "Create New Template"}
-                  </h3>
-
-                  <div>
-                    <label htmlFor="name" className="block text-sm font-medium mb-1">
-                      Template Name
-                    </label>
-                    <Input
-                      id="name"
-                      value={formData.name}
-                      onChange={(e) => setFormData({ ...formData, name: e.target.value })}
-                      placeholder="e.g., Weekly Standup"
-                      required
-                    />
-                  </div>
-
-                  <div>
-                    <label htmlFor="title_template" className="block text-sm font-medium mb-1">
-                      Title Template
-                    </label>
-                    <Input
-                      id="title_template"
-                      value={formData.title_template}
-                      onChange={(e) => setFormData({ ...formData, title_template: e.target.value })}
-                      placeholder="e.g., Weekly Standup - {date}"
-                      required
-                    />
-                    <p className="text-xs text-gray-500 mt-1">
-                      Available variables: {"{date}"}, {"{participant}"}, {"{project}"}, {"{topic}"}
-                    </p>
-                  </div>
-
-                  <div>
-                    <label htmlFor="description_template" className="block text-sm font-medium mb-1">
-                      Description Template (optional)
-                    </label>
-                    <textarea
-                      id="description_template"
-                      className="w-full px-3 py-2 border border-gray-300 rounded-md resize-none"
-                      rows={3}
-                      value={formData.description_template}
-                      onChange={(e) => setFormData({ ...formData, description_template: e.target.value })}
-                      placeholder="e.g., Weekly team sync with {participant}"
-                    />
-                  </div>
-
-                  <div className="flex gap-2 pt-2">
-                    <Button type="submit" disabled={createTemplate.isPending || updateTemplate.isPending}>
-                      {createTemplate.isPending || updateTemplate.isPending
-                        ? "Saving..."
-                        : editingTemplate
-                        ? "Update"
-                        : "Create"}
-                    </Button>
-                    <Button type="button" variant="outline" onClick={handleCancel}>
-                      Cancel
-                    </Button>
-                  </div>
-                </form>
-              )}
-            </>
-          )}
-        </div>
+                    <div className="flex gap-3 pt-4">
+                      <Button
+                        type="submit"
+                        variant="glow"
+                        disabled={createTemplate.isPending || updateTemplate.isPending}
+                        className="flex-1 shadow-lg"
+                      >
+                        {createTemplate.isPending || updateTemplate.isPending ? (
+                          <>
+                            <Loader2 className="w-4 h-4 mr-2 animate-spin" />
+                            Saving...
+                          </>
+                        ) : (
+                          <>
+                            <Save className="w-4 h-4 mr-2" />
+                            {editingTemplate ? "Update" : "Create"}
+                          </>
+                        )}
+                      </Button>
+                      <Button
+                        type="button"
+                        variant="glass"
+                        onClick={handleCancel}
+                        className="hover:border-red-400/50 hover:text-red-300"
+                      >
+                        Cancel
+                      </Button>
+                    </div>
+                  </form>
+                )}
+              </>
+            )}
+          </div>
+        </motion.div>
       </div>
-    </div>
+    </AnimatePresence>
   );
 }
