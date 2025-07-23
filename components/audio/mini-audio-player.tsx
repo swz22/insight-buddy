@@ -57,9 +57,9 @@ export function MiniAudioPlayer({ url, onPlayingChange }: MiniAudioPlayerProps) 
         {isPlaying ? <Pause className="w-4 h-4" /> : <Play className="w-4 h-4" />}
       </Button>
 
-      <div className="flex-1 h-1 bg-gray-200 rounded-full relative overflow-hidden">
+      <div className="flex-1 h-2 bg-gray-200/20 rounded-full relative overflow-hidden cursor-pointer group hover:h-3 transition-all">
         <div
-          className="absolute left-0 top-0 h-full bg-blue-500 transition-all duration-200"
+          className="absolute left-0 top-0 h-full bg-gradient-to-r from-purple-500 to-cyan-500 transition-all duration-200"
           style={{ width: `${progress}%` }}
         />
       </div>
