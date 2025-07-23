@@ -53,14 +53,14 @@ export function MeetingCard({ meeting, onView, onEdit, onDelete }: MeetingCardPr
         <CardTitle className="text-lg text-white group-hover:text-transparent group-hover:bg-clip-text group-hover:bg-gradient-to-r group-hover:from-purple-400 group-hover:to-cyan-400 transition-all duration-300">
           {meeting.title}
         </CardTitle>
-        <CardDescription className="text-white/50">
+        <CardDescription className="text-white/60">
           {meeting.recorded_at && formatDistanceToNow(new Date(meeting.recorded_at), { addSuffix: true })}
         </CardDescription>
       </CardHeader>
       <CardContent className="space-y-4">
         <p className="text-sm text-white/70 line-clamp-2">{meeting.description || "No description provided"}</p>
 
-        <div className="flex items-center gap-4 text-sm text-white/50">
+        <div className="flex items-center gap-4 text-sm text-white/60">
           {meeting.duration && (
             <div className="flex items-center gap-1.5">
               <Clock className="w-4 h-4" />

@@ -66,7 +66,7 @@ export function MeetingsList({ userEmail }: MeetingsListProps) {
           <p className="text-white/60">
             Welcome back, <span className="text-white/90 font-medium">{userEmail}</span>
             {meetings && meetings.length > 0 && (
-              <span className="text-white/40 ml-2">• {meetings.length} total meetings</span>
+              <span className="text-white/50 ml-2">• {meetings.length} total meetings</span>
             )}
           </p>
         </div>
@@ -113,14 +113,14 @@ export function MeetingsList({ userEmail }: MeetingsListProps) {
                       <FileText className="w-8 h-8 text-white/40" />
                     </div>
                     <p className="text-white/60 mb-2 text-lg">No meetings yet.</p>
-                    <p className="text-sm text-white/40">Click "Upload Recording" above to get started.</p>
+                    <p className="text-sm text-white/50">Click "Upload Recording" above to get started.</p>
                   </>
                 )}
               </div>
             </div>
           ) : (
             <>
-              <div className="mb-4 text-sm text-white/40 animate-fade-in">
+              <div className="mb-4 text-sm text-white/50 animate-fade-in">
                 Showing {filteredMeetings.length} of {meetings.length} meetings
               </div>
               <div className="grid gap-6 md:grid-cols-2 lg:grid-cols-3 animate-fade-in">
