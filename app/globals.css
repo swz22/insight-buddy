@@ -204,8 +204,24 @@ h6 {
 }
 
 /* Focus styles */
-input:focus {
+*:focus {
   outline: none;
+}
+
+*:focus-visible {
+  outline: 2px solid rgba(168, 85, 247, 0.5);
+  outline-offset: 2px;
+}
+
+button:focus-visible {
+  outline: 2px solid rgba(168, 85, 247, 0.5);
+  outline-offset: 2px;
+}
+
+a:focus-visible {
+  outline: 2px solid rgba(168, 85, 247, 0.5);
+  outline-offset: 2px;
+  border-radius: 4px;
 }
 
 /* Date input styling */
