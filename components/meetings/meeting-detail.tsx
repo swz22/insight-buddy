@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useState, useEffect, useRef } from "react";
 import { format } from "date-fns";
 import {
   ArrowLeft,
@@ -40,13 +40,82 @@ export function MeetingDetail({ meeting: initialMeeting }: MeetingDetailProps) {
   const [isEditDialogOpen, setIsEditDialogOpen] = useState(false);
   const [isTranscribing, setIsTranscribing] = useState(false);
   const [isSummarizing, setIsSummarizing] = useState(false);
-  const [transcriptId, setTranscriptId] = useState<string | null>(null);
+  const pollIntervalRef = useRef<NodeJS.Timeout | null>(null);
+
+  useEffect(() => {
+    if (meeting.transcript_id && !meeting.transcript) {
+      console.log("Found ongoing transcription:", meeting.transcript_id);
+      setIsTranscribing(true);
+      startPolling(meeting.transcript_id);
+    }
+    return () => {
+      if (pollIntervalRef.current) {
+        clearInterval(pollIntervalRef.current);
+      }
+    };
+  }, []);
 
   const formatDuration = (seconds: number | null) => {
     if (!seconds) return "N/A";
     const minutes = Math.floor(seconds / 60);
     const remainingSeconds = seconds % 60;
     return `${minutes}:${remainingSeconds.toString().padStart(2, "0")}`;
+  };
+
+  const startPolling = (transcriptId: string) => {
+    console.log("Starting transcript polling for ID:", transcriptId);
+
+    if (pollIntervalRef.current) {
+      clearInterval(pollIntervalRef.current);
+    }
+
+    pollIntervalRef.current = setInterval(async () => {
+      try {
+        const checkResponse = await fetch(`/api/meetings/${meeting.id}/check-transcript?transcriptId=${transcriptId}`);
+        const checkResult = await checkResponse.json();
+
+        console.log("Poll result:", checkResult.status);
+
+        if (checkResult.hasTranscript || checkResult.status === "completed") {
+          const meetingResponse = await fetch(`/api/meetings/${meeting.id}`);
+          const updatedMeeting = await meetingResponse.json();
+
+          if (updatedMeeting?.transcript) {
+            setMeeting(updatedMeeting);
+            if (pollIntervalRef.current) {
+              clearInterval(pollIntervalRef.current);
+              pollIntervalRef.current = null;
+            }
+            setIsTranscribing(false);
+            toast.success("Transcription complete!");
+
+            if (!updatedMeeting.summary) {
+              handleSummarize();
+            }
+          }
+        } else if (checkResult.status === "error") {
+          if (pollIntervalRef.current) {
+            clearInterval(pollIntervalRef.current);
+            pollIntervalRef.current = null;
+          }
+          setIsTranscribing(false);
+          toast.error("Transcription failed: " + (checkResult.error || "Unknown error"));
+        }
+      } catch (error) {
+        console.error("Poll error:", error);
+      }
+    }, 5000);
+
+    setTimeout(() => {
+      if (pollIntervalRef.current) {
+        clearInterval(pollIntervalRef.current);
+        pollIntervalRef.current = null;
+        if (isTranscribing) {
+          setIsTranscribing(false);
+          toast.error("Transcription timed out. Please try again.");
+        }
+      }
+    }, 600000);
   };
 
   const handleTranscribe = async () => {
@@ -68,49 +137,8 @@ export function MeetingDetail({ meeting: initialMeeting }: MeetingDetailProps) {
 
       const result = await response.json();
       toast.success("Transcription started! This may take a few minutes.");
-      setTranscriptId(result.transcriptId);
-
-      const pollInterval = setInterval(async () => {
-        try {
-          const checkResponse = await fetch(
-            `/api/meetings/${meeting.id}/check-transcript?transcriptId=${result.transcriptId}`
-          );
-          const checkResult = await checkResponse.json();
-
-          if (checkResult.hasTranscript || checkResult.status === "completed") {
-            const meetingResponse = await fetch(`/api/meetings/${meeting.id}`);
-            const updatedMeeting = await meetingResponse.json();
-
-            if (updatedMeeting?.transcript) {
-              setMeeting(updatedMeeting);
-              clearInterval(pollInterval);
-              setIsTranscribing(false);
-              setTranscriptId(null);
-              toast.success("Transcription complete!");
-
-              if (!updatedMeeting.summary) {
-                handleSummarize();
-              }
-            }
-          } else if (checkResult.status === "error") {
-            clearInterval(pollInterval);
-            setIsTranscribing(false);
-            setTranscriptId(null);
-            toast.error("Transcription failed: " + (checkResult.error || "Unknown error"));
-          }
-        } catch (error) {
-          console.error("Poll error:", error);
-        }
-      }, 5000);
-
-      setTimeout(() => {
-        clearInterval(pollInterval);
-        if (isTranscribing) {
-          setIsTranscribing(false);
-          setTranscriptId(null);
-          toast.error("Transcription timed out. Please try again.");
-        }
-      }, 600000);
+      setMeeting((prev) => ({ ...prev, transcript_id: result.transcriptId }));
+      startPolling(result.transcriptId);
     } catch (error) {
       console.error("Transcription error:", error);
       toast.error(error instanceof Error ? error.message : "Failed to start transcription");
@@ -137,7 +165,9 @@ export function MeetingDetail({ meeting: initialMeeting }: MeetingDetailProps) {
 
       const result = await response.json();
 
-      const { data: updatedMeeting } = await fetch(`/api/meetings/${meeting.id}`).then((r) => r.json());
+      // Refresh meeting data
+      const meetingResponse = await fetch(`/api/meetings/${meeting.id}`);
+      const updatedMeeting = await meetingResponse.json();
       if (updatedMeeting) {
         setMeeting(updatedMeeting);
         toast.success(result.fallback ? "Basic summary generated" : "AI summary generated!");
@@ -293,7 +323,7 @@ export function MeetingDetail({ meeting: initialMeeting }: MeetingDetailProps) {
                   <p className="text-white/50 italic mb-4">
                     Transcript will be available after AI processing is complete.
                   </p>
-                  {meeting.audio_url && !isTranscribing && (
+                  {meeting.audio_url && !isTranscribing && !meeting.transcript_id && (
                     <Button variant="glow" onClick={handleTranscribe} className="shadow-lg">
                       <Bot className="w-4 h-4 mr-2" />
                       Generate Transcript
@@ -303,9 +333,17 @@ export function MeetingDetail({ meeting: initialMeeting }: MeetingDetailProps) {
                     <div className="flex items-center justify-center gap-2 text-white/60">
                       <Loader2 className="w-5 h-5 animate-spin" />
                       <span>Processing audio... This may take a few minutes.</span>
-                      {transcriptId && (
-                        <span className="text-xs text-white/40">(ID: {transcriptId.substring(0, 8)}...)</span>
+                      {meeting.transcript_id && (
+                        <span className="text-xs text-white/40">(ID: {meeting.transcript_id.substring(0, 8)}...)</span>
                       )}
+                    </div>
+                  )}
+                  {!isTranscribing && meeting.transcript_id && (
+                    <div className="text-center">
+                      <p className="text-sm text-white/50 mb-4">Transcription in progress. Please wait...</p>
+                      <Button variant="outline" size="sm" onClick={() => window.location.reload()} className="mr-2">
+                        Refresh Page
+                      </Button>
                     </div>
                   )}
                 </div>
