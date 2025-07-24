@@ -25,8 +25,6 @@ export async function GET(request: Request, { params: paramsPromise }: RoutePara
     }
 
     const serviceSupabase = createServiceRoleClient();
-
-    // Get meeting
     const { data: meeting, error: fetchError } = await serviceSupabase
       .from("meetings")
       .select("*")
@@ -64,6 +62,7 @@ export async function GET(request: Request, { params: paramsPromise }: RoutePara
         .from("meetings")
         .update({
           transcript: formattedTranscript,
+          transcript_id: null,
           duration: transcript.audio_duration ? Math.round(transcript.audio_duration) : null,
           participants: speakers.length > 0 ? speakers : ["Unknown Speaker"],
           updated_at: new Date().toISOString(),

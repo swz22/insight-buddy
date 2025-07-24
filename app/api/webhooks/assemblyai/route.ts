@@ -33,6 +33,7 @@ export async function POST(request: NextRequest) {
       .from("meetings")
       .update({
         transcript: formattedTranscript,
+        transcript_id: null,
         duration: transcript.audio_duration ? Math.round(transcript.audio_duration) : null,
         participants: speakers.length > 0 ? speakers : ["Unknown Speaker"],
         updated_at: new Date().toISOString(),

@@ -67,12 +67,13 @@ export async function POST(request: Request, { params: paramsPromise }: RoutePar
     const { error: updateError } = await serviceSupabase
       .from("meetings")
       .update({
+        transcript_id: transcript.id,
         updated_at: new Date().toISOString(),
       })
       .eq("id", params.id);
 
     if (updateError) {
-      console.error("Failed to update meeting:", updateError);
+      console.error("Failed to store transcript ID:", updateError);
     }
 
     return apiSuccess({
