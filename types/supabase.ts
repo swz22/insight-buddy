@@ -70,6 +70,7 @@ export interface Database {
           description: string | null;
           audio_url: string | null;
           transcript: string | null;
+          transcript_id: string | null;
           summary: MeetingSummary | null;
           action_items: ActionItem[] | null;
           participants: string[];
@@ -85,6 +86,7 @@ export interface Database {
           description?: string | null;
           audio_url?: string | null;
           transcript?: string | null;
+          transcript_id?: string | null;
           summary?: MeetingSummary | null;
           action_items?: ActionItem[] | null;
           participants?: string[];
@@ -100,6 +102,7 @@ export interface Database {
           description?: string | null;
           audio_url?: string | null;
           transcript?: string | null;
+          transcript_id?: string | null;
           summary?: MeetingSummary | null;
           action_items?: ActionItem[] | null;
           participants?: string[];
