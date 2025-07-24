@@ -1,19 +1,19 @@
 "use client";
 
-import { useState, FormEvent, useRef } from "react";
+import { useState, FormEvent, useRef, useCallback } from "react";
 import { useRouter } from "next/navigation";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { FileUpload } from "@/components/upload/file-upload";
 import { useCreateMeeting } from "@/hooks/use-meetings";
+import { useMeetingData } from "@/hooks/use-meeting-data";
 import { useToast } from "@/hooks/use-toast";
 import { useAppStore } from "@/stores/app-store";
 import { uploadFile } from "@/lib/services/upload";
 import { meetingFormSchema, type MeetingFormData } from "@/lib/validations/meeting";
 import { z } from "zod";
-import { TemplateSelector } from "@/components/templates/template-selector";
-import { ManageTemplatesDialog } from "@/components/templates/manage-templates-dialog";
+import { TemplateSystem } from "@/components/templates/template-system";
 import { ArrowLeft } from "lucide-react";
 import Link from "next/link";
 
@@ -26,6 +26,7 @@ export default function UploadPage() {
   const router = useRouter();
   const toast = useToast();
   const createMeeting = useCreateMeeting();
+  const { previousParticipants, previousProjects } = useMeetingData();
   const setUploadProgress = useAppStore((state) => state.setUploadProgress);
   const abortControllerRef = useRef<AbortController | null>(null);
 
@@ -35,11 +36,10 @@ export default function UploadPage() {
   });
   const [selectedFile, setSelectedFile] = useState<File | null>(null);
   const [isUploading, setIsUploading] = useState(false);
-  const [showTemplateManager, setShowTemplateManager] = useState(false);
 
-  const handleTemplateSelect = (title: string, description: string) => {
-    setFormData({ title, description });
-  };
+  const handleTitleChange = useCallback((title: string) => {
+    setFormData((prev) => ({ ...prev, title }));
+  }, []);
 
   const handleSubmit = async (e: FormEvent<HTMLFormElement>) => {
     e.preventDefault();
@@ -138,9 +138,10 @@ export default function UploadPage() {
           </CardHeader>
           <CardContent>
             <form onSubmit={handleSubmit} className="space-y-6">
-              <TemplateSelector
-                onSelect={handleTemplateSelect}
-                onManageTemplates={() => setShowTemplateManager(true)}
+              <TemplateSystem
+                onTitleChange={handleTitleChange}
+                previousParticipants={previousParticipants}
+                previousProjects={previousProjects}
               />
 
               <div className="space-y-2">
@@ -199,8 +200,6 @@ export default function UploadPage() {
             </form>
           </CardContent>
         </Card>
-
-        <ManageTemplatesDialog isOpen={showTemplateManager} onClose={() => setShowTemplateManager(false)} />
       </div>
     </div>
   );

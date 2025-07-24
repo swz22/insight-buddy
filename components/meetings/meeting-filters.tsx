@@ -57,7 +57,7 @@ export function MeetingFilters({
                   }
                 }, 0);
               }}
-              className="w-full h-12 pl-12 pr-4 rounded-xl text-white transition-all duration-300 cursor-pointer smooth-border"
+              className="w-full h-12 pl-12 pr-12 rounded-xl text-white transition-all duration-300 cursor-pointer smooth-border"
               style={{ colorScheme: "dark" }}
             />
             {!dateRange.start && (
@@ -86,7 +86,7 @@ export function MeetingFilters({
                   }
                 }, 0);
               }}
-              className="w-full h-12 pl-12 pr-4 rounded-xl text-white transition-all duration-300 cursor-pointer smooth-border"
+              className="w-full h-12 pl-12 pr-12 rounded-xl text-white transition-all duration-300 cursor-pointer smooth-border"
               style={{ colorScheme: "dark" }}
             />
             {!dateRange.end && (
