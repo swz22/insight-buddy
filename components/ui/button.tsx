@@ -9,7 +9,7 @@ interface ButtonProps extends React.ButtonHTMLAttributes<HTMLButtonElement> {
 }
 
 const buttonVariants = {
-  base: "inline-flex items-center justify-center rounded-lg text-sm font-medium transition-all duration-300 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-purple-500/50 disabled:pointer-events-none disabled:opacity-50 min-h-[44px] min-w-[44px]",
+  base: "inline-flex items-center justify-center rounded-lg text-sm font-medium transition-all duration-300 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-purple-500/50 disabled:pointer-events-none disabled:opacity-50 min-h-[44px] min-w-[44px] spring-scale ripple",
   variants: {
     default:
       "bg-primary text-primary-foreground hover:bg-primary/90 hover:scale-105 hover:shadow-lg hover:shadow-primary/25",

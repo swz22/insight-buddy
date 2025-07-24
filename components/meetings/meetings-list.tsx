@@ -13,6 +13,7 @@ import { Database } from "@/types/supabase";
 import Link from "next/link";
 import { useToast } from "@/hooks/use-toast";
 import { FileText } from "lucide-react";
+import { SkeletonCard } from "@/components/ui/skeleton";
 
 type Meeting = Database["public"]["Tables"]["meetings"]["Row"];
 
@@ -80,7 +81,9 @@ export function MeetingsList({ userEmail }: MeetingsListProps) {
       {isLoading && (
         <div className="grid gap-6 md:grid-cols-2 lg:grid-cols-3">
           {[...Array(6)].map((_, i) => (
-            <div key={i} className="h-56 glass rounded-xl skeleton-gradient animate-pulse" />
+            <div key={i} className="stagger-animation">
+              <SkeletonCard />
+            </div>
           ))}
         </div>
       )}
@@ -123,15 +126,9 @@ export function MeetingsList({ userEmail }: MeetingsListProps) {
               <div className="mb-4 text-sm text-white/50 animate-fade-in">
                 Showing {filteredMeetings.length} of {meetings.length} meetings
               </div>
-              <div className="grid gap-6 md:grid-cols-2 lg:grid-cols-3 animate-fade-in">
-                {filteredMeetings.map((meeting, index) => (
-                  <div
-                    key={meeting.id}
-                    style={{
-                      animationDelay: `${index * 50}ms`,
-                    }}
-                    className="animate-fade-in"
-                  >
+              <div className="grid gap-6 md:grid-cols-2 lg:grid-cols-3">
+                {filteredMeetings.map((meeting) => (
+                  <div key={meeting.id} className="stagger-animation">
                     <MeetingCard meeting={meeting} onView={handleView} onEdit={handleEdit} onDelete={handleDelete} />
                   </div>
                 ))}
