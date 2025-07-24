@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, FormEvent, useRef, useCallback } from "react";
+import { useState, FormEvent, useRef, useCallback, useEffect } from "react";
 import { useRouter } from "next/navigation";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -36,6 +36,19 @@ export default function UploadPage() {
   });
   const [selectedFile, setSelectedFile] = useState<File | null>(null);
   const [isUploading, setIsUploading] = useState(false);
+  const [transcriptionEnabled, setTranscriptionEnabled] = useState(false);
+
+  // Check if transcription is enabled
+  useEffect(() => {
+    fetch("/api/config")
+      .then((res) => res.json())
+      .then((config) => {
+        setTranscriptionEnabled(config.transcriptionEnabled);
+      })
+      .catch(() => {
+        console.log("Could not fetch config");
+      });
+  }, []);
 
   const handleTitleChange = useCallback((title: string) => {
     setFormData((prev) => ({ ...prev, title }));
@@ -84,14 +97,18 @@ export default function UploadPage() {
 
       toast.success("Meeting uploaded successfully!");
 
-      // Reset progress after a delay
       setTimeout(() => setUploadProgress(0), 1000);
 
       // Automatically start transcription
-      if (newMeeting && process.env.NEXT_PUBLIC_ASSEMBLYAI_ENABLED === "true") {
+      if (newMeeting && transcriptionEnabled) {
         fetch(`/api/meetings/${newMeeting.id}/transcribe`, { method: "POST" })
-          .then(() => {
-            toast.info("AI transcription started in the background");
+          .then(async (response) => {
+            if (response.ok) {
+              toast.info("AI transcription started in the background");
+            } else {
+              const error = await response.json();
+              console.error("Failed to start auto-transcription:", error);
+            }
           })
           .catch((err) => {
             console.error("Failed to start auto-transcription:", err);
