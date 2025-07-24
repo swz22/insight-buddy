@@ -70,6 +70,7 @@ export interface Database {
           description: string | null;
           audio_url: string | null;
           transcript: string | null;
+          transcript_id: string | null;
           summary: MeetingSummary | null;
           action_items: ActionItem[] | null;
           participants: string[];
@@ -85,6 +86,7 @@ export interface Database {
           description?: string | null;
           audio_url?: string | null;
           transcript?: string | null;
+          transcript_id?: string | null;
           summary?: MeetingSummary | null;
           action_items?: ActionItem[] | null;
           participants?: string[];
@@ -100,6 +102,7 @@ export interface Database {
           description?: string | null;
           audio_url?: string | null;
           transcript?: string | null;
+          transcript_id?: string | null;
           summary?: MeetingSummary | null;
           action_items?: ActionItem[] | null;
           participants?: string[];
@@ -107,6 +110,41 @@ export interface Database {
           recorded_at?: string | null;
           created_at?: string;
           updated_at?: string;
+        };
+      };
+      shared_meetings: {
+        Row: {
+          id: string;
+          meeting_id: string;
+          share_token: string;
+          password: string | null;
+          expires_at: string | null;
+          created_by: string;
+          created_at: string;
+          last_accessed_at: string | null;
+          access_count: number;
+        };
+        Insert: {
+          id?: string;
+          meeting_id: string;
+          share_token: string;
+          password?: string | null;
+          expires_at?: string | null;
+          created_by: string;
+          created_at?: string;
+          last_accessed_at?: string | null;
+          access_count?: number;
+        };
+        Update: {
+          id?: string;
+          meeting_id?: string;
+          share_token?: string;
+          password?: string | null;
+          expires_at?: string | null;
+          created_by?: string;
+          created_at?: string;
+          last_accessed_at?: string | null;
+          access_count?: number;
         };
       };
     };
