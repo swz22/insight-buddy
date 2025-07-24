@@ -89,7 +89,7 @@ export function useCreateMeeting() {
       const result = await response.json();
       return result;
     },
-    onSuccess: () => {
+    onSuccess: (data) => {
       queryClient.invalidateQueries({ queryKey: ["meetings"] });
     },
     onError: (error) => {

@@ -13,6 +13,8 @@ import {
   Edit2,
   Calendar,
   User,
+  Bot,
+  Loader2,
 } from "lucide-react";
 import Link from "next/link";
 import { Button } from "@/components/ui/button";
@@ -21,6 +23,8 @@ import { Database } from "@/types/supabase";
 import { EditMeetingDialog } from "./edit-meeting-dialog";
 import { AudioPlayer } from "@/components/audio/audio-player";
 import { cn } from "@/lib/utils";
+import { useToast } from "@/hooks/use-toast";
+import { useRouter } from "next/navigation";
 
 type Meeting = Database["public"]["Tables"]["meetings"]["Row"];
 
@@ -29,15 +33,121 @@ interface MeetingDetailProps {
 }
 
 export function MeetingDetail({ meeting: initialMeeting }: MeetingDetailProps) {
+  const router = useRouter();
+  const toast = useToast();
   const [meeting, setMeeting] = useState(initialMeeting);
   const [activeTab, setActiveTab] = useState<"transcript" | "summary" | "actions">("transcript");
   const [isEditDialogOpen, setIsEditDialogOpen] = useState(false);
+  const [isTranscribing, setIsTranscribing] = useState(false);
+  const [isSummarizing, setIsSummarizing] = useState(false);
+  const [transcriptId, setTranscriptId] = useState<string | null>(null);
 
   const formatDuration = (seconds: number | null) => {
     if (!seconds) return "N/A";
     const minutes = Math.floor(seconds / 60);
     const remainingSeconds = seconds % 60;
     return `${minutes}:${remainingSeconds.toString().padStart(2, "0")}`;
+  };
+
+  const handleTranscribe = async () => {
+    if (!meeting.audio_url) {
+      toast.error("No audio file available");
+      return;
+    }
+
+    setIsTranscribing(true);
+    try {
+      const response = await fetch(`/api/meetings/${meeting.id}/transcribe`, {
+        method: "POST",
+      });
+
+      if (!response.ok) {
+        const error = await response.json();
+        throw new Error(error.error || "Failed to start transcription");
+      }
+
+      const result = await response.json();
+      toast.success("Transcription started! This may take a few minutes.");
+      setTranscriptId(result.transcriptId);
+
+      const pollInterval = setInterval(async () => {
+        try {
+          const checkResponse = await fetch(
+            `/api/meetings/${meeting.id}/check-transcript?transcriptId=${result.transcriptId}`
+          );
+          const checkResult = await checkResponse.json();
+
+          if (checkResult.hasTranscript || checkResult.status === "completed") {
+            const meetingResponse = await fetch(`/api/meetings/${meeting.id}`);
+            const updatedMeeting = await meetingResponse.json();
+
+            if (updatedMeeting?.transcript) {
+              setMeeting(updatedMeeting);
+              clearInterval(pollInterval);
+              setIsTranscribing(false);
+              setTranscriptId(null);
+              toast.success("Transcription complete!");
+
+              if (!updatedMeeting.summary) {
+                handleSummarize();
+              }
+            }
+          } else if (checkResult.status === "error") {
+            clearInterval(pollInterval);
+            setIsTranscribing(false);
+            setTranscriptId(null);
+            toast.error("Transcription failed: " + (checkResult.error || "Unknown error"));
+          }
+        } catch (error) {
+          console.error("Poll error:", error);
+        }
+      }, 5000);
+
+      setTimeout(() => {
+        clearInterval(pollInterval);
+        if (isTranscribing) {
+          setIsTranscribing(false);
+          setTranscriptId(null);
+          toast.error("Transcription timed out. Please try again.");
+        }
+      }, 600000);
+    } catch (error) {
+      console.error("Transcription error:", error);
+      toast.error(error instanceof Error ? error.message : "Failed to start transcription");
+      setIsTranscribing(false);
+    }
+  };
+
+  const handleSummarize = async () => {
+    if (!meeting.transcript) {
+      toast.error("Transcript required for summarization");
+      return;
+    }
+
+    setIsSummarizing(true);
+    try {
+      const response = await fetch(`/api/meetings/${meeting.id}/summarize`, {
+        method: "POST",
+      });
+
+      if (!response.ok) {
+        const error = await response.json();
+        throw new Error(error.error || "Failed to generate summary");
+      }
+
+      const result = await response.json();
+
+      const { data: updatedMeeting } = await fetch(`/api/meetings/${meeting.id}`).then((r) => r.json());
+      if (updatedMeeting) {
+        setMeeting(updatedMeeting);
+        toast.success(result.fallback ? "Basic summary generated" : "AI summary generated!");
+      }
+    } catch (error) {
+      console.error("Summarization error:", error);
+      toast.error(error instanceof Error ? error.message : "Failed to generate summary");
+    } finally {
+      setIsSummarizing(false);
+    }
   };
 
   const tabs = [
@@ -57,6 +167,36 @@ export function MeetingDetail({ meeting: initialMeeting }: MeetingDetailProps) {
           Back to meetings
         </Link>
         <div className="flex gap-2">
+          {!meeting.transcript && meeting.audio_url && (
+            <Button variant="glow" size="sm" onClick={handleTranscribe} disabled={isTranscribing} className="shadow-lg">
+              {isTranscribing ? (
+                <>
+                  <Loader2 className="w-4 h-4 mr-2 animate-spin" />
+                  Transcribing...
+                </>
+              ) : (
+                <>
+                  <Bot className="w-4 h-4 mr-2" />
+                  Transcribe
+                </>
+              )}
+            </Button>
+          )}
+          {meeting.transcript && !meeting.summary && (
+            <Button variant="glow" size="sm" onClick={handleSummarize} disabled={isSummarizing} className="shadow-lg">
+              {isSummarizing ? (
+                <>
+                  <Loader2 className="w-4 h-4 mr-2 animate-spin" />
+                  Summarizing...
+                </>
+              ) : (
+                <>
+                  <Bot className="w-4 h-4 mr-2" />
+                  Generate Summary
+                </>
+              )}
+            </Button>
+          )}
           <Button
             variant="glass"
             size="sm"
@@ -150,7 +290,24 @@ export function MeetingDetail({ meeting: initialMeeting }: MeetingDetailProps) {
               ) : (
                 <div className="text-center py-12">
                   <FileText className="w-12 h-12 text-white/20 mx-auto mb-4" />
-                  <p className="text-white/50 italic">Transcript will be available after AI processing is complete.</p>
+                  <p className="text-white/50 italic mb-4">
+                    Transcript will be available after AI processing is complete.
+                  </p>
+                  {meeting.audio_url && !isTranscribing && (
+                    <Button variant="glow" onClick={handleTranscribe} className="shadow-lg">
+                      <Bot className="w-4 h-4 mr-2" />
+                      Generate Transcript
+                    </Button>
+                  )}
+                  {isTranscribing && (
+                    <div className="flex items-center justify-center gap-2 text-white/60">
+                      <Loader2 className="w-5 h-5 animate-spin" />
+                      <span>Processing audio... This may take a few minutes.</span>
+                      {transcriptId && (
+                        <span className="text-xs text-white/40">(ID: {transcriptId.substring(0, 8)}...)</span>
+                      )}
+                    </div>
+                  )}
                 </div>
               )}
             </div>
@@ -222,7 +379,22 @@ export function MeetingDetail({ meeting: initialMeeting }: MeetingDetailProps) {
               ) : (
                 <div className="text-center py-12">
                   <Lightbulb className="w-12 h-12 text-white/20 mx-auto mb-4" />
-                  <p className="text-white/50 italic">Summary will be available after AI processing is complete.</p>
+                  <p className="text-white/50 italic mb-4">
+                    Summary will be available after AI processing is complete.
+                  </p>
+                  {meeting.transcript && !isSummarizing && (
+                    <Button variant="glow" onClick={handleSummarize} className="shadow-lg">
+                      <Bot className="w-4 h-4 mr-2" />
+                      Generate Summary
+                    </Button>
+                  )}
+                  {isSummarizing && (
+                    <div className="flex items-center justify-center gap-2 text-white/60">
+                      <Loader2 className="w-5 h-5 animate-spin" />
+                      <span>Generating AI summary...</span>
+                    </div>
+                  )}
+                  {!meeting.transcript && <p className="text-white/40 text-sm mt-2">Transcript required first</p>}
                 </div>
               )}
             </div>

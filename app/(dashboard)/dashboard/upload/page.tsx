@@ -74,7 +74,7 @@ export default function UploadPage() {
       );
 
       // Create meeting record
-      await createMeeting.mutateAsync({
+      const newMeeting = await createMeeting.mutateAsync({
         title: formData.title,
         description: formData.description || null,
         audio_url: uploadResult.url,
@@ -86,6 +86,17 @@ export default function UploadPage() {
 
       // Reset progress after a delay
       setTimeout(() => setUploadProgress(0), 1000);
+
+      // Automatically start transcription
+      if (newMeeting && process.env.NEXT_PUBLIC_ASSEMBLYAI_ENABLED === "true") {
+        fetch(`/api/meetings/${newMeeting.id}/transcribe`, { method: "POST" })
+          .then(() => {
+            toast.info("AI transcription started in the background");
+          })
+          .catch((err) => {
+            console.error("Failed to start auto-transcription:", err);
+          });
+      }
 
       router.push("/dashboard");
     } catch (error) {
