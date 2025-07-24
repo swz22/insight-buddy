@@ -98,12 +98,10 @@ export class AssemblyAIService {
 
     if (!response.ok) {
       const errorText = await response.text();
-      console.error("AssemblyAI API error:", response.status, errorText);
       throw new Error(`Failed to create transcript: ${response.status} - ${errorText}`);
     }
 
     const data = await response.json();
-    console.log("AssemblyAI response status:", data.status);
 
     // Check if we got an error response
     if (data.status === "error" && data.error) {

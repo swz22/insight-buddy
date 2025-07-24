@@ -44,7 +44,6 @@ export function MeetingDetail({ meeting: initialMeeting }: MeetingDetailProps) {
 
   useEffect(() => {
     if (meeting.transcript_id && !meeting.transcript) {
-      console.log("Found ongoing transcription:", meeting.transcript_id);
       setIsTranscribing(true);
       startPolling(meeting.transcript_id);
     }
@@ -90,7 +89,9 @@ export function MeetingDetail({ meeting: initialMeeting }: MeetingDetailProps) {
             toast.success("Transcription complete!");
 
             if (!updatedMeeting.summary) {
-              handleSummarize();
+              setTimeout(() => {
+                handleSummarize(updatedMeeting);
+              }, 100);
             }
           }
         } else if (checkResult.status === "error") {
@@ -146,15 +147,17 @@ export function MeetingDetail({ meeting: initialMeeting }: MeetingDetailProps) {
     }
   };
 
-  const handleSummarize = async () => {
-    if (!meeting.transcript) {
+  const handleSummarize = async (meetingData?: Meeting) => {
+    const meetingToUse = meetingData || meeting;
+
+    if (!meetingToUse.transcript) {
       toast.error("Transcript required for summarization");
       return;
     }
 
     setIsSummarizing(true);
     try {
-      const response = await fetch(`/api/meetings/${meeting.id}/summarize`, {
+      const response = await fetch(`/api/meetings/${meetingToUse.id}/summarize`, {
         method: "POST",
       });
 
@@ -166,7 +169,7 @@ export function MeetingDetail({ meeting: initialMeeting }: MeetingDetailProps) {
       const result = await response.json();
 
       // Refresh meeting data
-      const meetingResponse = await fetch(`/api/meetings/${meeting.id}`);
+      const meetingResponse = await fetch(`/api/meetings/${meetingToUse.id}`);
       const updatedMeeting = await meetingResponse.json();
       if (updatedMeeting) {
         setMeeting(updatedMeeting);
@@ -213,7 +216,13 @@ export function MeetingDetail({ meeting: initialMeeting }: MeetingDetailProps) {
             </Button>
           )}
           {meeting.transcript && !meeting.summary && (
-            <Button variant="glow" size="sm" onClick={handleSummarize} disabled={isSummarizing} className="shadow-lg">
+            <Button
+              variant="glow"
+              size="sm"
+              onClick={() => handleSummarize()}
+              disabled={isSummarizing}
+              className="shadow-lg"
+            >
               {isSummarizing ? (
                 <>
                   <Loader2 className="w-4 h-4 mr-2 animate-spin" />
@@ -421,7 +430,7 @@ export function MeetingDetail({ meeting: initialMeeting }: MeetingDetailProps) {
                     Summary will be available after AI processing is complete.
                   </p>
                   {meeting.transcript && !isSummarizing && (
-                    <Button variant="glow" onClick={handleSummarize} className="shadow-lg">
+                    <Button variant="glow" onClick={() => handleSummarize()} className="shadow-lg">
                       <Bot className="w-4 h-4 mr-2" />
                       Generate Summary
                     </Button>
