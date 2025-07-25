@@ -5,6 +5,7 @@ import { X, Save, Loader2 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { useToast } from "@/hooks/use-toast";
+import { useUpdateMeeting } from "@/hooks/use-meetings";
 import { Database } from "@/types/supabase";
 import { meetingFormSchema, type MeetingFormData } from "@/lib/validations/meeting";
 import { z } from "zod";
@@ -21,7 +22,7 @@ interface EditMeetingDialogProps {
 
 export function EditMeetingDialog({ meeting, isOpen, onClose, onUpdate }: EditMeetingDialogProps) {
   const toast = useToast();
-  const [isSubmitting, setIsSubmitting] = useState(false);
+  const updateMeeting = useUpdateMeeting();
   const [formData, setFormData] = useState({
     title: meeting.title,
     description: meeting.description || "",
@@ -42,32 +43,21 @@ export function EditMeetingDialog({ meeting, isOpen, onClose, onUpdate }: EditMe
       }
     }
 
-    setIsSubmitting(true);
-
     try {
-      const response = await fetch(`/api/meetings/${meeting.id}`, {
-        method: "PATCH",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
+      const updatedMeeting = await updateMeeting.mutateAsync({
+        id: meeting.id,
+        data: {
           title: formData.title,
           description: formData.description || null,
-        }),
+        },
       });
 
-      if (!response.ok) {
-        const error = await response.json();
-        throw new Error(error.error || "Failed to update meeting");
-      }
-
-      const updatedMeeting = await response.json();
       onUpdate(updatedMeeting);
       toast.success("Meeting updated successfully");
       onClose();
     } catch (error) {
       console.error("Error updating meeting:", error);
       toast.error(error instanceof Error ? error.message : "Failed to update meeting");
-    } finally {
-      setIsSubmitting(false);
     }
   };
 
@@ -135,8 +125,8 @@ export function EditMeetingDialog({ meeting, isOpen, onClose, onUpdate }: EditMe
 
             {/* Actions */}
             <div className="flex gap-3 pt-4">
-              <Button type="submit" variant="glow" disabled={isSubmitting} className="flex-1 shadow-lg">
-                {isSubmitting ? (
+              <Button type="submit" variant="glow" disabled={updateMeeting.isPending} className="flex-1 shadow-lg">
+                {updateMeeting.isPending ? (
                   <>
                     <Loader2 className="w-4 h-4 mr-2 animate-spin" />
                     Saving...
@@ -152,7 +142,7 @@ export function EditMeetingDialog({ meeting, isOpen, onClose, onUpdate }: EditMe
                 type="button"
                 variant="glass"
                 onClick={onClose}
-                disabled={isSubmitting}
+                disabled={updateMeeting.isPending}
                 className="hover:border-red-400/50 hover:text-red-300"
               >
                 Cancel

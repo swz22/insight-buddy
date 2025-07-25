@@ -2,7 +2,7 @@
 
 import { useState } from "react";
 import { Button } from "@/components/ui/button";
-import { useMeetings } from "@/hooks/use-meetings";
+import { useMeetings, useDeleteMeeting } from "@/hooks/use-meetings";
 import { useMeetingFilters } from "@/hooks/use-meeting-filters";
 import { MeetingCard } from "./meeting-card";
 import { EditMeetingDialog } from "./edit-meeting-dialog";
@@ -14,6 +14,7 @@ import Link from "next/link";
 import { useToast } from "@/hooks/use-toast";
 import { FileText } from "lucide-react";
 import { SkeletonCard } from "@/components/ui/skeleton";
+import { VirtualMeetingsList } from "@/components/meetings/virtual-meetings-list";
 
 type Meeting = Database["public"]["Tables"]["meetings"]["Row"];
 
@@ -26,6 +27,7 @@ export function MeetingsList({ userEmail }: MeetingsListProps) {
   const queryClient = useQueryClient();
   const toast = useToast();
   const { data: meetings, isLoading, error } = useMeetings();
+  const deleteMeeting = useDeleteMeeting();
   const [editingMeeting, setEditingMeeting] = useState<Meeting | null>(null);
 
   const { searchTerm, setSearchTerm, dateRange, setDateRange, filteredMeetings, clearFilters, hasActiveFilters } =
@@ -43,13 +45,7 @@ export function MeetingsList({ userEmail }: MeetingsListProps) {
     if (!confirm("Are you sure you want to delete this meeting?")) return;
 
     try {
-      const response = await fetch(`/api/meetings/${id}`, { method: "DELETE" });
-      if (!response.ok) {
-        const error = await response.json();
-        throw new Error(error.error || "Failed to delete");
-      }
-
-      queryClient.invalidateQueries({ queryKey: ["meetings"] });
+      await deleteMeeting.mutateAsync(id);
       toast.success("Meeting deleted successfully");
     } catch (error) {
       console.error("Failed to delete meeting:", error);
@@ -126,13 +122,24 @@ export function MeetingsList({ userEmail }: MeetingsListProps) {
               <div className="mb-4 text-sm text-white/50 animate-fade-in">
                 Showing {filteredMeetings.length} of {meetings.length} meetings
               </div>
-              <div className="grid gap-6 md:grid-cols-2 lg:grid-cols-3">
-                {filteredMeetings.map((meeting) => (
-                  <div key={meeting.id} className="stagger-animation">
-                    <MeetingCard meeting={meeting} onView={handleView} onEdit={handleEdit} onDelete={handleDelete} />
-                  </div>
-                ))}
-              </div>
+
+              {/* Use virtual scrolling for large lists */}
+              {filteredMeetings.length > 12 ? (
+                <VirtualMeetingsList
+                  meetings={filteredMeetings}
+                  onView={handleView}
+                  onEdit={handleEdit}
+                  onDelete={handleDelete}
+                />
+              ) : (
+                <div className="grid gap-6 md:grid-cols-2 lg:grid-cols-3">
+                  {filteredMeetings.map((meeting) => (
+                    <div key={meeting.id} className="stagger-animation">
+                      <MeetingCard meeting={meeting} onView={handleView} onEdit={handleEdit} onDelete={handleDelete} />
+                    </div>
+                  ))}
+                </div>
+              )}
             </>
           )}
         </>
