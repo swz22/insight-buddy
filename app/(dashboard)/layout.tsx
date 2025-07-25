@@ -1,7 +1,7 @@
 import { createClient } from "@/lib/supabase/server";
 import { redirect } from "next/navigation";
 import { ReactNode } from "react";
-import { Home, Upload, Settings, LogOut } from "lucide-react";
+import { Home, Upload, BarChart3, LogOut } from "lucide-react";
 import Link from "next/link";
 
 interface DashboardLayoutProps {
@@ -21,6 +21,7 @@ export default async function DashboardLayout({ children }: DashboardLayoutProps
 
   const navItems = [
     { href: "/dashboard", icon: Home, label: "Dashboard" },
+    { href: "/dashboard/analytics", icon: BarChart3, label: "Analytics" },
     { href: "/dashboard/upload", icon: Upload, label: "Upload" },
   ];
 
