@@ -15,12 +15,14 @@ import {
   User,
   Bot,
   Loader2,
+  Share2,
 } from "lucide-react";
 import Link from "next/link";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Database } from "@/types/supabase";
 import { EditMeetingDialog } from "./edit-meeting-dialog";
+import { ShareDialog } from "./share-dialog";
 import { AudioPlayer } from "@/components/audio/audio-player";
 import { cn } from "@/lib/utils";
 import { useToast } from "@/hooks/use-toast";
@@ -38,6 +40,7 @@ export function MeetingDetail({ meeting: initialMeeting }: MeetingDetailProps) {
   const [meeting, setMeeting] = useState(initialMeeting);
   const [activeTab, setActiveTab] = useState<"transcript" | "summary" | "actions">("transcript");
   const [isEditDialogOpen, setIsEditDialogOpen] = useState(false);
+  const [isShareDialogOpen, setIsShareDialogOpen] = useState(false);
   const [isTranscribing, setIsTranscribing] = useState(false);
   const [isSummarizing, setIsSummarizing] = useState(false);
   const pollIntervalRef = useRef<NodeJS.Timeout | null>(null);
@@ -236,6 +239,15 @@ export function MeetingDetail({ meeting: initialMeeting }: MeetingDetailProps) {
               )}
             </Button>
           )}
+          <Button
+            variant="glass"
+            size="sm"
+            onClick={() => setIsShareDialogOpen(true)}
+            className="hover:border-cyan-400/60"
+          >
+            <Share2 className="w-4 h-4 mr-2" />
+            Share
+          </Button>
           <Button
             variant="glass"
             size="sm"
@@ -515,6 +527,13 @@ export function MeetingDetail({ meeting: initialMeeting }: MeetingDetailProps) {
         isOpen={isEditDialogOpen}
         onClose={() => setIsEditDialogOpen(false)}
         onUpdate={(updatedMeeting) => setMeeting(updatedMeeting)}
+      />
+
+      <ShareDialog
+        meetingId={meeting.id}
+        meetingTitle={meeting.title}
+        isOpen={isShareDialogOpen}
+        onClose={() => setIsShareDialogOpen(false)}
       />
     </div>
   );
