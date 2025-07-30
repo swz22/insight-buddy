@@ -9,6 +9,10 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/com
 import { AudioPlayer } from "@/components/audio/audio-player";
 import { format } from "date-fns";
 import { cn } from "@/lib/utils";
+import { useCollaboration } from "@/hooks/use-collaboration";
+import { PresenceAvatars } from "@/components/collaboration/presence-avatars";
+import { CollaborativeTranscript } from "@/components/collaboration/collaborative-transcript";
+import { CollaborativeNotes } from "@/components/collaboration/collaborative-notes";
 
 interface SharedMeeting {
   id: string;
@@ -41,6 +45,42 @@ export default function SharePage() {
   const [shareInfo, setShareInfo] = useState<ShareInfo | null>(null);
   const [isVerifying, setIsVerifying] = useState(false);
   const [activeTab, setActiveTab] = useState<"transcript" | "summary" | "actions">("transcript");
+  const [userName, setUserName] = useState("");
+  const [hasJoined, setHasJoined] = useState(false);
+
+  const getUserColor = (name: string) => {
+    const colors = ["#8B5CF6", "#06B6D4", "#10B981", "#F59E0B", "#EF4444", "#EC4899", "#6366F1", "#84CC16"];
+    let hash = 0;
+    for (let i = 0; i < name.length; i++) {
+      hash = name.charCodeAt(i) + ((hash << 5) - hash);
+    }
+    return colors[Math.abs(hash) % colors.length];
+  };
+
+  const userInfo = {
+    name: userName || "Anonymous",
+    email: undefined,
+    avatar_url: undefined,
+    color: getUserColor(userName || "Anonymous"),
+  };
+
+  const {
+    presence,
+    annotations,
+    notes,
+    isConnected,
+    activeUsers,
+    addHighlight,
+    addComment,
+    updateNotes,
+    updateStatus,
+  } = useCollaboration(meeting?.id || "", token, hasJoined && userName ? userInfo : { name: "", color: "" });
+
+  const handleNotesChange = (newNotes: string) => {
+    updateStatus("typing");
+    updateNotes(newNotes);
+    setTimeout(() => updateStatus("active"), 2000);
+  };
 
   useEffect(() => {
     fetchSharedMeeting();
@@ -184,7 +224,44 @@ export default function SharePage() {
     );
   }
 
-  if (!meeting) return null;
+  if (!meeting || !hasJoined) {
+    return (
+      <div className="min-h-screen bg-black flex items-center justify-center p-4">
+        <Card className="max-w-md w-full">
+          <CardHeader className="text-center">
+            <CardTitle className="text-2xl font-display">
+              Join <span className="gradient-text">Meeting</span>
+            </CardTitle>
+            <CardDescription>Enter your name to join the collaborative session</CardDescription>
+          </CardHeader>
+          <CardContent>
+            <form
+              onSubmit={(e) => {
+                e.preventDefault();
+                if (userName.trim()) {
+                  setHasJoined(true);
+                }
+              }}
+              className="space-y-4"
+            >
+              <Input
+                type="text"
+                value={userName}
+                onChange={(e) => setUserName(e.target.value)}
+                placeholder="Your name"
+                required
+                className="bg-white/[0.03] border-white/20"
+                autoFocus
+              />
+              <Button type="submit" variant="glow" className="w-full" disabled={!userName.trim()}>
+                Join Meeting
+              </Button>
+            </form>
+          </CardContent>
+        </Card>
+      </div>
+    );
+  }
 
   const tabs = [
     { id: "transcript" as const, label: "Transcript", icon: FileText },
@@ -196,16 +273,25 @@ export default function SharePage() {
     <div className="min-h-screen bg-black">
       <div className="max-w-7xl mx-auto py-6 px-4 sm:px-6 lg:px-8">
         <div className="space-y-6 animate-fade-in">
-          {/* Header */}
-          <div className="text-center mb-8">
-            <h1 className="text-3xl font-bold font-display text-white mb-2">
-              Shared <span className="gradient-text">Meeting</span>
-            </h1>
-            {shareInfo && (
-              <p className="text-sm text-white/50">
-                Shared {format(new Date(shareInfo.created_at), "PPP")} · Viewed {shareInfo.access_count} times
-                {shareInfo.expires_at && <> · Expires {format(new Date(shareInfo.expires_at), "PPP")}</>}
-              </p>
+          {/* Header with presence */}
+          <div className="flex items-center justify-between mb-8">
+            <div className="text-center flex-1">
+              <h1 className="text-3xl font-bold font-display text-white mb-2">
+                Shared <span className="gradient-text">Meeting</span>
+              </h1>
+              {shareInfo && (
+                <p className="text-sm text-white/50">
+                  Shared {format(new Date(shareInfo.created_at), "PPP")} · Viewed {shareInfo.access_count} times
+                  {shareInfo.expires_at && <> · Expires {format(new Date(shareInfo.expires_at), "PPP")}</>}
+                </p>
+              )}
+            </div>
+
+            {/* Presence avatars */}
+            {isConnected && (
+              <div className="absolute top-6 right-6">
+                <PresenceAvatars presence={presence} />
+              </div>
             )}
           </div>
 
@@ -281,7 +367,13 @@ export default function SharePage() {
               {activeTab === "transcript" && (
                 <div className="prose prose-invert max-w-none">
                   {meeting.transcript ? (
-                    <div className="whitespace-pre-wrap text-white/80 leading-relaxed">{meeting.transcript}</div>
+                    <CollaborativeTranscript
+                      transcript={meeting.transcript}
+                      annotations={annotations}
+                      onAddHighlight={addHighlight}
+                      onAddComment={addComment}
+                      currentUserColor={userInfo.color}
+                    />
                   ) : (
                     <div className="text-center py-12 text-white/50 italic">No transcript available</div>
                   )}
@@ -331,6 +423,25 @@ export default function SharePage() {
                   )}
                 </div>
               )}
+            </CardContent>
+          </Card>
+
+          {/* Collaborative Notes */}
+          <Card className="shadow-xl">
+            <CardContent className="p-0">
+              <CollaborativeNotes
+                notes={notes}
+                onNotesChange={handleNotesChange}
+                isTyping={activeUsers.some((u) => u.status === "typing" && u.user_info.name !== userInfo.name)}
+                lastEditedBy={
+                  activeUsers.length > 0
+                    ? {
+                        name: activeUsers[0].user_info.name,
+                        color: activeUsers[0].user_info.color,
+                      }
+                    : undefined
+                }
+              />
             </CardContent>
           </Card>
 
