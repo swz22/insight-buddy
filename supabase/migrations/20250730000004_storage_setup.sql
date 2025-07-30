@@ -1,11 +1,24 @@
-UPDATE storage.buckets 
-SET public = false 
-WHERE id = 'meeting-recordings';
+INSERT INTO storage.buckets (id, name, public, file_size_limit, allowed_mime_types)
+VALUES (
+  'meeting-recordings',
+  'meeting-recordings', 
+  false,
+  524288000, -- 500MB
+  ARRAY[
+    'audio/mpeg',
+    'audio/mp3', 
+    'audio/wav',
+    'audio/x-wav',
+    'audio/m4a',
+    'audio/x-m4a',
+    'audio/webm',
+    'video/mp4',
+    'video/webm',
+    'video/quicktime'
+  ]
+);
 
-DROP POLICY IF EXISTS "Users can upload their own recordings" ON storage.objects;
-DROP POLICY IF EXISTS "Users can view their own recordings" ON storage.objects;
-DROP POLICY IF EXISTS "Users can delete their own recordings" ON storage.objects;
-
+-- Storage policies
 CREATE POLICY "Authenticated users can upload recordings" ON storage.objects
 FOR INSERT TO authenticated
 WITH CHECK (
