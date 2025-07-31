@@ -1,9 +1,10 @@
 "use client";
 
 import { useEffect, useState, useCallback, useRef } from "react";
-import { createClient } from "@/lib/supabase/client";
+import { createClientWithFallback } from "@/lib/supabase/client-with-fallback";
 import { RealtimeChannel } from "@supabase/supabase-js";
 import { useToast } from "@/hooks/use-toast";
+import { isEdgeBrowser } from "@/lib/utils/browser-detection";
 
 interface UserInfo {
   name: string;
@@ -38,6 +39,21 @@ interface CollaborationState {
   isConnected: boolean;
 }
 
+function isPresence(obj: any): obj is Presence {
+  return (
+    obj &&
+    typeof obj === "object" &&
+    "user_info" in obj &&
+    obj.user_info &&
+    typeof obj.user_info === "object" &&
+    "name" in obj.user_info &&
+    typeof obj.user_info.name === "string" &&
+    "status" in obj &&
+    ["active", "idle", "typing"].includes(obj.status) &&
+    "joined_at" in obj
+  );
+}
+
 export function useCollaboration(meetingId: string, shareToken: string, userInfo: UserInfo) {
   const toast = useToast();
   const [state, setState] = useState<CollaborationState>({
@@ -48,7 +64,9 @@ export function useCollaboration(meetingId: string, shareToken: string, userInfo
   });
 
   const channelRef = useRef<RealtimeChannel | null>(null);
-  const supabase = createClient();
+  const supabaseRef = useRef(createClientWithFallback());
+  const presenceRef = useRef<Record<string, Presence>>({});
+  const isEdge = useRef(isEdgeBrowser());
 
   useEffect(() => {
     if (!meetingId || !shareToken || !userInfo.name) {
@@ -60,143 +78,213 @@ export function useCollaboration(meetingId: string, shareToken: string, userInfo
       return;
     }
 
-    console.log("Initializing collaboration with user:", userInfo);
+    const supabase = supabaseRef.current;
+    let isMounted = true;
 
     const initializeCollaboration = async () => {
-      // Fetch existing annotations
-      const { data: annotations } = await supabase
-        .from("meeting_annotations")
-        .select("*")
-        .eq("meeting_id", meetingId)
-        .eq("share_token", shareToken)
-        .order("created_at", { ascending: true });
+      try {
+        if (isEdge.current) {
+          console.log("Edge browser detected - using compatibility mode");
+        }
 
-      // Fetch collaborative notes
-      const { data: notesData } = await supabase
-        .from("meeting_notes")
-        .select("*")
-        .eq("meeting_id", meetingId)
-        .eq("share_token", shareToken)
-        .single();
+        const {
+          data: { session },
+        } = await supabase.auth.getSession();
+        console.log("Collaboration session status:", session ? "authenticated" : "anonymous");
 
-      setState((prev) => ({
-        ...prev,
-        annotations: annotations || [],
-        notes: notesData?.content || "",
-      }));
+        // Fetch existing annotations
+        const { data: annotations, error: annotationsError } = await supabase
+          .from("meeting_annotations")
+          .select("*")
+          .eq("meeting_id", meetingId)
+          .eq("share_token", shareToken)
+          .order("created_at", { ascending: true });
 
-      // Set up real-time channel
-      const channel = supabase.channel(`meeting:${shareToken}`, {
-        config: {
-          presence: {
-            key: userInfo.email || `anon-${Date.now()}`,
-          },
-        },
-      });
+        if (annotationsError) {
+          console.error("Failed to fetch annotations:", annotationsError);
+        }
 
-      // Handle presence sync
-      channel
-        .on("presence", { event: "sync" }, () => {
-          const state = channel.presenceState();
-          const presenceState: Record<string, Presence> = {};
+        // Fetch collaborative notes
+        const { data: notesData, error: notesError } = await supabase
+          .from("meeting_notes")
+          .select("*")
+          .eq("meeting_id", meetingId)
+          .eq("share_token", shareToken)
+          .single();
 
-          for (const [key, presences] of Object.entries(state)) {
-            if (Array.isArray(presences) && presences.length > 0) {
-              const presence = presences[0] as any;
-              if (presence && presence.user_info) {
-                presenceState[key] = {
-                  user_info: presence.user_info,
-                  status: presence.status || "active",
-                  cursor_position: presence.cursor_position,
-                  joined_at: presence.joined_at || new Date().toISOString(),
-                };
-              }
-            }
-          }
+        if (notesError && notesError.code !== "PGRST116") {
+          console.error("Failed to fetch notes:", notesError);
+        }
 
+        if (isMounted) {
           setState((prev) => ({
             ...prev,
-            presence: presenceState,
+            annotations: annotations || [],
+            notes: notesData?.content || "",
           }));
-        })
-        .on("presence", { event: "join" }, ({ key, newPresences }) => {
-          console.log("User joined:", key, newPresences);
-        })
-        .on("presence", { event: "leave" }, ({ key, leftPresences }) => {
-          console.log("User left:", key, leftPresences);
+        }
+
+        const channelName = `meeting-${shareToken}`;
+
+        const channel = supabase.channel(channelName, {
+          config: {
+            presence: {
+              key: `${shareToken}-${userInfo.name}-${Date.now()}`,
+            },
+            broadcast: {
+              self: true, // Include own broadcasts for Edge compatibility
+            },
+          },
         });
 
-      // Handle broadcast events
-      channel
-        .on("broadcast", { event: "annotation" }, ({ payload }) => {
-          setState((prev) => ({
-            ...prev,
-            annotations: [...prev.annotations, payload],
-          }));
-        })
-        .on("broadcast", { event: "annotation_delete" }, ({ payload }) => {
-          setState((prev) => ({
-            ...prev,
-            annotations: prev.annotations.filter((a) => a.id !== payload.id),
-          }));
-        })
-        .on("broadcast", { event: "notes_update" }, ({ payload }) => {
-          setState((prev) => ({
-            ...prev,
-            notes: payload.content,
-          }));
-        })
-        .on("broadcast", { event: "cursor_move" }, ({ payload }) => {
-          setState((prev) => {
-            const currentPresence = prev.presence[payload.user_key];
-            if (currentPresence) {
-              return {
+        // Handle presence sync
+        channel
+          .on("presence", { event: "sync" }, () => {
+            if (!isMounted) return;
+
+            const presenceState = channel.presenceState();
+            const newPresence: Record<string, Presence> = {};
+
+            Object.entries(presenceState).forEach(([key, presences]) => {
+              if (Array.isArray(presences) && presences.length > 0) {
+                const presenceData = presences[0];
+
+                if (isPresence(presenceData)) {
+                  newPresence[key] = presenceData;
+                }
+              }
+            });
+
+            presenceRef.current = newPresence;
+            setState((prev) => ({
+              ...prev,
+              presence: newPresence,
+            }));
+          })
+          .on("presence", { event: "join" }, ({ key, newPresences }: any) => {
+            console.log("User joined:", key, newPresences);
+            if (!isMounted) return;
+
+            if (Array.isArray(newPresences) && newPresences.length > 0) {
+              const presenceData = newPresences[0];
+              if (isPresence(presenceData)) {
+                toast.info(`${presenceData.user_info.name} joined the session`);
+              }
+            }
+          })
+          .on("presence", { event: "leave" }, ({ key, leftPresences }: any) => {
+            console.log("User left:", key, leftPresences);
+            if (!isMounted) return;
+
+            if (Array.isArray(leftPresences) && leftPresences.length > 0) {
+              const presenceData = leftPresences[0];
+              if (isPresence(presenceData)) {
+                toast.info(`${presenceData.user_info.name} left the session`);
+              }
+            }
+          });
+
+        // Handle broadcast events
+        channel
+          .on("broadcast", { event: "annotation" }, ({ payload }) => {
+            if (!isMounted) return;
+            console.log("Received annotation:", payload);
+            setState((prev) => ({
+              ...prev,
+              annotations: [...prev.annotations, payload],
+            }));
+          })
+          .on("broadcast", { event: "annotation_delete" }, ({ payload }) => {
+            if (!isMounted) return;
+            setState((prev) => ({
+              ...prev,
+              annotations: prev.annotations.filter((a) => a.id !== payload.id),
+            }));
+          })
+          .on("broadcast", { event: "notes_update" }, ({ payload }) => {
+            if (!isMounted) return;
+            setState((prev) => ({
+              ...prev,
+              notes: payload.content,
+            }));
+          })
+          .on("broadcast", { event: "status_update" }, ({ payload }: any) => {
+            if (!isMounted) return;
+            const key = payload.user_key;
+            if (presenceRef.current[key]) {
+              const updatedPresence = {
+                ...presenceRef.current[key],
+                status: payload.status,
+              };
+              presenceRef.current[key] = updatedPresence;
+              setState((prev) => ({
                 ...prev,
                 presence: {
                   ...prev.presence,
-                  [payload.user_key]: {
-                    ...currentPresence,
-                    cursor_position: payload.position,
-                  },
+                  [key]: updatedPresence,
                 },
-              };
+              }));
             }
-            return prev;
           });
+
+        const subscription = channel.subscribe(async (status) => {
+          console.log("Channel subscription status:", status);
+
+          if (status === "SUBSCRIBED") {
+            if (isMounted) {
+              setState((prev) => ({ ...prev, isConnected: true }));
+            }
+
+            const presenceData: Presence = {
+              user_info: userInfo,
+              status: "active",
+              joined_at: new Date().toISOString(),
+            };
+
+            console.log("Tracking presence with:", presenceData);
+            await channel.track(presenceData);
+          } else if (status === "CLOSED") {
+            if (isMounted) {
+              setState((prev) => ({ ...prev, isConnected: false }));
+            }
+          } else if (status === "CHANNEL_ERROR") {
+            console.error("Channel error occurred");
+            if (isMounted) {
+              setState((prev) => ({ ...prev, isConnected: false }));
+              toast.error("Connection error. Trying to reconnect...");
+            }
+          }
         });
 
-      channel.subscribe(async (status) => {
-        if (status === "SUBSCRIBED") {
-          setState((prev) => ({ ...prev, isConnected: true }));
-
-          const trackData = {
-            user_info: userInfo,
-            status: "active",
-            joined_at: new Date().toISOString(),
-          };
-
-          console.log("Tracking presence with:", trackData);
-          await channel.track(trackData);
+        channelRef.current = channel;
+      } catch (error) {
+        console.error("Collaboration initialization error:", error);
+        if (isMounted) {
+          toast.error("Failed to initialize collaboration");
         }
-      });
-
-      channelRef.current = channel;
+      }
     };
 
     initializeCollaboration();
 
     // Cleanup
     return () => {
+      isMounted = false;
       if (channelRef.current) {
+        console.log("Cleaning up collaboration channel");
         channelRef.current.unsubscribe();
+        channelRef.current = null;
       }
     };
-  }, [meetingId, shareToken, userInfo.email]);
+  }, [meetingId, shareToken, userInfo.name, userInfo.color]);
 
   // Add highlight
   const addHighlight = useCallback(
     async (startLine: number, endLine: number, text: string) => {
-      if (!channelRef.current) return;
+      if (!channelRef.current) {
+        toast.error("Not connected to collaboration session");
+        return;
+      }
 
       const annotation: Omit<Annotation, "id" | "created_at"> = {
         meeting_id: meetingId,
@@ -207,34 +295,49 @@ export function useCollaboration(meetingId: string, shareToken: string, userInfo
         position: { start_line: startLine, end_line: endLine },
       };
 
-      // Save to database
-      const { data, error } = await supabase.from("meeting_annotations").insert(annotation).select().single();
+      try {
+        // Save to database
+        const { data, error } = await supabaseRef.current
+          .from("meeting_annotations")
+          .insert(annotation)
+          .select()
+          .single();
 
-      if (error) {
+        if (error) {
+          console.error("Failed to save highlight:", error);
+          toast.error("Failed to add highlight");
+          return;
+        }
+
+        // Broadcast to others
+        await channelRef.current.send({
+          type: "broadcast",
+          event: "annotation",
+          payload: data,
+        });
+
+        // Update local state
+        setState((prev) => ({
+          ...prev,
+          annotations: [...prev.annotations, data],
+        }));
+
+        toast.success("Highlight added");
+      } catch (error) {
+        console.error("Add highlight error:", error);
         toast.error("Failed to add highlight");
-        return;
       }
-
-      // Broadcast to others
-      channelRef.current.send({
-        type: "broadcast",
-        event: "annotation",
-        payload: data,
-      });
-
-      // Update local state
-      setState((prev) => ({
-        ...prev,
-        annotations: [...prev.annotations, data],
-      }));
     },
-    [meetingId, shareToken, userInfo, supabase, toast]
+    [meetingId, shareToken, userInfo, toast]
   );
 
   // Add comment
   const addComment = useCallback(
     async (lineNumber: number, text: string, parentId?: string) => {
-      if (!channelRef.current) return;
+      if (!channelRef.current) {
+        toast.error("Not connected to collaboration session");
+        return;
+      }
 
       const annotation: Omit<Annotation, "id" | "created_at"> = {
         meeting_id: meetingId,
@@ -246,28 +349,40 @@ export function useCollaboration(meetingId: string, shareToken: string, userInfo
         parent_id: parentId,
       };
 
-      // Save to database
-      const { data, error } = await supabase.from("meeting_annotations").insert(annotation).select().single();
+      try {
+        // Save to database
+        const { data, error } = await supabaseRef.current
+          .from("meeting_annotations")
+          .insert(annotation)
+          .select()
+          .single();
 
-      if (error) {
+        if (error) {
+          console.error("Failed to save comment:", error);
+          toast.error("Failed to add comment");
+          return;
+        }
+
+        // Broadcast to others
+        await channelRef.current.send({
+          type: "broadcast",
+          event: "annotation",
+          payload: data,
+        });
+
+        // Update local state
+        setState((prev) => ({
+          ...prev,
+          annotations: [...prev.annotations, data],
+        }));
+
+        toast.success("Comment added");
+      } catch (error) {
+        console.error("Add comment error:", error);
         toast.error("Failed to add comment");
-        return;
       }
-
-      // Broadcast to others
-      channelRef.current.send({
-        type: "broadcast",
-        event: "annotation",
-        payload: data,
-      });
-
-      // Update local state
-      setState((prev) => ({
-        ...prev,
-        annotations: [...prev.annotations, data],
-      }));
     },
-    [meetingId, shareToken, userInfo, supabase, toast]
+    [meetingId, shareToken, userInfo, toast]
   );
 
   const updateNotes = useCallback(
@@ -275,70 +390,96 @@ export function useCollaboration(meetingId: string, shareToken: string, userInfo
       if (!channelRef.current) return;
 
       try {
-        const { data: existingNotes } = await supabase
-          .from("meeting_notes")
-          .select("id")
-          .eq("meeting_id", meetingId)
-          .eq("share_token", shareToken)
-          .single();
-
-        if (existingNotes) {
-          const { error } = await supabase
-            .from("meeting_notes")
-            .update({
-              content,
-              last_edited_by: userInfo,
-              updated_at: new Date().toISOString(),
-            })
-            .eq("meeting_id", meetingId)
-            .eq("share_token", shareToken);
-
-          if (error) throw error;
-        } else {
-          const { error } = await supabase.from("meeting_notes").insert({
-            meeting_id: meetingId,
-            share_token: shareToken,
-            content,
-            last_edited_by: userInfo,
-          });
-
-          if (error) throw error;
-        }
-
-        // Broadcast to others
-        channelRef.current.send({
+        const broadcastResult = await channelRef.current.send({
           type: "broadcast",
           event: "notes_update",
-          payload: { content },
+          payload: {
+            content,
+            userInfo,
+            timestamp: Date.now(),
+          },
         });
 
-        // Update local state
+        console.log("Broadcast result:", broadcastResult);
+
         setState((prev) => ({
           ...prev,
           notes: content,
         }));
+
+        if (isEdge.current) {
+          console.log("Edge browser detected - using broadcast-only mode");
+          return;
+        }
+
+        try {
+          const { data: existingNotes, error: fetchError } = await supabaseRef.current
+            .from("meeting_notes")
+            .select("id")
+            .eq("meeting_id", meetingId)
+            .eq("share_token", shareToken)
+            .single();
+
+          if (fetchError && fetchError.code !== "PGRST116") {
+            console.error("Error checking existing notes:", fetchError);
+          }
+
+          if (existingNotes) {
+            const { error: updateError } = await supabaseRef.current
+              .from("meeting_notes")
+              .update({
+                content,
+                last_edited_by: userInfo,
+                updated_at: new Date().toISOString(),
+              })
+              .eq("meeting_id", meetingId)
+              .eq("share_token", shareToken);
+
+            if (updateError) {
+              console.error("Error updating notes in database:", updateError);
+            }
+          } else {
+            const { error: insertError } = await supabaseRef.current.from("meeting_notes").insert({
+              meeting_id: meetingId,
+              share_token: shareToken,
+              content,
+              last_edited_by: userInfo,
+            });
+
+            if (insertError) {
+              console.error("Error inserting notes in database:", insertError);
+            }
+          }
+        } catch (dbError) {
+          console.warn("Database operation failed, relying on broadcast:", dbError);
+        }
       } catch (error) {
         console.error("Failed to update notes:", error);
+        toast.error("Failed to share notes. Please check your connection.");
       }
     },
-    [meetingId, shareToken, userInfo, supabase]
+    [meetingId, shareToken, userInfo, toast]
   );
 
   // Update cursor position
   const updateCursor = useCallback(
-    (lineNumber: number, character: number) => {
+    async (lineNumber: number, character: number) => {
       if (!channelRef.current) return;
 
-      channelRef.current.send({
-        type: "broadcast",
-        event: "cursor_move",
-        payload: {
-          user_key: userInfo.email || `anon-${Date.now()}`,
-          position: { line_number: lineNumber, character },
-        },
-      });
+      try {
+        await channelRef.current.send({
+          type: "broadcast",
+          event: "cursor_move",
+          payload: {
+            user_key: `${shareToken}-${userInfo.name}-${Date.now()}`,
+            position: { line_number: lineNumber, character },
+          },
+        });
+      } catch (error) {
+        console.error("Failed to update cursor:", error);
+      }
     },
-    [userInfo.email]
+    [shareToken, userInfo.name]
   );
 
   // Update status
@@ -346,21 +487,37 @@ export function useCollaboration(meetingId: string, shareToken: string, userInfo
     async (status: "active" | "idle" | "typing") => {
       if (!channelRef.current) return;
 
-      await channelRef.current.track({
-        user_info: userInfo,
-        status,
-        joined_at: new Date().toISOString(),
-      });
+      try {
+        const presenceData: Presence = {
+          user_info: userInfo,
+          status,
+          joined_at: new Date().toISOString(),
+        };
+
+        await channelRef.current.track(presenceData);
+        await channelRef.current.send({
+          type: "broadcast",
+          event: "status_update",
+          payload: {
+            user_key: `${shareToken}-${userInfo.name}-${Date.now()}`,
+            status,
+          },
+        });
+      } catch (error) {
+        console.error("Failed to update status:", error);
+      }
     },
-    [userInfo]
+    [shareToken, userInfo]
   );
+
+  const activeUsers = Object.values(state.presence);
 
   return {
     presence: state.presence,
     annotations: state.annotations,
     notes: state.notes,
     isConnected: state.isConnected,
-    activeUsers: Object.values(state.presence).filter((p) => p.status === "active"),
+    activeUsers,
     addHighlight,
     addComment,
     updateNotes,

@@ -13,6 +13,7 @@ import { useCollaboration } from "@/hooks/use-collaboration";
 import { PresenceAvatars } from "@/components/collaboration/presence-avatars";
 import { CollaborativeTranscript } from "@/components/collaboration/collaborative-transcript";
 import { CollaborativeNotes } from "@/components/collaboration/collaborative-notes";
+import { createClientWithFallback } from "@/lib/supabase/client-with-fallback";
 
 interface SharedMeeting {
   id: string;
@@ -47,6 +48,7 @@ export default function SharePage() {
   const [activeTab, setActiveTab] = useState<"transcript" | "summary" | "actions">("transcript");
   const [userName, setUserName] = useState("");
   const [hasJoined, setHasJoined] = useState(false);
+  const [isInitializingAuth, setIsInitializingAuth] = useState(false);
 
   const getUserColor = (name: string) => {
     const colors = ["#8B5CF6", "#06B6D4", "#10B981", "#F59E0B", "#EF4444", "#EC4899", "#6366F1", "#84CC16"];
@@ -80,6 +82,54 @@ export default function SharePage() {
     updateStatus("typing");
     updateNotes(newNotes);
     setTimeout(() => updateStatus("active"), 2000);
+  };
+
+  const initializeAnonymousAuth = async () => {
+    setIsInitializingAuth(true);
+    try {
+      const supabase = createClientWithFallback();
+      const {
+        data: { session },
+        error: sessionError,
+      } = await supabase.auth.getSession();
+
+      if (sessionError) {
+        console.error("Session check error:", sessionError);
+      }
+
+      if (!session) {
+        const { data, error } = await supabase.auth.signInAnonymously();
+
+        if (error) {
+          console.error("Anonymous auth error:", error);
+          if (error.message?.includes("Anonymous sign-ins are disabled")) {
+            setError("Anonymous authentication is not enabled. Please contact the administrator.");
+            return false;
+          } else if (error.message?.includes("Database error")) {
+            console.warn("Database error during auth, proceeding without authenticated session");
+            return true;
+          } else {
+            setError(`Authentication error: ${error.message}`);
+            return false;
+          }
+        }
+
+        const {
+          data: { session: newSession },
+        } = await supabase.auth.getSession();
+        if (!newSession) {
+          console.warn("No session after anonymous auth, proceeding anyway");
+        }
+      }
+
+      return true;
+    } catch (error) {
+      console.error("Auth initialization error:", error);
+      console.warn("Proceeding without authenticated session");
+      return true;
+    } finally {
+      setIsInitializingAuth(false);
+    }
   };
 
   useEffect(() => {
@@ -150,6 +200,16 @@ export default function SharePage() {
       setError("Failed to verify password. Please try again.");
     } finally {
       setIsVerifying(false);
+    }
+  };
+
+  const handleJoinMeeting = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!userName.trim()) return;
+
+    const authSuccess = await initializeAnonymousAuth();
+    if (authSuccess) {
+      setHasJoined(true);
     }
   };
 
@@ -235,15 +295,7 @@ export default function SharePage() {
             <CardDescription>Enter your name to join the collaborative session</CardDescription>
           </CardHeader>
           <CardContent>
-            <form
-              onSubmit={(e) => {
-                e.preventDefault();
-                if (userName.trim()) {
-                  setHasJoined(true);
-                }
-              }}
-              className="space-y-4"
-            >
+            <form onSubmit={handleJoinMeeting} className="space-y-4">
               <Input
                 type="text"
                 value={userName}
@@ -253,8 +305,15 @@ export default function SharePage() {
                 className="bg-white/[0.03] border-white/20"
                 autoFocus
               />
-              <Button type="submit" variant="glow" className="w-full" disabled={!userName.trim()}>
-                Join Meeting
+              <Button type="submit" variant="glow" className="w-full" disabled={!userName.trim() || isInitializingAuth}>
+                {isInitializingAuth ? (
+                  <>
+                    <Loader2 className="w-4 h-4 mr-2 animate-spin" />
+                    Initializing...
+                  </>
+                ) : (
+                  "Join Meeting"
+                )}
               </Button>
             </form>
           </CardContent>
@@ -288,11 +347,15 @@ export default function SharePage() {
             </div>
 
             {/* Presence avatars */}
-            {isConnected && (
-              <div className="absolute top-6 right-6">
-                <PresenceAvatars presence={presence} />
-              </div>
-            )}
+            <div className="absolute top-6 right-6">
+              <PresenceAvatars presence={presence} currentUser={userInfo.name} />
+              {isConnected && (
+                <div className="flex items-center gap-2 mt-2">
+                  <div className="w-2 h-2 bg-green-400 rounded-full animate-pulse" />
+                  <span className="text-xs text-white/50">Connected</span>
+                </div>
+              )}
+            </div>
           </div>
 
           {/* Meeting Info */}
