@@ -67,6 +67,9 @@ export function useCollaboration(meetingId: string, shareToken: string, userInfo
   const supabaseRef = useRef(createClientWithFallback());
   const presenceRef = useRef<Record<string, Presence>>({});
   const isEdge = useRef(isEdgeBrowser());
+  const presenceKeyRef = useRef<string>("");
+  const hasJoinedRef = useRef(false);
+  const lastNotesUpdateRef = useRef<{ content: string; timestamp: number }>({ content: "", timestamp: 0 });
 
   useEffect(() => {
     if (!meetingId || !shareToken || !userInfo.name) {
@@ -81,16 +84,13 @@ export function useCollaboration(meetingId: string, shareToken: string, userInfo
     const supabase = supabaseRef.current;
     let isMounted = true;
 
+    presenceKeyRef.current = `${shareToken}-${userInfo.name}-${Date.now()}`;
+
     const initializeCollaboration = async () => {
       try {
         if (isEdge.current) {
           console.log("Edge browser detected - using compatibility mode");
         }
-
-        const {
-          data: { session },
-        } = await supabase.auth.getSession();
-        console.log("Collaboration session status:", session ? "authenticated" : "anonymous");
 
         // Fetch existing annotations
         const { data: annotations, error: annotationsError } = await supabase
@@ -122,6 +122,10 @@ export function useCollaboration(meetingId: string, shareToken: string, userInfo
             annotations: annotations || [],
             notes: notesData?.content || "",
           }));
+          lastNotesUpdateRef.current = {
+            content: notesData?.content || "",
+            timestamp: Date.now(),
+          };
         }
 
         const channelName = `meeting-${shareToken}`;
@@ -129,10 +133,10 @@ export function useCollaboration(meetingId: string, shareToken: string, userInfo
         const channel = supabase.channel(channelName, {
           config: {
             presence: {
-              key: `${shareToken}-${userInfo.name}-${Date.now()}`,
+              key: presenceKeyRef.current,
             },
             broadcast: {
-              self: true, // Include own broadcasts for Edge compatibility
+              self: false,
             },
           },
         });
@@ -163,22 +167,22 @@ export function useCollaboration(meetingId: string, shareToken: string, userInfo
           })
           .on("presence", { event: "join" }, ({ key, newPresences }: any) => {
             console.log("User joined:", key, newPresences);
-            if (!isMounted) return;
+            if (!isMounted || key === presenceKeyRef.current) return;
 
             if (Array.isArray(newPresences) && newPresences.length > 0) {
               const presenceData = newPresences[0];
-              if (isPresence(presenceData)) {
+              if (isPresence(presenceData) && presenceData.user_info.name !== userInfo.name) {
                 toast.info(`${presenceData.user_info.name} joined the session`);
               }
             }
           })
           .on("presence", { event: "leave" }, ({ key, leftPresences }: any) => {
             console.log("User left:", key, leftPresences);
-            if (!isMounted) return;
+            if (!isMounted || key === presenceKeyRef.current) return;
 
             if (Array.isArray(leftPresences) && leftPresences.length > 0) {
               const presenceData = leftPresences[0];
-              if (isPresence(presenceData)) {
+              if (isPresence(presenceData) && presenceData.user_info.name !== userInfo.name) {
                 toast.info(`${presenceData.user_info.name} left the session`);
               }
             }
@@ -203,15 +207,29 @@ export function useCollaboration(meetingId: string, shareToken: string, userInfo
           })
           .on("broadcast", { event: "notes_update" }, ({ payload }) => {
             if (!isMounted) return;
+
+            // Debounce notes updates
+            const now = Date.now();
+            if (now - lastNotesUpdateRef.current.timestamp < 100) {
+              return;
+            }
+
+            lastNotesUpdateRef.current = { content: payload.content, timestamp: now };
             setState((prev) => ({
               ...prev,
               notes: payload.content,
             }));
+
+            window.dispatchEvent(
+              new CustomEvent("notes_update", {
+                detail: { type: "notes_update", payload },
+              })
+            );
           })
           .on("broadcast", { event: "status_update" }, ({ payload }: any) => {
             if (!isMounted) return;
             const key = payload.user_key;
-            if (presenceRef.current[key]) {
+            if (presenceRef.current[key] && key !== presenceKeyRef.current) {
               const updatedPresence = {
                 ...presenceRef.current[key],
                 status: payload.status,
@@ -235,14 +253,18 @@ export function useCollaboration(meetingId: string, shareToken: string, userInfo
               setState((prev) => ({ ...prev, isConnected: true }));
             }
 
-            const presenceData: Presence = {
-              user_info: userInfo,
-              status: "active",
-              joined_at: new Date().toISOString(),
-            };
+            // Only track presence once per session
+            if (!hasJoinedRef.current) {
+              hasJoinedRef.current = true;
+              const presenceData: Presence = {
+                user_info: userInfo,
+                status: "active",
+                joined_at: new Date().toISOString(),
+              };
 
-            console.log("Tracking presence with:", presenceData);
-            await channel.track(presenceData);
+              console.log("Tracking presence with:", presenceData);
+              await channel.track(presenceData);
+            }
           } else if (status === "CLOSED") {
             if (isMounted) {
               setState((prev) => ({ ...prev, isConnected: false }));
@@ -270,6 +292,7 @@ export function useCollaboration(meetingId: string, shareToken: string, userInfo
     // Cleanup
     return () => {
       isMounted = false;
+      hasJoinedRef.current = false;
       if (channelRef.current) {
         console.log("Cleaning up collaboration channel");
         channelRef.current.unsubscribe();
@@ -406,12 +429,6 @@ export function useCollaboration(meetingId: string, shareToken: string, userInfo
           ...prev,
           notes: content,
         }));
-
-        if (isEdge.current) {
-          console.log("Edge browser detected - using broadcast-only mode");
-          return;
-        }
-
         try {
           const { data: existingNotes, error: fetchError } = await supabaseRef.current
             .from("meeting_notes")
@@ -455,32 +472,28 @@ export function useCollaboration(meetingId: string, shareToken: string, userInfo
         }
       } catch (error) {
         console.error("Failed to update notes:", error);
-        toast.error("Failed to share notes. Please check your connection.");
       }
     },
-    [meetingId, shareToken, userInfo, toast]
+    [meetingId, shareToken, userInfo]
   );
 
   // Update cursor position
-  const updateCursor = useCallback(
-    async (lineNumber: number, character: number) => {
-      if (!channelRef.current) return;
+  const updateCursor = useCallback(async (lineNumber: number, character: number) => {
+    if (!channelRef.current) return;
 
-      try {
-        await channelRef.current.send({
-          type: "broadcast",
-          event: "cursor_move",
-          payload: {
-            user_key: `${shareToken}-${userInfo.name}-${Date.now()}`,
-            position: { line_number: lineNumber, character },
-          },
-        });
-      } catch (error) {
-        console.error("Failed to update cursor:", error);
-      }
-    },
-    [shareToken, userInfo.name]
-  );
+    try {
+      await channelRef.current.send({
+        type: "broadcast",
+        event: "cursor_move",
+        payload: {
+          user_key: presenceKeyRef.current,
+          position: { line_number: lineNumber, character },
+        },
+      });
+    } catch (error) {
+      console.error("Failed to update cursor:", error);
+    }
+  }, []);
 
   // Update status
   const updateStatus = useCallback(
@@ -499,7 +512,7 @@ export function useCollaboration(meetingId: string, shareToken: string, userInfo
           type: "broadcast",
           event: "status_update",
           payload: {
-            user_key: `${shareToken}-${userInfo.name}-${Date.now()}`,
+            user_key: presenceKeyRef.current,
             status,
           },
         });
@@ -507,7 +520,7 @@ export function useCollaboration(meetingId: string, shareToken: string, userInfo
         console.error("Failed to update status:", error);
       }
     },
-    [shareToken, userInfo]
+    [userInfo]
   );
 
   const activeUsers = Object.values(state.presence);
