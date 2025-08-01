@@ -1,16 +1,18 @@
 "use client";
 
 import { useState, useRef, useEffect } from "react";
-import { MessageCircle, Highlighter } from "lucide-react";
+import { MessageCircle, Highlighter, X, Edit2, Check, Trash2 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
 import { motion, AnimatePresence } from "framer-motion";
+import { formatDistanceToNow } from "date-fns";
 
 interface UserInfo {
   name: string;
   email?: string;
   avatar_url?: string;
   color: string;
+  sessionId?: string;
 }
 
 interface Annotation {
@@ -30,7 +32,11 @@ interface CollaborativeTranscriptProps {
   annotations: Annotation[];
   onAddHighlight: (startLine: number, endLine: number, text: string) => void;
   onAddComment: (lineNumber: number, text: string, parentId?: string) => void;
+  onDeleteAnnotation?: (annotationId: string) => void;
+  onEditAnnotation?: (annotationId: string, newContent: string) => void;
   currentUserColor: string;
+  currentUserName?: string;
+  currentSessionId?: string;
 }
 
 export function CollaborativeTranscript({
@@ -38,11 +44,17 @@ export function CollaborativeTranscript({
   annotations,
   onAddHighlight,
   onAddComment,
+  onDeleteAnnotation,
+  onEditAnnotation,
   currentUserColor,
+  currentUserName,
+  currentSessionId,
 }: CollaborativeTranscriptProps) {
   const [selectedLines, setSelectedLines] = useState<number[]>([]);
   const [showCommentInput, setShowCommentInput] = useState<number | null>(null);
   const [commentText, setCommentText] = useState("");
+  const [editingComment, setEditingComment] = useState<string | null>(null);
+  const [editText, setEditText] = useState("");
   const transcriptRef = useRef<HTMLDivElement>(null);
   const lines = transcript.split("\n");
   const highlightsByLine = new Map<number, Annotation[]>();
@@ -64,14 +76,23 @@ export function CollaborativeTranscript({
   useEffect(() => {
     const handleSelection = () => {
       const selection = window.getSelection();
-      if (!selection || selection.isCollapsed) {
+      if (!selection || selection.isCollapsed || !transcriptRef.current) {
         setSelectedLines([]);
         return;
       }
 
       const range = selection.getRangeAt(0);
-      const startLine = parseInt(range.startContainer.parentElement?.dataset.line || "0");
-      const endLine = parseInt(range.endContainer.parentElement?.dataset.line || "0");
+      const startElement =
+        range.startContainer.nodeType === Node.TEXT_NODE
+          ? range.startContainer.parentElement
+          : (range.startContainer as HTMLElement);
+      const endElement =
+        range.endContainer.nodeType === Node.TEXT_NODE
+          ? range.endContainer.parentElement
+          : (range.endContainer as HTMLElement);
+
+      const startLine = parseInt(startElement?.dataset.line || "0");
+      const endLine = parseInt(endElement?.dataset.line || "0");
 
       if (startLine && endLine) {
         const lines = [];
@@ -83,7 +104,12 @@ export function CollaborativeTranscript({
     };
 
     document.addEventListener("mouseup", handleSelection);
-    return () => document.removeEventListener("mouseup", handleSelection);
+    document.addEventListener("selectionchange", handleSelection);
+
+    return () => {
+      document.removeEventListener("mouseup", handleSelection);
+      document.removeEventListener("selectionchange", handleSelection);
+    };
   }, []);
 
   const handleHighlight = () => {
@@ -106,6 +132,24 @@ export function CollaborativeTranscript({
     setShowCommentInput(null);
   };
 
+  const startEditingComment = (annotation: Annotation) => {
+    setEditingComment(annotation.id);
+    setEditText(annotation.content);
+  };
+
+  const saveEditedComment = (annotationId: string) => {
+    if (!editText.trim() || !onEditAnnotation) return;
+
+    onEditAnnotation(annotationId, editText);
+    setEditingComment(null);
+    setEditText("");
+  };
+
+  const canModifyAnnotation = (annotation: Annotation) => {
+    if (!currentSessionId) return false;
+    return annotation.user_info.sessionId === currentSessionId;
+  };
+
   return (
     <div className="relative">
       {/* Selection toolbar */}
@@ -115,7 +159,7 @@ export function CollaborativeTranscript({
             initial={{ opacity: 0, y: 10 }}
             animate={{ opacity: 1, y: 0 }}
             exit={{ opacity: 0, y: 10 }}
-            className="absolute top-0 left-0 right-0 flex justify-center z-10 pointer-events-none"
+            className="absolute top-0 left-0 right-0 flex justify-center z-20 pointer-events-none"
           >
             <div className="bg-black/90 backdrop-blur-sm rounded-lg shadow-lg p-2 flex gap-2 pointer-events-auto">
               <Button size="sm" variant="ghost" onClick={handleHighlight} className="text-white/90 hover:bg-white/10">
@@ -136,7 +180,7 @@ export function CollaborativeTranscript({
         )}
       </AnimatePresence>
 
-      <div ref={transcriptRef} className="space-y-1">
+      <div ref={transcriptRef} className="space-y-1 select-text">
         {lines.map((line, index) => {
           const lineNumber = index + 1;
           const lineHighlights = highlightsByLine.get(lineNumber) || [];
@@ -145,8 +189,8 @@ export function CollaborativeTranscript({
 
           return (
             <div key={lineNumber} className="group relative">
-              <div className="absolute -left-12 top-0 flex items-center gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
-                <span className="text-xs text-white/30 select-none">{lineNumber}</span>
+              <div className="absolute -left-16 top-0 flex items-center gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
+                <span className="text-xs text-white/30 select-none w-8 text-right">{lineNumber}</span>
                 <button
                   onClick={() => setShowCommentInput(lineNumber)}
                   className="p-1 rounded hover:bg-white/10 transition-colors"
@@ -165,15 +209,23 @@ export function CollaborativeTranscript({
                 )}
               >
                 {/* Highlight backgrounds */}
-                {lineHighlights.map((highlight, i) => (
-                  <div
-                    key={highlight.id}
-                    className="absolute inset-0 rounded opacity-20 mix-blend-multiply"
-                    style={{
-                      backgroundColor: highlight.user_info.color,
-                      zIndex: i,
-                    }}
-                  />
+                {lineHighlights.map((highlight) => (
+                  <div key={highlight.id} className="group/highlight relative">
+                    <div
+                      className="absolute inset-0 rounded opacity-20 mix-blend-multiply"
+                      style={{
+                        backgroundColor: highlight.user_info.color,
+                      }}
+                    />
+
+                    {/* Highlight tooltip */}
+                    <div className="absolute -top-8 left-0 bg-black/90 text-white text-xs px-2 py-1 rounded opacity-0 group-hover/highlight:opacity-100 transition-opacity whitespace-nowrap pointer-events-none z-10">
+                      Highlighted by {highlight.user_info.name}
+                      <div className="text-white/50 text-xs">
+                        {formatDistanceToNow(new Date(highlight.created_at), { addSuffix: true })}
+                      </div>
+                    </div>
+                  </div>
                 ))}
 
                 {/* Text content */}
@@ -210,13 +262,76 @@ export function CollaborativeTranscript({
                           {comment.user_info.name.charAt(0).toUpperCase()}
                         </div>
                         <div className="flex-1">
-                          <div className="flex items-baseline gap-2 mb-1">
-                            <span className="text-sm font-medium text-white/90">{comment.user_info.name}</span>
-                            <span className="text-xs text-white/40">
-                              {new Date(comment.created_at).toLocaleTimeString()}
-                            </span>
+                          <div className="flex items-baseline justify-between gap-2 mb-1">
+                            <div className="flex items-baseline gap-2">
+                              <span className="text-sm font-medium text-white/90">{comment.user_info.name}</span>
+                              <span className="text-xs text-white/40">
+                                {formatDistanceToNow(new Date(comment.created_at), { addSuffix: true })}
+                              </span>
+                            </div>
+
+                            {/* Edit/Delete buttons */}
+                            {canModifyAnnotation(comment) && (
+                              <div className="flex gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
+                                {editingComment !== comment.id && (
+                                  <>
+                                    <button
+                                      onClick={() => startEditingComment(comment)}
+                                      className="p-1 rounded hover:bg-white/10 transition-colors"
+                                      title="Edit comment"
+                                    >
+                                      <Edit2 className="w-3 h-3 text-white/40 hover:text-white/60" />
+                                    </button>
+                                    {onDeleteAnnotation && (
+                                      <button
+                                        onClick={() => onDeleteAnnotation(comment.id)}
+                                        className="p-1 rounded hover:bg-red-500/20 transition-colors"
+                                        title="Delete comment"
+                                      >
+                                        <Trash2 className="w-3 h-3 text-white/40 hover:text-red-400" />
+                                      </button>
+                                    )}
+                                  </>
+                                )}
+                              </div>
+                            )}
                           </div>
-                          <p className="text-sm text-white/80">{comment.content}</p>
+
+                          {editingComment === comment.id ? (
+                            <div className="space-y-2">
+                              <textarea
+                                value={editText}
+                                onChange={(e) => setEditText(e.target.value)}
+                                className="w-full bg-white/10 rounded p-2 text-sm text-white placeholder:text-white/40 outline-none resize-none"
+                                rows={2}
+                                autoFocus
+                              />
+                              <div className="flex gap-2">
+                                <Button
+                                  size="sm"
+                                  variant="glow"
+                                  onClick={() => saveEditedComment(comment.id)}
+                                  disabled={!editText.trim()}
+                                >
+                                  <Check className="w-3 h-3 mr-1" />
+                                  Save
+                                </Button>
+                                <Button
+                                  size="sm"
+                                  variant="ghost"
+                                  onClick={() => {
+                                    setEditingComment(null);
+                                    setEditText("");
+                                  }}
+                                >
+                                  <X className="w-3 h-3 mr-1" />
+                                  Cancel
+                                </Button>
+                              </div>
+                            </div>
+                          ) : (
+                            <p className="text-sm text-white/80">{comment.content}</p>
+                          )}
                         </div>
                       </div>
                     </motion.div>

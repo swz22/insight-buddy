@@ -13,7 +13,6 @@ import { useCollaboration } from "@/hooks/use-collaboration";
 import { PresenceAvatars } from "@/components/collaboration/presence-avatars";
 import { CollaborativeTranscript } from "@/components/collaboration/collaborative-transcript";
 import { CollaborativeNotes } from "@/components/collaboration/collaborative-notes";
-import { createClientSafe } from "@/lib/supabase/client-safe";
 
 interface SharedMeeting {
   id: string;
@@ -48,7 +47,37 @@ export default function SharePage() {
   const [activeTab, setActiveTab] = useState<"transcript" | "summary" | "actions">("transcript");
   const [userName, setUserName] = useState("");
   const [hasJoined, setHasJoined] = useState(false);
-  const [isInitializingAuth, setIsInitializingAuth] = useState(false);
+
+  // Get session ID from URL hash or generate new one
+  const getSessionId = () => {
+    if (typeof window === "undefined") return "";
+
+    const hash = window.location.hash.slice(1);
+    if (hash) {
+      const params = new URLSearchParams(hash);
+      const sessionId = params.get("session");
+      if (sessionId) return sessionId;
+    }
+
+    // Generate new session ID
+    const newSessionId = `${Date.now()}-${Math.random().toString(36).substr(2, 9)}`;
+    const newHash = `session=${newSessionId}`;
+    window.location.hash = newHash;
+    return newSessionId;
+  };
+
+  const sessionId = getSessionId();
+
+  // Try to restore session from sessionStorage
+  useEffect(() => {
+    if (sessionId && typeof window !== "undefined") {
+      const savedName = sessionStorage.getItem(`share-${token}-name`);
+      if (savedName) {
+        setUserName(savedName);
+        setHasJoined(true);
+      }
+    }
+  }, [sessionId, token]);
 
   const getUserColor = (name: string) => {
     const colors = ["#8B5CF6", "#06B6D4", "#10B981", "#F59E0B", "#EF4444", "#EC4899", "#6366F1", "#84CC16"];
@@ -64,6 +93,7 @@ export default function SharePage() {
     email: undefined,
     avatar_url: undefined,
     color: getUserColor(userName || "Anonymous"),
+    sessionId,
   };
 
   const {
@@ -72,65 +102,20 @@ export default function SharePage() {
     notes,
     lastEditedBy,
     isConnected,
+    connectionError,
     activeUsers,
     addHighlight,
     addComment,
     updateNotes,
     updateStatus,
-  } = useCollaboration(meeting?.id || "", token, hasJoined && userName ? userInfo : { name: "", color: "" });
+    deleteAnnotation,
+    editAnnotation,
+  } = useCollaboration(meeting?.id || "", token, hasJoined ? userInfo : { name: "", color: "", sessionId: "" });
 
   const handleNotesChange = (newNotes: string) => {
     updateStatus("typing");
     updateNotes(newNotes);
     setTimeout(() => updateStatus("active"), 2000);
-  };
-
-  const initializeAnonymousAuth = async () => {
-    setIsInitializingAuth(true);
-    try {
-      const supabase = createClientSafe();
-      const {
-        data: { session },
-        error: sessionError,
-      } = await supabase.auth.getSession();
-
-      if (sessionError) {
-        console.error("Session check error:", sessionError);
-      }
-
-      if (!session) {
-        const { data, error } = await supabase.auth.signInAnonymously();
-
-        if (error) {
-          console.error("Anonymous auth error:", error);
-          if (error.message?.includes("Anonymous sign-ins are disabled")) {
-            setError("Anonymous authentication is not enabled. Please contact the administrator.");
-            return false;
-          } else if (error.message?.includes("Database error")) {
-            console.warn("Database error during auth, proceeding without authenticated session");
-            return true;
-          } else {
-            setError(`Authentication error: ${error.message}`);
-            return false;
-          }
-        }
-
-        const {
-          data: { session: newSession },
-        } = await supabase.auth.getSession();
-        if (!newSession) {
-          console.warn("No session after anonymous auth, proceeding anyway");
-        }
-      }
-
-      return true;
-    } catch (error) {
-      console.error("Auth initialization error:", error);
-      console.warn("Proceeding without authenticated session");
-      return true;
-    } finally {
-      setIsInitializingAuth(false);
-    }
   };
 
   useEffect(() => {
@@ -161,6 +146,11 @@ export default function SharePage() {
       } else {
         setMeeting(data.meeting);
         setShareInfo(data.share);
+
+        // Remember successful authentication
+        if (typeof window !== "undefined") {
+          sessionStorage.setItem(`share-${token}-auth`, "true");
+        }
       }
     } catch (error) {
       console.error("Fetch error:", error);
@@ -196,6 +186,11 @@ export default function SharePage() {
       setMeeting(data.meeting);
       setShareInfo(data.share);
       setRequiresPassword(false);
+
+      // Remember successful authentication
+      if (typeof window !== "undefined") {
+        sessionStorage.setItem(`share-${token}-auth`, "true");
+      }
     } catch (error) {
       console.error("Verify error:", error);
       setError("Failed to verify password. Please try again.");
@@ -204,13 +199,15 @@ export default function SharePage() {
     }
   };
 
-  const handleJoinMeeting = async (e: React.FormEvent) => {
+  const handleJoinMeeting = (e: React.FormEvent) => {
     e.preventDefault();
-    if (!userName.trim()) return;
+    const nameToUse = userName.trim() || "Anonymous";
+    setUserName(nameToUse);
+    setHasJoined(true);
 
-    const authSuccess = await initializeAnonymousAuth();
-    if (authSuccess) {
-      setHasJoined(true);
+    // Save name to sessionStorage for rejoin
+    if (typeof window !== "undefined") {
+      sessionStorage.setItem(`share-${token}-name`, nameToUse);
     }
   };
 
@@ -242,6 +239,14 @@ export default function SharePage() {
         </Card>
       </div>
     );
+  }
+
+  // Check for remembered authentication
+  if (typeof window !== "undefined" && !requiresPassword && !meeting) {
+    const hasAuth = sessionStorage.getItem(`share-${token}-auth`);
+    if (hasAuth) {
+      fetchSharedMeeting();
+    }
   }
 
   if (requiresPassword) {
@@ -293,7 +298,7 @@ export default function SharePage() {
             <CardTitle className="text-2xl font-display">
               Join <span className="gradient-text">Meeting</span>
             </CardTitle>
-            <CardDescription>Enter your name to join the collaborative session</CardDescription>
+            <CardDescription>Enter your name to join the collaborative session (optional)</CardDescription>
           </CardHeader>
           <CardContent>
             <form onSubmit={handleJoinMeeting} className="space-y-4">
@@ -301,20 +306,12 @@ export default function SharePage() {
                 type="text"
                 value={userName}
                 onChange={(e) => setUserName(e.target.value)}
-                placeholder="Your name"
-                required
+                placeholder="Your name (or leave empty for anonymous)"
                 className="bg-white/[0.03] border-white/20"
                 autoFocus
               />
-              <Button type="submit" variant="glow" className="w-full" disabled={!userName.trim() || isInitializingAuth}>
-                {isInitializingAuth ? (
-                  <>
-                    <Loader2 className="w-4 h-4 mr-2 animate-spin" />
-                    Initializing...
-                  </>
-                ) : (
-                  "Join Meeting"
-                )}
+              <Button type="submit" variant="glow" className="w-full">
+                Join Meeting
               </Button>
             </form>
           </CardContent>
@@ -347,15 +344,27 @@ export default function SharePage() {
               )}
             </div>
 
-            {/* Presence avatars */}
+            {/* Presence avatars and connection status */}
             <div className="absolute top-6 right-6">
               <PresenceAvatars presence={presence} currentUser={userInfo.name} />
-              {isConnected && (
-                <div className="flex items-center gap-2 mt-2">
-                  <div className="w-2 h-2 bg-green-400 rounded-full animate-pulse" />
-                  <span className="text-xs text-white/50">Connected</span>
-                </div>
-              )}
+              <div className="flex items-center gap-2 mt-2">
+                {isConnected ? (
+                  <>
+                    <div className="w-2 h-2 bg-green-400 rounded-full animate-pulse" />
+                    <span className="text-xs text-white/50">Connected</span>
+                  </>
+                ) : connectionError ? (
+                  <>
+                    <div className="w-2 h-2 bg-red-400 rounded-full" />
+                    <span className="text-xs text-white/50">Disconnected - Retrying...</span>
+                  </>
+                ) : (
+                  <>
+                    <div className="w-2 h-2 bg-yellow-400 rounded-full animate-pulse" />
+                    <span className="text-xs text-white/50">Connecting...</span>
+                  </>
+                )}
+              </div>
             </div>
           </div>
 
@@ -436,7 +445,11 @@ export default function SharePage() {
                       annotations={annotations}
                       onAddHighlight={addHighlight}
                       onAddComment={addComment}
+                      onDeleteAnnotation={deleteAnnotation}
+                      onEditAnnotation={editAnnotation}
                       currentUserColor={userInfo.color}
+                      currentUserName={userInfo.name}
+                      currentSessionId={userInfo.sessionId}
                     />
                   ) : (
                     <div className="text-center py-12 text-white/50 italic">No transcript available</div>
