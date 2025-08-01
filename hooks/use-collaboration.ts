@@ -4,6 +4,7 @@ import { useEffect, useState, useCallback, useRef } from "react";
 import { createClientSafe } from "@/lib/supabase/client-safe";
 import { RealtimeChannel } from "@supabase/supabase-js";
 import { useToast } from "@/hooks/use-toast";
+import { ConnectionManager } from "@/lib/utils/connection-manager";
 
 interface UserInfo {
   name: string;
@@ -37,6 +38,7 @@ interface CollaborationState {
   notes: string;
   lastEditedBy: UserInfo | null;
   isConnected: boolean;
+  connectionError: string | null;
 }
 
 function isPresence(obj: any): obj is Presence {
@@ -48,9 +50,12 @@ function isPresence(obj: any): obj is Presence {
     typeof obj.user_info === "object" &&
     "name" in obj.user_info &&
     typeof obj.user_info.name === "string" &&
+    "color" in obj.user_info &&
+    typeof obj.user_info.color === "string" &&
     "status" in obj &&
     ["active", "idle", "typing"].includes(obj.status) &&
-    "joined_at" in obj
+    "joined_at" in obj &&
+    typeof obj.joined_at === "string"
   );
 }
 
@@ -66,6 +71,7 @@ export function useCollaboration(
     notes: "",
     lastEditedBy: null,
     isConnected: false,
+    connectionError: null,
   });
 
   const channelRef = useRef<RealtimeChannel | null>(null);
@@ -73,17 +79,238 @@ export function useCollaboration(
   const presenceRef = useRef<Record<string, Presence>>({});
   const presenceKeyRef = useRef<string>("");
   const hasJoinedRef = useRef(false);
+  const connectionManagerRef = useRef<ConnectionManager>(new ConnectionManager());
+  const isMountedRef = useRef(true);
+
+  const createChannel = useCallback(async (): Promise<RealtimeChannel> => {
+    const supabase = supabaseRef.current;
+    const channelName = `meeting-${shareToken}`;
+
+    const channel = supabase.channel(channelName, {
+      config: {
+        presence: {
+          key: presenceKeyRef.current,
+        },
+        broadcast: {
+          self: false,
+          ack: true,
+        },
+      },
+    });
+
+    return channel;
+  }, [shareToken]);
+
+  const setupChannelHandlers = useCallback(
+    (channel: RealtimeChannel) => {
+      // Update activity on any interaction
+      const updateActivity = () => connectionManagerRef.current.updateActivity();
+
+      // Handle presence sync
+      channel
+        .on("presence", { event: "sync" }, () => {
+          updateActivity();
+          if (!isMountedRef.current) return;
+
+          const presenceState = channel.presenceState();
+          const newPresence: Record<string, Presence> = {};
+
+          Object.entries(presenceState).forEach(([key, presences]) => {
+            if (Array.isArray(presences) && presences.length > 0) {
+              const presenceData = presences[0];
+              if (isPresence(presenceData)) {
+                newPresence[key] = presenceData;
+              }
+            }
+          });
+
+          presenceRef.current = newPresence;
+          setState((prev) => ({
+            ...prev,
+            presence: newPresence,
+          }));
+        })
+        .on("presence", { event: "join" }, ({ key, newPresences }: any) => {
+          updateActivity();
+          console.log("User joined:", key, newPresences);
+          if (!isMountedRef.current || !hasJoinedRef.current) return;
+
+          if (Array.isArray(newPresences) && newPresences.length > 0) {
+            const presenceData = newPresences[0];
+            if (isPresence(presenceData) && presenceData.user_info.name !== userInfo.name) {
+              toast.info(`${presenceData.user_info.name} joined the session`);
+            }
+          }
+        })
+        .on("presence", { event: "leave" }, ({ key, leftPresences }: any) => {
+          updateActivity();
+          console.log("User left:", key, leftPresences);
+          if (!isMountedRef.current || !hasJoinedRef.current) return;
+
+          if (Array.isArray(leftPresences) && leftPresences.length > 0) {
+            const presenceData = leftPresences[0];
+            if (isPresence(presenceData) && presenceData.user_info.name !== userInfo.name) {
+              toast.info(`${presenceData.user_info.name} left the session`);
+            }
+          }
+        });
+
+      // Handle broadcast events
+      channel
+        .on("broadcast", { event: "annotation" }, ({ payload }) => {
+          updateActivity();
+          if (!isMountedRef.current) return;
+          console.log("Received annotation:", payload);
+          setState((prev) => ({
+            ...prev,
+            annotations: [...prev.annotations, payload],
+          }));
+        })
+        .on("broadcast", { event: "annotation_delete" }, ({ payload }) => {
+          updateActivity();
+          if (!isMountedRef.current) return;
+          setState((prev) => ({
+            ...prev,
+            annotations: prev.annotations.filter((a) => a.id !== payload.id),
+          }));
+        })
+        .on("broadcast", { event: "notes_update" }, ({ payload }) => {
+          updateActivity();
+          if (!isMountedRef.current) return;
+          setState((prev) => ({
+            ...prev,
+            notes: payload.content,
+            lastEditedBy: payload.userInfo,
+          }));
+        })
+        .on("broadcast", { event: "status_update" }, ({ payload }: any) => {
+          updateActivity();
+          if (!isMountedRef.current) return;
+          const key = payload.user_key;
+          if (presenceRef.current[key]) {
+            const updatedPresence = {
+              ...presenceRef.current[key],
+              status: payload.status,
+            };
+            presenceRef.current[key] = updatedPresence;
+            setState((prev) => ({
+              ...prev,
+              presence: {
+                ...prev.presence,
+                [key]: updatedPresence,
+              },
+            }));
+          }
+        })
+        .on("broadcast", { event: "heartbeat" }, () => {
+          updateActivity();
+        });
+
+      return channel;
+    },
+    [userInfo.name, toast]
+  );
+
+  const connectToChannel = useCallback(async () => {
+    try {
+      const channel = await createChannel();
+      const enhancedChannel = setupChannelHandlers(channel);
+
+      await new Promise<void>((resolve, reject) => {
+        const timeout = setTimeout(() => {
+          reject(new Error("Channel subscription timeout"));
+        }, 10000);
+
+        enhancedChannel.subscribe(async (status) => {
+          console.log("Channel subscription status:", status);
+
+          if (status === "SUBSCRIBED") {
+            clearTimeout(timeout);
+            if (isMountedRef.current) {
+              setState((prev) => ({
+                ...prev,
+                isConnected: true,
+                connectionError: null,
+              }));
+            }
+
+            const presenceData: Presence = {
+              user_info: userInfo as UserInfo,
+              status: "active",
+              joined_at: new Date().toISOString(),
+            };
+
+            console.log("Tracking presence with:", presenceData);
+            await enhancedChannel.track(presenceData);
+            hasJoinedRef.current = true;
+
+            // Start heartbeat
+            connectionManagerRef.current.startHeartbeat(enhancedChannel);
+
+            resolve();
+          } else if (status === "CLOSED") {
+            clearTimeout(timeout);
+            if (isMountedRef.current) {
+              setState((prev) => ({
+                ...prev,
+                isConnected: false,
+                connectionError: "Connection closed",
+              }));
+            }
+            reject(new Error("Channel closed"));
+          } else if (status === "CHANNEL_ERROR") {
+            clearTimeout(timeout);
+            console.error("Channel error occurred");
+            if (isMountedRef.current) {
+              setState((prev) => ({
+                ...prev,
+                isConnected: false,
+                connectionError: "Channel error",
+              }));
+            }
+            reject(new Error("Channel error"));
+          }
+        });
+      });
+
+      channelRef.current = enhancedChannel;
+      return enhancedChannel;
+    } catch (error) {
+      console.error("Failed to connect to channel:", error);
+      throw error;
+    }
+  }, [createChannel, setupChannelHandlers, userInfo]);
+
+  const handleReconnect = useCallback(() => {
+    if (!isMountedRef.current) return;
+
+    connectionManagerRef.current.reconnect(
+      connectToChannel,
+      (channel) => {
+        console.log("Reconnection successful");
+        toast.success("Reconnected to session");
+      },
+      (error) => {
+        console.error("Reconnection failed:", error);
+        setState((prev) => ({
+          ...prev,
+          connectionError: "Failed to reconnect. Please refresh the page.",
+        }));
+        toast.error("Failed to reconnect. Please refresh the page.");
+      }
+    );
+  }, [connectToChannel, toast]);
 
   useEffect(() => {
+    isMountedRef.current = true;
+
     if (!meetingId || !shareToken || !userInfo.name) {
       console.log("Skipping collaboration - missing required data");
       return;
     }
 
     const supabase = supabaseRef.current;
-    let isMounted = true;
-
-    presenceKeyRef.current = `${shareToken}-${userInfo.name}`;
+    presenceKeyRef.current = `${shareToken}-${userInfo.name}-${Date.now()}`;
 
     const initializeCollaboration = async () => {
       try {
@@ -116,7 +343,7 @@ export function useCollaboration(
           console.error("Failed to fetch notes:", notesError);
         }
 
-        if (isMounted) {
+        if (isMountedRef.current) {
           setState((prev) => ({
             ...prev,
             annotations: annotations || [],
@@ -125,143 +352,20 @@ export function useCollaboration(
           }));
         }
 
-        const channelName = `meeting-${shareToken}`;
-
-        const channel = supabase.channel(channelName, {
-          config: {
-            presence: {
-              key: presenceKeyRef.current,
-            },
-            broadcast: {
-              self: false,
-            },
-          },
-        });
-
-        // Handle presence sync
-        channel
-          .on("presence", { event: "sync" }, () => {
-            if (!isMounted) return;
-
-            const presenceState = channel.presenceState();
-            const newPresence: Record<string, Presence> = {};
-
-            Object.entries(presenceState).forEach(([key, presences]) => {
-              if (Array.isArray(presences) && presences.length > 0) {
-                const presenceData = presences[0];
-                if (isPresence(presenceData)) {
-                  newPresence[key] = presenceData;
-                }
-              }
-            });
-
-            presenceRef.current = newPresence;
-            setState((prev) => ({
-              ...prev,
-              presence: newPresence,
-            }));
-          })
-          .on("presence", { event: "join" }, ({ key, newPresences }: any) => {
-            console.log("User joined:", key, newPresences);
-            if (!isMounted || !hasJoinedRef.current) return;
-
-            if (Array.isArray(newPresences) && newPresences.length > 0) {
-              const presenceData = newPresences[0];
-              if (isPresence(presenceData) && presenceData.user_info.name !== userInfo.name) {
-                toast.info(`${presenceData.user_info.name} joined the session`);
-              }
-            }
-          })
-          .on("presence", { event: "leave" }, ({ key, leftPresences }: any) => {
-            console.log("User left:", key, leftPresences);
-            if (!isMounted || !hasJoinedRef.current) return;
-
-            if (Array.isArray(leftPresences) && leftPresences.length > 0) {
-              const presenceData = leftPresences[0];
-              if (isPresence(presenceData) && presenceData.user_info.name !== userInfo.name) {
-                toast.info(`${presenceData.user_info.name} left the session`);
-              }
-            }
-          });
-
-        // Handle broadcast events
-        channel
-          .on("broadcast", { event: "annotation" }, ({ payload }) => {
-            if (!isMounted) return;
-            console.log("Received annotation:", payload);
-            setState((prev) => ({
-              ...prev,
-              annotations: [...prev.annotations, payload],
-            }));
-          })
-          .on("broadcast", { event: "annotation_delete" }, ({ payload }) => {
-            if (!isMounted) return;
-            setState((prev) => ({
-              ...prev,
-              annotations: prev.annotations.filter((a) => a.id !== payload.id),
-            }));
-          })
-          .on("broadcast", { event: "notes_update" }, ({ payload }) => {
-            if (!isMounted) return;
-            setState((prev) => ({
-              ...prev,
-              notes: payload.content,
-              lastEditedBy: payload.userInfo,
-            }));
-          })
-          .on("broadcast", { event: "status_update" }, ({ payload }: any) => {
-            if (!isMounted) return;
-            const key = payload.user_key;
-            if (presenceRef.current[key]) {
-              const updatedPresence = {
-                ...presenceRef.current[key],
-                status: payload.status,
-              };
-              presenceRef.current[key] = updatedPresence;
-              setState((prev) => ({
-                ...prev,
-                presence: {
-                  ...prev.presence,
-                  [key]: updatedPresence,
-                },
-              }));
-            }
-          });
-
-        const subscription = channel.subscribe(async (status) => {
-          console.log("Channel subscription status:", status);
-
-          if (status === "SUBSCRIBED") {
-            if (isMounted) {
-              setState((prev) => ({ ...prev, isConnected: true }));
-            }
-
-            const presenceData: Presence = {
-              user_info: userInfo,
-              status: "active",
-              joined_at: new Date().toISOString(),
-            };
-
-            console.log("Tracking presence with:", presenceData);
-            await channel.track(presenceData);
-            hasJoinedRef.current = true;
-          } else if (status === "CLOSED") {
-            if (isMounted) {
-              setState((prev) => ({ ...prev, isConnected: false }));
-            }
-          } else if (status === "CHANNEL_ERROR") {
-            console.error("Channel error occurred");
-            if (isMounted) {
-              setState((prev) => ({ ...prev, isConnected: false }));
-              toast.error("Connection error. Trying to reconnect...");
-            }
-          }
-        });
-
-        channelRef.current = channel;
+        // Connect to channel
+        try {
+          await connectToChannel();
+        } catch (error) {
+          console.error("Initial connection failed:", error);
+          handleReconnect();
+        }
       } catch (error) {
         console.error("Collaboration initialization error:", error);
-        if (isMounted) {
+        if (isMountedRef.current) {
+          setState((prev) => ({
+            ...prev,
+            connectionError: "Failed to initialize collaboration",
+          }));
           toast.error("Failed to initialize collaboration");
         }
       }
@@ -271,28 +375,32 @@ export function useCollaboration(
 
     // Cleanup
     return () => {
-      isMounted = false;
+      isMountedRef.current = false;
       hasJoinedRef.current = false;
+      connectionManagerRef.current.destroy();
+
       if (channelRef.current) {
         console.log("Cleaning up collaboration channel");
         channelRef.current.unsubscribe();
         channelRef.current = null;
       }
     };
-  }, [meetingId, shareToken, userInfo.name, userInfo.color]);
+  }, [meetingId, shareToken, userInfo.name, userInfo.color, connectToChannel, handleReconnect, toast]);
 
   // Add highlight
   const addHighlight = useCallback(
     async (startLine: number, endLine: number, text: string) => {
-      if (!channelRef.current) {
+      if (!channelRef.current || !state.isConnected) {
         toast.error("Not connected to collaboration session");
         return;
       }
 
+      connectionManagerRef.current.updateActivity();
+
       const annotation: Omit<Annotation, "id" | "created_at"> = {
         meeting_id: meetingId,
         share_token: shareToken,
-        user_info: userInfo,
+        user_info: userInfo as UserInfo,
         type: "highlight",
         content: text,
         position: { start_line: startLine, end_line: endLine },
@@ -331,21 +439,23 @@ export function useCollaboration(
         toast.error("Failed to add highlight");
       }
     },
-    [meetingId, shareToken, userInfo, toast]
+    [meetingId, shareToken, userInfo, state.isConnected, toast]
   );
 
   // Add comment
   const addComment = useCallback(
     async (lineNumber: number, text: string, parentId?: string) => {
-      if (!channelRef.current) {
+      if (!channelRef.current || !state.isConnected) {
         toast.error("Not connected to collaboration session");
         return;
       }
 
+      connectionManagerRef.current.updateActivity();
+
       const annotation: Omit<Annotation, "id" | "created_at"> = {
         meeting_id: meetingId,
         share_token: shareToken,
-        user_info: userInfo,
+        user_info: userInfo as UserInfo,
         type: "comment",
         content: text,
         position: { line_number: lineNumber },
@@ -385,19 +495,21 @@ export function useCollaboration(
         toast.error("Failed to add comment");
       }
     },
-    [meetingId, shareToken, userInfo, toast]
+    [meetingId, shareToken, userInfo, state.isConnected, toast]
   );
 
   const updateNotes = useCallback(
     async (content: string) => {
-      if (!channelRef.current) return;
+      if (!channelRef.current || !state.isConnected) return;
+
+      connectionManagerRef.current.updateActivity();
 
       try {
         // Update local state immediately
         setState((prev) => ({
           ...prev,
           notes: content,
-          lastEditedBy: userInfo,
+          lastEditedBy: userInfo as UserInfo,
         }));
 
         await channelRef.current.send({
@@ -451,60 +563,70 @@ export function useCollaboration(
         console.error("Failed to update notes:", error);
       }
     },
-    [meetingId, shareToken, userInfo]
+    [meetingId, shareToken, userInfo, state.isConnected]
   );
 
   // Update cursor position
-  const updateCursor = useCallback(async (lineNumber: number, character: number) => {
-    if (!channelRef.current) return;
+  const updateCursor = useCallback(
+    async (lineNumber: number, character: number) => {
+      if (!channelRef.current || !state.isConnected) return;
 
-    try {
-      await channelRef.current.send({
-        type: "broadcast",
-        event: "cursor_move",
-        payload: {
-          user_key: presenceKeyRef.current,
-          position: { line_number: lineNumber, character },
-        },
-      });
-    } catch (error) {
-      console.error("Failed to update cursor:", error);
-    }
-  }, []);
+      connectionManagerRef.current.updateActivity();
+
+      try {
+        await channelRef.current.send({
+          type: "broadcast",
+          event: "cursor_move",
+          payload: {
+            user_key: presenceKeyRef.current,
+            position: { line_number: lineNumber, character },
+          },
+        });
+      } catch (error) {
+        console.error("Failed to update cursor:", error);
+      }
+    },
+    [state.isConnected]
+  );
 
   // Update status
-  const updateStatus = useCallback(async (status: "active" | "idle" | "typing") => {
-    if (!channelRef.current || !hasJoinedRef.current) return;
+  const updateStatus = useCallback(
+    async (status: "active" | "idle" | "typing") => {
+      if (!channelRef.current || !hasJoinedRef.current || !state.isConnected) return;
 
-    try {
-      await channelRef.current.send({
-        type: "broadcast",
-        event: "status_update",
-        payload: {
-          user_key: presenceKeyRef.current,
-          status,
-        },
-      });
+      connectionManagerRef.current.updateActivity();
 
-      setState((prev) => {
-        if (prev.presence[presenceKeyRef.current]) {
-          return {
-            ...prev,
-            presence: {
-              ...prev.presence,
-              [presenceKeyRef.current]: {
-                ...prev.presence[presenceKeyRef.current],
-                status,
+      try {
+        await channelRef.current.send({
+          type: "broadcast",
+          event: "status_update",
+          payload: {
+            user_key: presenceKeyRef.current,
+            status,
+          },
+        });
+
+        setState((prev) => {
+          if (prev.presence[presenceKeyRef.current]) {
+            return {
+              ...prev,
+              presence: {
+                ...prev.presence,
+                [presenceKeyRef.current]: {
+                  ...prev.presence[presenceKeyRef.current],
+                  status,
+                },
               },
-            },
-          };
-        }
-        return prev;
-      });
-    } catch (error) {
-      console.error("Failed to update status:", error);
-    }
-  }, []);
+            };
+          }
+          return prev;
+        });
+      } catch (error) {
+        console.error("Failed to update status:", error);
+      }
+    },
+    [state.isConnected]
+  );
 
   const activeUsers = Object.values(state.presence);
 
@@ -514,11 +636,13 @@ export function useCollaboration(
     notes: state.notes,
     lastEditedBy: state.lastEditedBy,
     isConnected: state.isConnected,
+    connectionError: state.connectionError,
     activeUsers,
     addHighlight,
     addComment,
     updateNotes,
     updateCursor,
     updateStatus,
+    reconnect: handleReconnect,
   };
 }
