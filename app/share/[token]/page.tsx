@@ -13,7 +13,7 @@ import { useCollaboration } from "@/hooks/use-collaboration";
 import { PresenceAvatars } from "@/components/collaboration/presence-avatars";
 import { CollaborativeTranscript } from "@/components/collaboration/collaborative-transcript";
 import { CollaborativeNotes } from "@/components/collaboration/collaborative-notes";
-import { createClientWithFallback } from "@/lib/supabase/client-with-fallback";
+import { createClientSafe } from "@/lib/supabase/client-safe";
 
 interface SharedMeeting {
   id: string;
@@ -70,6 +70,7 @@ export default function SharePage() {
     presence,
     annotations,
     notes,
+    lastEditedBy,
     isConnected,
     activeUsers,
     addHighlight,
@@ -87,7 +88,7 @@ export default function SharePage() {
   const initializeAnonymousAuth = async () => {
     setIsInitializingAuth(true);
     try {
-      const supabase = createClientWithFallback();
+      const supabase = createClientSafe();
       const {
         data: { session },
         error: sessionError,
@@ -496,14 +497,7 @@ export default function SharePage() {
                 notes={notes}
                 onNotesChange={handleNotesChange}
                 isTyping={activeUsers.some((u) => u.status === "typing" && u.user_info.name !== userInfo.name)}
-                lastEditedBy={
-                  activeUsers.length > 0
-                    ? {
-                        name: activeUsers[0].user_info.name,
-                        color: activeUsers[0].user_info.color,
-                      }
-                    : undefined
-                }
+                lastEditedBy={lastEditedBy}
               />
             </CardContent>
           </Card>

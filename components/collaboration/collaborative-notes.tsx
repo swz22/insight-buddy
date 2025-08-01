@@ -9,7 +9,7 @@ interface CollaborativeNotesProps {
   notes: string;
   onNotesChange: (notes: string) => void;
   isTyping?: boolean;
-  lastEditedBy?: { name: string; color: string };
+  lastEditedBy?: { name: string; color: string } | null;
 }
 
 export function CollaborativeNotes({ notes, onNotesChange, isTyping, lastEditedBy }: CollaborativeNotesProps) {

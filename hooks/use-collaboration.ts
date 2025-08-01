@@ -1,10 +1,9 @@
 "use client";
 
 import { useEffect, useState, useCallback, useRef } from "react";
-import { createClientWithFallback } from "@/lib/supabase/client-with-fallback";
+import { createClientSafe } from "@/lib/supabase/client-safe";
 import { RealtimeChannel } from "@supabase/supabase-js";
 import { useToast } from "@/hooks/use-toast";
-import { isEdgeBrowser } from "@/lib/utils/browser-detection";
 
 interface UserInfo {
   name: string;
@@ -36,6 +35,7 @@ interface CollaborationState {
   presence: Record<string, Presence>;
   annotations: Annotation[];
   notes: string;
+  lastEditedBy: UserInfo | null;
   isConnected: boolean;
 }
 
@@ -54,43 +54,43 @@ function isPresence(obj: any): obj is Presence {
   );
 }
 
-export function useCollaboration(meetingId: string, shareToken: string, userInfo: UserInfo) {
+export function useCollaboration(
+  meetingId: string,
+  shareToken: string,
+  userInfo: UserInfo | { name: string; color: string }
+) {
   const toast = useToast();
   const [state, setState] = useState<CollaborationState>({
     presence: {},
     annotations: [],
     notes: "",
+    lastEditedBy: null,
     isConnected: false,
   });
 
   const channelRef = useRef<RealtimeChannel | null>(null);
-  const supabaseRef = useRef(createClientWithFallback());
+  const supabaseRef = useRef(createClientSafe());
   const presenceRef = useRef<Record<string, Presence>>({});
-  const isEdge = useRef(isEdgeBrowser());
   const presenceKeyRef = useRef<string>("");
   const hasJoinedRef = useRef(false);
-  const lastNotesUpdateRef = useRef<{ content: string; timestamp: number }>({ content: "", timestamp: 0 });
 
   useEffect(() => {
     if (!meetingId || !shareToken || !userInfo.name) {
-      console.log("Skipping collaboration - missing required data:", {
-        meetingId,
-        shareToken,
-        userName: userInfo.name,
-      });
+      console.log("Skipping collaboration - missing required data");
       return;
     }
 
     const supabase = supabaseRef.current;
     let isMounted = true;
 
-    presenceKeyRef.current = `${shareToken}-${userInfo.name}-${Date.now()}`;
+    presenceKeyRef.current = `${shareToken}-${userInfo.name}`;
 
     const initializeCollaboration = async () => {
       try {
-        if (isEdge.current) {
-          console.log("Edge browser detected - using compatibility mode");
-        }
+        const {
+          data: { session },
+        } = await supabase.auth.getSession();
+        console.log("Collaboration session status:", session ? "authenticated" : "anonymous");
 
         // Fetch existing annotations
         const { data: annotations, error: annotationsError } = await supabase
@@ -121,11 +121,8 @@ export function useCollaboration(meetingId: string, shareToken: string, userInfo
             ...prev,
             annotations: annotations || [],
             notes: notesData?.content || "",
+            lastEditedBy: notesData?.last_edited_by || null,
           }));
-          lastNotesUpdateRef.current = {
-            content: notesData?.content || "",
-            timestamp: Date.now(),
-          };
         }
 
         const channelName = `meeting-${shareToken}`;
@@ -152,7 +149,6 @@ export function useCollaboration(meetingId: string, shareToken: string, userInfo
             Object.entries(presenceState).forEach(([key, presences]) => {
               if (Array.isArray(presences) && presences.length > 0) {
                 const presenceData = presences[0];
-
                 if (isPresence(presenceData)) {
                   newPresence[key] = presenceData;
                 }
@@ -167,7 +163,7 @@ export function useCollaboration(meetingId: string, shareToken: string, userInfo
           })
           .on("presence", { event: "join" }, ({ key, newPresences }: any) => {
             console.log("User joined:", key, newPresences);
-            if (!isMounted || key === presenceKeyRef.current) return;
+            if (!isMounted || !hasJoinedRef.current) return;
 
             if (Array.isArray(newPresences) && newPresences.length > 0) {
               const presenceData = newPresences[0];
@@ -178,7 +174,7 @@ export function useCollaboration(meetingId: string, shareToken: string, userInfo
           })
           .on("presence", { event: "leave" }, ({ key, leftPresences }: any) => {
             console.log("User left:", key, leftPresences);
-            if (!isMounted || key === presenceKeyRef.current) return;
+            if (!isMounted || !hasJoinedRef.current) return;
 
             if (Array.isArray(leftPresences) && leftPresences.length > 0) {
               const presenceData = leftPresences[0];
@@ -207,29 +203,16 @@ export function useCollaboration(meetingId: string, shareToken: string, userInfo
           })
           .on("broadcast", { event: "notes_update" }, ({ payload }) => {
             if (!isMounted) return;
-
-            // Debounce notes updates
-            const now = Date.now();
-            if (now - lastNotesUpdateRef.current.timestamp < 100) {
-              return;
-            }
-
-            lastNotesUpdateRef.current = { content: payload.content, timestamp: now };
             setState((prev) => ({
               ...prev,
               notes: payload.content,
+              lastEditedBy: payload.userInfo,
             }));
-
-            window.dispatchEvent(
-              new CustomEvent("notes_update", {
-                detail: { type: "notes_update", payload },
-              })
-            );
           })
           .on("broadcast", { event: "status_update" }, ({ payload }: any) => {
             if (!isMounted) return;
             const key = payload.user_key;
-            if (presenceRef.current[key] && key !== presenceKeyRef.current) {
+            if (presenceRef.current[key]) {
               const updatedPresence = {
                 ...presenceRef.current[key],
                 status: payload.status,
@@ -253,18 +236,15 @@ export function useCollaboration(meetingId: string, shareToken: string, userInfo
               setState((prev) => ({ ...prev, isConnected: true }));
             }
 
-            // Only track presence once per session
-            if (!hasJoinedRef.current) {
-              hasJoinedRef.current = true;
-              const presenceData: Presence = {
-                user_info: userInfo,
-                status: "active",
-                joined_at: new Date().toISOString(),
-              };
+            const presenceData: Presence = {
+              user_info: userInfo,
+              status: "active",
+              joined_at: new Date().toISOString(),
+            };
 
-              console.log("Tracking presence with:", presenceData);
-              await channel.track(presenceData);
-            }
+            console.log("Tracking presence with:", presenceData);
+            await channel.track(presenceData);
+            hasJoinedRef.current = true;
           } else if (status === "CLOSED") {
             if (isMounted) {
               setState((prev) => ({ ...prev, isConnected: false }));
@@ -413,7 +393,14 @@ export function useCollaboration(meetingId: string, shareToken: string, userInfo
       if (!channelRef.current) return;
 
       try {
-        const broadcastResult = await channelRef.current.send({
+        // Update local state immediately
+        setState((prev) => ({
+          ...prev,
+          notes: content,
+          lastEditedBy: userInfo,
+        }));
+
+        await channelRef.current.send({
           type: "broadcast",
           event: "notes_update",
           payload: {
@@ -423,52 +410,42 @@ export function useCollaboration(meetingId: string, shareToken: string, userInfo
           },
         });
 
-        console.log("Broadcast result:", broadcastResult);
+        const { data: existingNotes, error: fetchError } = await supabaseRef.current
+          .from("meeting_notes")
+          .select("id")
+          .eq("meeting_id", meetingId)
+          .eq("share_token", shareToken)
+          .single();
 
-        setState((prev) => ({
-          ...prev,
-          notes: content,
-        }));
-        try {
-          const { data: existingNotes, error: fetchError } = await supabaseRef.current
+        if (fetchError && fetchError.code !== "PGRST116") {
+          console.error("Error checking existing notes:", fetchError);
+        }
+
+        if (existingNotes) {
+          const { error: updateError } = await supabaseRef.current
             .from("meeting_notes")
-            .select("id")
-            .eq("meeting_id", meetingId)
-            .eq("share_token", shareToken)
-            .single();
-
-          if (fetchError && fetchError.code !== "PGRST116") {
-            console.error("Error checking existing notes:", fetchError);
-          }
-
-          if (existingNotes) {
-            const { error: updateError } = await supabaseRef.current
-              .from("meeting_notes")
-              .update({
-                content,
-                last_edited_by: userInfo,
-                updated_at: new Date().toISOString(),
-              })
-              .eq("meeting_id", meetingId)
-              .eq("share_token", shareToken);
-
-            if (updateError) {
-              console.error("Error updating notes in database:", updateError);
-            }
-          } else {
-            const { error: insertError } = await supabaseRef.current.from("meeting_notes").insert({
-              meeting_id: meetingId,
-              share_token: shareToken,
+            .update({
               content,
               last_edited_by: userInfo,
-            });
+              updated_at: new Date().toISOString(),
+            })
+            .eq("meeting_id", meetingId)
+            .eq("share_token", shareToken);
 
-            if (insertError) {
-              console.error("Error inserting notes in database:", insertError);
-            }
+          if (updateError) {
+            console.error("Error updating notes in database:", updateError);
           }
-        } catch (dbError) {
-          console.warn("Database operation failed, relying on broadcast:", dbError);
+        } else {
+          const { error: insertError } = await supabaseRef.current.from("meeting_notes").insert({
+            meeting_id: meetingId,
+            share_token: shareToken,
+            content,
+            last_edited_by: userInfo,
+          });
+
+          if (insertError) {
+            console.error("Error inserting notes in database:", insertError);
+          }
         }
       } catch (error) {
         console.error("Failed to update notes:", error);
@@ -496,32 +473,38 @@ export function useCollaboration(meetingId: string, shareToken: string, userInfo
   }, []);
 
   // Update status
-  const updateStatus = useCallback(
-    async (status: "active" | "idle" | "typing") => {
-      if (!channelRef.current) return;
+  const updateStatus = useCallback(async (status: "active" | "idle" | "typing") => {
+    if (!channelRef.current || !hasJoinedRef.current) return;
 
-      try {
-        const presenceData: Presence = {
-          user_info: userInfo,
+    try {
+      await channelRef.current.send({
+        type: "broadcast",
+        event: "status_update",
+        payload: {
+          user_key: presenceKeyRef.current,
           status,
-          joined_at: new Date().toISOString(),
-        };
+        },
+      });
 
-        await channelRef.current.track(presenceData);
-        await channelRef.current.send({
-          type: "broadcast",
-          event: "status_update",
-          payload: {
-            user_key: presenceKeyRef.current,
-            status,
-          },
-        });
-      } catch (error) {
-        console.error("Failed to update status:", error);
-      }
-    },
-    [userInfo]
-  );
+      setState((prev) => {
+        if (prev.presence[presenceKeyRef.current]) {
+          return {
+            ...prev,
+            presence: {
+              ...prev.presence,
+              [presenceKeyRef.current]: {
+                ...prev.presence[presenceKeyRef.current],
+                status,
+              },
+            },
+          };
+        }
+        return prev;
+      });
+    } catch (error) {
+      console.error("Failed to update status:", error);
+    }
+  }, []);
 
   const activeUsers = Object.values(state.presence);
 
@@ -529,6 +512,7 @@ export function useCollaboration(meetingId: string, shareToken: string, userInfo
     presence: state.presence,
     annotations: state.annotations,
     notes: state.notes,
+    lastEditedBy: state.lastEditedBy,
     isConnected: state.isConnected,
     activeUsers,
     addHighlight,
