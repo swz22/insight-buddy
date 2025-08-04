@@ -23,7 +23,7 @@ export function CollaborativeNotes({ notes, onNotesChange, isTyping, lastEditedB
   const isLocalEditRef = useRef(false);
 
   useEffect(() => {
-    if (!isLocalEditRef.current && notes !== localNotes && notes !== lastReceivedNotesRef.current) {
+    if (!isLocalEditRef.current && notes !== lastReceivedNotesRef.current) {
       lastReceivedNotesRef.current = notes;
 
       if (localNotes !== notes && localNotes !== "") {
@@ -34,7 +34,7 @@ export function CollaborativeNotes({ notes, onNotesChange, isTyping, lastEditedB
       }
     }
     isLocalEditRef.current = false;
-  }, [notes, localNotes]);
+  }, [notes]);
 
   const debouncedSave = useCallback(
     debounce((value: string) => {
@@ -45,13 +45,16 @@ export function CollaborativeNotes({ notes, onNotesChange, isTyping, lastEditedB
     [onNotesChange]
   );
 
-  const handleChange = (e: React.ChangeEvent<HTMLTextAreaElement>) => {
-    const value = e.target.value;
-    isLocalEditRef.current = true;
-    setLocalNotes(value);
-    setHasConflict(false);
-    debouncedSave(value);
-  };
+  const handleChange = useCallback(
+    (e: React.ChangeEvent<HTMLTextAreaElement>) => {
+      const value = e.target.value;
+      isLocalEditRef.current = true;
+      setLocalNotes(value);
+      setHasConflict(false);
+      debouncedSave(value);
+    },
+    [debouncedSave]
+  );
 
   const handleResolveConflict = (resolution: "keep" | "discard" | "merge") => {
     if (resolution === "keep") {
@@ -72,16 +75,16 @@ export function CollaborativeNotes({ notes, onNotesChange, isTyping, lastEditedB
     setConflictNotes("");
   };
 
-  const autoResizeTextarea = () => {
+  const autoResizeTextarea = useCallback(() => {
     if (textareaRef.current) {
       textareaRef.current.style.height = "auto";
       textareaRef.current.style.height = `${textareaRef.current.scrollHeight}px`;
     }
-  };
+  }, []);
 
   useEffect(() => {
     autoResizeTextarea();
-  }, [localNotes]);
+  }, [localNotes, autoResizeTextarea]);
 
   return (
     <div className="bg-white/[0.03] rounded-lg border border-white/20 overflow-hidden">
@@ -127,29 +130,19 @@ export function CollaborativeNotes({ notes, onNotesChange, isTyping, lastEditedB
               <p className="text-xs text-white/60 mb-3">
                 {lastEditedBy?.name || "Another user"} made changes while you were editing.
               </p>
-              <div className="flex flex-wrap gap-2">
-                <Button
-                  size="sm"
-                  variant="glass"
-                  onClick={() => handleResolveConflict("keep")}
-                  className="text-xs hover:bg-yellow-500/10 hover:border-yellow-400/50"
-                >
+              <div className="flex gap-2">
+                <Button onClick={() => handleResolveConflict("keep")} variant="outline" size="sm" className="text-xs">
                   Keep my changes
                 </Button>
                 <Button
-                  size="sm"
-                  variant="glass"
                   onClick={() => handleResolveConflict("discard")}
-                  className="text-xs hover:bg-red-500/10 hover:border-red-400/50"
-                >
-                  Use their changes
-                </Button>
-                <Button
+                  variant="outline"
                   size="sm"
-                  variant="glass"
-                  onClick={() => handleResolveConflict("merge")}
-                  className="text-xs hover:bg-green-500/10 hover:border-green-400/50"
+                  className="text-xs"
                 >
+                  Discard my changes
+                </Button>
+                <Button onClick={() => handleResolveConflict("merge")} variant="outline" size="sm" className="text-xs">
                   Merge both
                 </Button>
               </div>
@@ -158,50 +151,19 @@ export function CollaborativeNotes({ notes, onNotesChange, isTyping, lastEditedB
         </div>
       )}
 
-      <div className="relative">
+      <div className="p-4">
         <textarea
           ref={textareaRef}
           value={localNotes}
           onChange={handleChange}
-          placeholder="Add meeting notes here. Changes are saved automatically and visible to everyone..."
+          placeholder="Add notes about this meeting..."
           className={cn(
-            "w-full min-h-[300px] p-4 bg-transparent text-white/90 placeholder:text-white/40",
-            "resize-none outline-none",
-            "transition-all duration-200"
+            "w-full bg-transparent text-white/90 placeholder:text-white/30",
+            "resize-none focus:outline-none min-h-[200px]",
+            "transition-colors"
           )}
-          style={{ overflow: "hidden" }}
+          style={{ height: "auto" }}
         />
-
-        {/* Typing indicator overlay */}
-        {isTyping && (
-          <div className="absolute bottom-4 left-4 flex items-center gap-2 text-xs text-blue-400">
-            <div className="flex gap-1">
-              {[0, 1, 2].map((i) => (
-                <div
-                  key={i}
-                  className="w-1.5 h-1.5 bg-blue-400 rounded-full animate-bounce"
-                  style={{ animationDelay: `${i * 0.1}s` }}
-                />
-              ))}
-            </div>
-            <span>Someone is typing...</span>
-          </div>
-        )}
-      </div>
-
-      <div className="p-3 border-t border-white/10 flex items-center justify-between">
-        <p className="text-xs text-white/40">💡 Tip: All participants can edit these notes in real-time</p>
-        {hasConflict && (
-          <Button
-            size="sm"
-            variant="ghost"
-            onClick={() => window.location.reload()}
-            className="text-xs text-white/60 hover:text-white"
-          >
-            <RefreshCw className="w-3 h-3 mr-1" />
-            Refresh page
-          </Button>
-        )}
       </div>
     </div>
   );
