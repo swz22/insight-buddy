@@ -1,170 +1,146 @@
 "use client";
 
-import { useState, useEffect, useCallback, useRef } from "react";
-import { FileText, Save, AlertCircle, RefreshCw } from "lucide-react";
-import { cn } from "@/lib/utils";
-import { debounce } from "@/lib/utils/debounce";
+import { useState, useEffect, useRef } from "react";
+import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { Edit3, Save, X } from "lucide-react";
 import { Button } from "@/components/ui/button";
+import { cn } from "@/lib/utils";
+import { formatDistanceToNow } from "date-fns";
 
-interface CollaborativeNotesProps {
-  notes: string;
-  onNotesChange: (notes: string) => void;
-  isTyping?: boolean;
-  lastEditedBy?: { name: string; color: string } | null;
+interface UserInfo {
+  name: string;
+  email?: string;
+  avatar_url?: string;
+  color: string;
+  sessionId?: string;
 }
 
-export function CollaborativeNotes({ notes, onNotesChange, isTyping, lastEditedBy }: CollaborativeNotesProps) {
-  const [localNotes, setLocalNotes] = useState(notes);
-  const [isSaving, setIsSaving] = useState(false);
-  const [hasConflict, setHasConflict] = useState(false);
-  const [conflictNotes, setConflictNotes] = useState("");
+interface CollaborativeNotesProps {
+  value: string;
+  onChange: (value: string) => void;
+  lastEditedBy: UserInfo | null;
+  currentUserName?: string;
+  onFocus?: () => void;
+  onBlur?: () => void;
+}
+
+export function CollaborativeNotes({
+  value,
+  onChange,
+  lastEditedBy,
+  currentUserName,
+  onFocus,
+  onBlur,
+}: CollaborativeNotesProps) {
+  const [isEditing, setIsEditing] = useState(false);
+  const [localValue, setLocalValue] = useState(value);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
-  const lastReceivedNotesRef = useRef(notes);
-  const isLocalEditRef = useRef(false);
+  const lastReceivedValue = useRef(value);
 
   useEffect(() => {
-    if (!isLocalEditRef.current && notes !== lastReceivedNotesRef.current) {
-      lastReceivedNotesRef.current = notes;
-
-      if (localNotes !== notes && localNotes !== "") {
-        setHasConflict(true);
-        setConflictNotes(notes);
-      } else {
-        setLocalNotes(notes);
-      }
+    if (value !== lastReceivedValue.current && value !== localValue) {
+      setLocalValue(value);
+      lastReceivedValue.current = value;
     }
-    isLocalEditRef.current = false;
-  }, [notes]);
+  }, [value, localValue]);
 
-  const debouncedSave = useCallback(
-    debounce((value: string) => {
-      setIsSaving(true);
-      onNotesChange(value);
-      setTimeout(() => setIsSaving(false), 500);
-    }, 1000),
-    [onNotesChange]
-  );
-
-  const handleChange = useCallback(
-    (e: React.ChangeEvent<HTMLTextAreaElement>) => {
-      const value = e.target.value;
-      isLocalEditRef.current = true;
-      setLocalNotes(value);
-      setHasConflict(false);
-      debouncedSave(value);
-    },
-    [debouncedSave]
-  );
-
-  const handleResolveConflict = (resolution: "keep" | "discard" | "merge") => {
-    if (resolution === "keep") {
-      isLocalEditRef.current = true;
-      onNotesChange(localNotes);
-    } else if (resolution === "discard") {
-      setLocalNotes(conflictNotes);
-      lastReceivedNotesRef.current = conflictNotes;
-    } else if (resolution === "merge") {
-      const merged = `${localNotes}\n\n--- Changes from ${
-        lastEditedBy?.name || "another user"
-      } ---\n\n${conflictNotes}`;
-      isLocalEditRef.current = true;
-      setLocalNotes(merged);
-      onNotesChange(merged);
-    }
-    setHasConflict(false);
-    setConflictNotes("");
+  const handleEdit = () => {
+    setIsEditing(true);
+    setTimeout(() => {
+      textareaRef.current?.focus();
+    }, 0);
   };
 
-  const autoResizeTextarea = useCallback(() => {
-    if (textareaRef.current) {
-      textareaRef.current.style.height = "auto";
-      textareaRef.current.style.height = `${textareaRef.current.scrollHeight}px`;
-    }
-  }, []);
+  const handleSave = () => {
+    onChange(localValue);
+    setIsEditing(false);
+    onBlur?.();
+  };
 
-  useEffect(() => {
-    autoResizeTextarea();
-  }, [localNotes, autoResizeTextarea]);
+  const handleCancel = () => {
+    setLocalValue(value);
+    setIsEditing(false);
+    onBlur?.();
+  };
+
+  const handleChange = (e: React.ChangeEvent<HTMLTextAreaElement>) => {
+    const newValue = e.target.value;
+    setLocalValue(newValue);
+    onChange(newValue);
+  };
+
+  const handleFocus = () => {
+    onFocus?.();
+  };
+
+  const handleBlur = () => {
+    if (isEditing) {
+      handleSave();
+    }
+    onBlur?.();
+  };
 
   return (
-    <div className="bg-white/[0.03] rounded-lg border border-white/20 overflow-hidden">
-      <div className="flex items-center justify-between p-4 border-b border-white/10">
-        <div className="flex items-center gap-2">
-          <FileText className="w-5 h-5 text-white/60" />
-          <h3 className="font-medium text-white/90">Collaborative Notes</h3>
-        </div>
-
-        <div className="flex items-center gap-3">
+    <Card className="shadow-xl">
+      <CardHeader className="flex flex-row items-center justify-between">
+        <div>
+          <CardTitle className="text-lg">Shared Notes</CardTitle>
           {lastEditedBy && (
-            <div className="flex items-center gap-2 text-xs text-white/50">
-              <span>Last edited by</span>
-              <div className="flex items-center gap-1">
-                <div className="w-4 h-4 rounded-full" style={{ backgroundColor: lastEditedBy.color }} />
-                <span>{lastEditedBy.name}</span>
-              </div>
-            </div>
-          )}
-
-          {isSaving && (
-            <div className="flex items-center gap-1 text-xs text-green-400">
-              <Save className="w-3 h-3" />
-              <span>Saving...</span>
-            </div>
-          )}
-
-          {isTyping && !isSaving && (
-            <div className="flex items-center gap-1 text-xs text-blue-400">
-              <span>Someone is typing...</span>
-            </div>
+            <p className="text-xs text-white/60 mt-1">
+              Last edited by <span style={{ color: lastEditedBy.color }}>{lastEditedBy.name}</span>
+              {lastEditedBy.name !== currentUserName && " just now"}
+            </p>
           )}
         </div>
-      </div>
-
-      {/* Conflict resolution banner */}
-      {hasConflict && (
-        <div className="bg-yellow-500/10 border-y border-yellow-500/20 p-3">
-          <div className="flex items-start gap-2">
-            <AlertCircle className="w-5 h-5 text-yellow-400 shrink-0 mt-0.5" />
-            <div className="flex-1">
-              <p className="text-sm font-medium text-yellow-400 mb-1">Conflicting changes detected</p>
-              <p className="text-xs text-white/60 mb-3">
-                {lastEditedBy?.name || "Another user"} made changes while you were editing.
-              </p>
-              <div className="flex gap-2">
-                <Button onClick={() => handleResolveConflict("keep")} variant="outline" size="sm" className="text-xs">
-                  Keep my changes
-                </Button>
-                <Button
-                  onClick={() => handleResolveConflict("discard")}
-                  variant="outline"
-                  size="sm"
-                  className="text-xs"
-                >
-                  Discard my changes
-                </Button>
-                <Button onClick={() => handleResolveConflict("merge")} variant="outline" size="sm" className="text-xs">
-                  Merge both
-                </Button>
-              </div>
+        {!isEditing && (
+          <Button variant="ghost" size="sm" onClick={handleEdit} className="hover:bg-white/10">
+            <Edit3 className="w-4 h-4" />
+          </Button>
+        )}
+      </CardHeader>
+      <CardContent>
+        {isEditing ? (
+          <div className="space-y-3">
+            <textarea
+              ref={textareaRef}
+              value={localValue}
+              onChange={handleChange}
+              onFocus={handleFocus}
+              onBlur={handleBlur}
+              placeholder="Add notes about this meeting..."
+              className={cn(
+                "w-full min-h-[200px] p-3 rounded-lg",
+                "bg-white/[0.03] border border-white/20",
+                "text-white placeholder:text-white/40",
+                "focus:outline-none focus:border-purple-400/60",
+                "resize-none transition-all duration-200"
+              )}
+            />
+            <div className="flex gap-2">
+              <Button variant="glow" size="sm" onClick={handleSave} className="shadow-lg">
+                <Save className="w-4 h-4 mr-2" />
+                Save
+              </Button>
+              <Button variant="ghost" size="sm" onClick={handleCancel} className="hover:bg-white/10">
+                <X className="w-4 h-4 mr-2" />
+                Cancel
+              </Button>
             </div>
           </div>
-        </div>
-      )}
-
-      <div className="p-4">
-        <textarea
-          ref={textareaRef}
-          value={localNotes}
-          onChange={handleChange}
-          placeholder="Add notes about this meeting..."
-          className={cn(
-            "w-full bg-transparent text-white/90 placeholder:text-white/30",
-            "resize-none focus:outline-none min-h-[200px]",
-            "transition-colors"
-          )}
-          style={{ height: "auto" }}
-        />
-      </div>
-    </div>
+        ) : (
+          <div
+            onClick={handleEdit}
+            className={cn(
+              "min-h-[200px] p-3 rounded-lg cursor-pointer",
+              "bg-white/[0.03] border border-white/20",
+              "hover:border-white/30 transition-all duration-200",
+              "whitespace-pre-wrap"
+            )}
+          >
+            {localValue || <span className="text-white/40 italic">Click to add notes...</span>}
+          </div>
+        )}
+      </CardContent>
+    </Card>
   );
 }

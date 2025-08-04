@@ -48,7 +48,6 @@ export default function SharePage() {
   const [userName, setUserName] = useState("");
   const [hasJoined, setHasJoined] = useState(false);
 
-  // Get session ID from URL hash or generate new one
   const getSessionId = () => {
     if (typeof window === "undefined") return "";
 
@@ -59,39 +58,22 @@ export default function SharePage() {
       if (sessionId) return sessionId;
     }
 
-    // Generate new session ID
     const newSessionId = `${Date.now()}-${Math.random().toString(36).substr(2, 9)}`;
     const newHash = `session=${newSessionId}`;
     window.location.hash = newHash;
     return newSessionId;
   };
 
-  const sessionId = getSessionId();
-
-  // Try to restore session from sessionStorage
-  useEffect(() => {
-    if (sessionId && typeof window !== "undefined") {
-      const savedName = sessionStorage.getItem(`share-${token}-name`);
-      if (savedName) {
-        setUserName(savedName);
-        setHasJoined(true);
-      }
-    }
-  }, [sessionId, token]);
+  const sessionId = typeof window !== "undefined" ? getSessionId() : "";
 
   const getUserColor = (name: string) => {
-    const colors = ["#8B5CF6", "#06B6D4", "#10B981", "#F59E0B", "#EF4444", "#EC4899", "#6366F1", "#84CC16"];
-    let hash = 0;
-    for (let i = 0; i < name.length; i++) {
-      hash = name.charCodeAt(i) + ((hash << 5) - hash);
-    }
-    return colors[Math.abs(hash) % colors.length];
+    const colors = ["#FF6B6B", "#4ECDC4", "#45B7D1", "#96CEB4", "#DDA0DD", "#F4A460", "#98D8C8", "#6C5CE7"];
+    const index = name.split("").reduce((acc, char) => acc + char.charCodeAt(0), 0) % colors.length;
+    return colors[index];
   };
 
   const userInfo = {
     name: userName || "Anonymous",
-    email: undefined,
-    avatar_url: undefined,
     color: getUserColor(userName || "Anonymous"),
     sessionId,
   };
@@ -102,63 +84,62 @@ export default function SharePage() {
     notes,
     lastEditedBy,
     isConnected,
-    connectionError,
-    activeUsers,
     addHighlight,
     addComment,
-    updateNotes,
-    updateStatus,
     deleteAnnotation,
     editAnnotation,
-  } = useCollaboration(meeting?.id || "", token, hasJoined ? userInfo : { name: "", color: "", sessionId: "" });
+    updateNotes,
+    updateStatus,
+  } = useCollaboration(meeting?.id || "", token, userInfo);
 
-  const handleNotesChange = (newNotes: string) => {
-    updateStatus("typing");
-    updateNotes(newNotes);
-    setTimeout(() => updateStatus("active"), 2000);
+  useEffect(() => {
+    if (hasJoined && meeting) {
+      const savedName = sessionStorage.getItem(`share-${token}-name`);
+      if (savedName && !userName) {
+        setUserName(savedName);
+      }
+    }
+  }, [hasJoined, meeting, token, userName]);
+
+  const fetchSharedMeeting = async (passwordAttempt?: string) => {
+    try {
+      const url = passwordAttempt ? `/api/public/shares/${token}` : `/api/public/shares/${token}`;
+
+      const response = await fetch(url, {
+        method: passwordAttempt ? "POST" : "GET",
+        headers: passwordAttempt ? { "Content-Type": "application/json" } : {},
+        body: passwordAttempt ? JSON.stringify({ password: passwordAttempt }) : undefined,
+      });
+
+      const data = await response.json();
+
+      if (!response.ok) {
+        setError(data.error || "Failed to access meeting");
+        return;
+      }
+
+      if (data.requiresPassword && !passwordAttempt) {
+        setRequiresPassword(true);
+      } else {
+        setMeeting(data.meeting);
+        setShareInfo(data.share);
+        setRequiresPassword(false);
+        setError(null);
+
+        if (typeof window !== "undefined") {
+          sessionStorage.setItem(`share-${token}-auth`, "true");
+        }
+      }
+    } catch (err) {
+      setError("Failed to load meeting. Please try again.");
+    } finally {
+      setIsLoading(false);
+    }
   };
 
   useEffect(() => {
     fetchSharedMeeting();
   }, [token]);
-
-  const fetchSharedMeeting = async () => {
-    setIsLoading(true);
-    setError(null);
-
-    try {
-      const response = await fetch(`/api/public/shares/${token}`);
-      const data = await response.json();
-
-      if (!response.ok) {
-        if (response.status === 404) {
-          setError("This share link does not exist or has been removed.");
-        } else if (response.status === 410) {
-          setError("This share link has expired.");
-        } else {
-          setError(data.error || "Failed to access shared meeting");
-        }
-        return;
-      }
-
-      if (data.requiresPassword) {
-        setRequiresPassword(true);
-      } else {
-        setMeeting(data.meeting);
-        setShareInfo(data.share);
-
-        // Remember successful authentication
-        if (typeof window !== "undefined") {
-          sessionStorage.setItem(`share-${token}-auth`, "true");
-        }
-      }
-    } catch (error) {
-      console.error("Fetch error:", error);
-      setError("Failed to load shared meeting. Please try again.");
-    } finally {
-      setIsLoading(false);
-    }
-  };
 
   const verifyPassword = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -166,34 +147,14 @@ export default function SharePage() {
     setError(null);
 
     try {
-      const response = await fetch(`/api/public/shares/${token}`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ password }),
-      });
-
-      const data = await response.json();
-
-      if (!response.ok) {
-        if (response.status === 401) {
-          setError("Incorrect password");
-        } else {
-          setError(data.error || "Failed to verify password");
-        }
-        return;
+      await fetchSharedMeeting(password);
+      const savedName = sessionStorage.getItem(`share-${token}-name`);
+      if (savedName) {
+        setUserName(savedName);
+        setHasJoined(true);
       }
-
-      setMeeting(data.meeting);
-      setShareInfo(data.share);
-      setRequiresPassword(false);
-
-      // Remember successful authentication
-      if (typeof window !== "undefined") {
-        sessionStorage.setItem(`share-${token}-auth`, "true");
-      }
-    } catch (error) {
-      console.error("Verify error:", error);
-      setError("Failed to verify password. Please try again.");
+    } catch (err) {
+      setError("Incorrect password. Please try again.");
     } finally {
       setIsVerifying(false);
     }
@@ -205,7 +166,6 @@ export default function SharePage() {
     setUserName(nameToUse);
     setHasJoined(true);
 
-    // Save name to sessionStorage for rejoin
     if (typeof window !== "undefined") {
       sessionStorage.setItem(`share-${token}-name`, nameToUse);
     }
@@ -241,7 +201,6 @@ export default function SharePage() {
     );
   }
 
-  // Check for remembered authentication
   if (typeof window !== "undefined" && !requiresPassword && !meeting) {
     const hasAuth = sessionStorage.getItem(`share-${token}-auth`);
     if (hasAuth) {
@@ -276,7 +235,7 @@ export default function SharePage() {
               <Button type="submit" variant="glow" className="w-full" disabled={isVerifying || !password}>
                 {isVerifying ? (
                   <>
-                    <Loader2 className="w-4 h-4 mr-2 animate-spin" />
+                    <Loader2 className="w-4 h-4 animate-spin mr-2" />
                     Verifying...
                   </>
                 ) : (
@@ -290,7 +249,7 @@ export default function SharePage() {
     );
   }
 
-  if (!meeting || !hasJoined) {
+  if (meeting && !hasJoined) {
     return (
       <div className="min-h-screen bg-black flex items-center justify-center p-4">
         <Card className="max-w-md w-full">
@@ -298,7 +257,7 @@ export default function SharePage() {
             <CardTitle className="text-2xl font-display">
               Join <span className="gradient-text">Meeting</span>
             </CardTitle>
-            <CardDescription>Enter your name to join the collaborative session (optional)</CardDescription>
+            <CardDescription>Enter your name to collaborate on this meeting</CardDescription>
           </CardHeader>
           <CardContent>
             <form onSubmit={handleJoinMeeting} className="space-y-4">
@@ -306,7 +265,7 @@ export default function SharePage() {
                 type="text"
                 value={userName}
                 onChange={(e) => setUserName(e.target.value)}
-                placeholder="Your name (or leave empty for anonymous)"
+                placeholder="Your name (optional)"
                 className="bg-white/[0.03] border-white/20"
                 autoFocus
               />
@@ -320,209 +279,230 @@ export default function SharePage() {
     );
   }
 
-  const tabs = [
-    { id: "transcript" as const, label: "Transcript", icon: FileText },
-    { id: "summary" as const, label: "Summary", icon: FileText },
-    { id: "actions" as const, label: "Action Items", icon: FileText },
-  ];
+  if (!meeting) return null;
 
   return (
     <div className="min-h-screen bg-black">
-      <div className="max-w-7xl mx-auto py-6 px-4 sm:px-6 lg:px-8">
-        <div className="space-y-6 animate-fade-in">
-          {/* Header with presence */}
-          <div className="flex items-center justify-between mb-8">
-            <div className="text-center flex-1">
-              <h1 className="text-3xl font-bold font-display text-white mb-2">
-                Shared <span className="gradient-text">Meeting</span>
-              </h1>
-              {shareInfo && (
-                <p className="text-sm text-white/50">
-                  Shared {format(new Date(shareInfo.created_at), "PPP")} · Viewed {shareInfo.access_count} times
-                  {shareInfo.expires_at && <> · Expires {format(new Date(shareInfo.expires_at), "PPP")}</>}
-                </p>
-              )}
-            </div>
+      <div className="relative">
+        <div className="absolute inset-0 overflow-hidden">
+          <div className="absolute top-20 left-20 w-72 h-72 bg-purple-600 rounded-full filter blur-[128px] opacity-20 animate-pulse"></div>
+          <div className="absolute top-40 right-20 w-96 h-96 bg-cyan-600 rounded-full filter blur-[128px] opacity-20 animate-pulse"></div>
+        </div>
 
-            {/* Presence avatars and connection status */}
-            <div className="absolute top-6 right-6">
+        <div className="relative z-10 p-8">
+          <div className="max-w-6xl mx-auto space-y-8">
+            <div className="flex items-center justify-between mb-6">
+              <div>
+                <h1 className="text-3xl font-bold font-display mb-2">
+                  <span className="gradient-text">{meeting.title}</span>
+                </h1>
+                {meeting.description && <p className="text-white/60">{meeting.description}</p>}
+              </div>
               <PresenceAvatars presence={presence} currentUser={userInfo.name} />
-              <div className="flex items-center gap-2 mt-2">
-                {isConnected ? (
-                  <>
-                    <div className="w-2 h-2 bg-green-400 rounded-full animate-pulse" />
-                    <span className="text-xs text-white/50">Connected</span>
-                  </>
-                ) : connectionError ? (
-                  <>
-                    <div className="w-2 h-2 bg-red-400 rounded-full" />
-                    <span className="text-xs text-white/50">Disconnected - Retrying...</span>
-                  </>
-                ) : (
-                  <>
-                    <div className="w-2 h-2 bg-yellow-400 rounded-full animate-pulse" />
-                    <span className="text-xs text-white/50">Connecting...</span>
-                  </>
-                )}
-              </div>
             </div>
-          </div>
 
-          {/* Meeting Info */}
-          <Card className="shadow-2xl">
-            <CardHeader>
-              <CardTitle className="text-2xl font-display">{meeting.title}</CardTitle>
-              {meeting.description && (
-                <CardDescription className="text-white/70 text-base mt-2">{meeting.description}</CardDescription>
-              )}
-            </CardHeader>
-            <CardContent>
-              <div className="flex flex-wrap gap-6 text-sm">
-                {meeting.recorded_at && (
-                  <div className="flex items-center gap-2 text-white/60">
-                    <Calendar className="w-4 h-4" />
-                    <span>{format(new Date(meeting.recorded_at), "PPP 'at' p")}</span>
-                  </div>
-                )}
-                {meeting.duration && (
-                  <div className="flex items-center gap-2 text-white/60">
-                    <Clock className="w-4 h-4" />
-                    <span>{formatDuration(meeting.duration)}</span>
-                  </div>
-                )}
-                {meeting.participants && meeting.participants.length > 0 && (
-                  <div className="flex items-center gap-2 text-white/60">
-                    <Users className="w-4 h-4" />
-                    <span>{meeting.participants.join(", ")}</span>
-                  </div>
-                )}
-              </div>
-            </CardContent>
-          </Card>
-
-          {/* Audio Player */}
-          {meeting.audio_url && (
-            <Card className="shadow-xl">
-              <CardHeader>
-                <CardTitle className="text-xl font-display">Recording</CardTitle>
-              </CardHeader>
-              <CardContent>
-                <AudioPlayer url={meeting.audio_url} />
-              </CardContent>
-            </Card>
-          )}
-
-          {/* Content Tabs */}
-          <Card className="shadow-xl">
-            <CardHeader className="pb-0">
-              <div className="flex gap-1 p-1 bg-white/[0.03] rounded-lg backdrop-blur-sm">
-                {tabs.map((tab) => {
-                  const Icon = tab.icon;
-                  return (
-                    <button
-                      key={tab.id}
-                      onClick={() => setActiveTab(tab.id)}
-                      className={cn(
-                        "flex items-center gap-2 px-4 py-2.5 rounded-md transition-all duration-200 flex-1",
-                        activeTab === tab.id
-                          ? "bg-gradient-to-r from-purple-500 to-cyan-500 text-white shadow-lg"
-                          : "text-white/60 hover:text-white/90 hover:bg-white/[0.05]"
-                      )}
-                    >
-                      <Icon className="w-4 h-4" />
-                      <span className="text-sm font-medium">{tab.label}</span>
-                    </button>
-                  );
-                })}
-              </div>
-            </CardHeader>
-            <CardContent className="pt-6">
-              {activeTab === "transcript" && (
-                <div className="prose prose-invert max-w-none">
-                  {meeting.transcript ? (
-                    <CollaborativeTranscript
-                      transcript={meeting.transcript}
-                      annotations={annotations}
-                      onAddHighlight={addHighlight}
-                      onAddComment={addComment}
-                      onDeleteAnnotation={deleteAnnotation}
-                      onEditAnnotation={editAnnotation}
-                      currentUserColor={userInfo.color}
-                      currentUserName={userInfo.name}
-                      currentSessionId={userInfo.sessionId}
-                    />
-                  ) : (
-                    <div className="text-center py-12 text-white/50 italic">No transcript available</div>
-                  )}
+            <div className="flex flex-wrap gap-4 text-sm text-white/60">
+              {meeting.recorded_at && (
+                <div className="flex items-center gap-2">
+                  <Calendar className="w-4 h-4" />
+                  {format(new Date(meeting.recorded_at), "PPP")}
                 </div>
               )}
+              {meeting.duration && (
+                <div className="flex items-center gap-2">
+                  <Clock className="w-4 h-4" />
+                  {formatDuration(meeting.duration)}
+                </div>
+              )}
+              {meeting.participants.length > 0 && (
+                <div className="flex items-center gap-2">
+                  <Users className="w-4 h-4" />
+                  {meeting.participants.join(", ")}
+                </div>
+              )}
+            </div>
 
-              {activeTab === "summary" && (
-                <div className="space-y-6">
-                  {meeting.summary ? (
-                    <>
-                      <div className="space-y-3">
-                        <h3 className="font-semibold text-white/90">Overview</h3>
-                        <p className="text-white/70 leading-relaxed">{meeting.summary.overview}</p>
+            {meeting.audio_url && (
+              <Card className="shadow-xl">
+                <CardContent className="p-6">
+                  <AudioPlayer url={meeting.audio_url} />
+                </CardContent>
+              </Card>
+            )}
+
+            <div className="flex gap-2 mb-6">
+              {(["transcript", "summary", "actions"] as const).map((tab) => (
+                <Button
+                  key={tab}
+                  variant={activeTab === tab ? "glow" : "ghost"}
+                  size="sm"
+                  onClick={() => setActiveTab(tab)}
+                  className={cn("capitalize", activeTab === tab && "shadow-lg shadow-purple-500/20")}
+                >
+                  {tab === "actions" ? "Action Items" : tab}
+                </Button>
+              ))}
+            </div>
+
+            <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
+              <div className="lg:col-span-2">
+                <Card className="shadow-xl">
+                  <CardContent className="p-6">
+                    {activeTab === "transcript" && (
+                      <div className="space-y-4">
+                        {meeting.transcript ? (
+                          <CollaborativeTranscript
+                            transcript={meeting.transcript}
+                            annotations={annotations}
+                            onAddHighlight={addHighlight}
+                            onAddComment={addComment}
+                            onDeleteAnnotation={deleteAnnotation}
+                            onEditAnnotation={editAnnotation}
+                            currentUserColor={userInfo.color}
+                            currentUserName={userInfo.name}
+                            currentSessionId={userInfo.sessionId}
+                          />
+                        ) : (
+                          <div className="text-center py-12">
+                            <FileText className="w-12 h-12 text-white/20 mx-auto mb-4" />
+                            <p className="text-white/60">No transcript available</p>
+                          </div>
+                        )}
                       </div>
+                    )}
 
-                      {meeting.summary.key_points?.length > 0 && (
-                        <div className="space-y-3">
-                          <h3 className="font-semibold text-white/90">Key Points</h3>
-                          <ul className="space-y-2">
-                            {meeting.summary.key_points.map((point: string, index: number) => (
-                              <li key={index} className="text-white/70 flex items-start gap-2">
-                                <span className="text-purple-400 mt-1">•</span>
-                                <span>{point}</span>
-                              </li>
+                    {activeTab === "summary" && (
+                      <div className="space-y-4">
+                        {meeting.summary ? (
+                          <>
+                            <div>
+                              <h3 className="text-lg font-semibold mb-2">Overview</h3>
+                              <p className="text-white/80">{meeting.summary.overview}</p>
+                            </div>
+
+                            {meeting.summary.key_points?.length > 0 && (
+                              <div>
+                                <h3 className="text-lg font-semibold mb-2">Key Points</h3>
+                                <ul className="list-disc list-inside space-y-2">
+                                  {meeting.summary.key_points.map((point: string, index: number) => (
+                                    <li key={index} className="text-white/80">
+                                      {point}
+                                    </li>
+                                  ))}
+                                </ul>
+                              </div>
+                            )}
+
+                            {meeting.summary.decisions?.length > 0 && (
+                              <div>
+                                <h3 className="text-lg font-semibold mb-2">Decisions</h3>
+                                <ul className="list-disc list-inside space-y-2">
+                                  {meeting.summary.decisions.map((decision: string, index: number) => (
+                                    <li key={index} className="text-white/80">
+                                      {decision}
+                                    </li>
+                                  ))}
+                                </ul>
+                              </div>
+                            )}
+
+                            {meeting.summary.next_steps?.length > 0 && (
+                              <div>
+                                <h3 className="text-lg font-semibold mb-2">Next Steps</h3>
+                                <ul className="list-disc list-inside space-y-2">
+                                  {meeting.summary.next_steps.map((step: string, index: number) => (
+                                    <li key={index} className="text-white/80">
+                                      {step}
+                                    </li>
+                                  ))}
+                                </ul>
+                              </div>
+                            )}
+                          </>
+                        ) : (
+                          <div className="text-center py-12">
+                            <FileText className="w-12 h-12 text-white/20 mx-auto mb-4" />
+                            <p className="text-white/60">No summary available</p>
+                          </div>
+                        )}
+                      </div>
+                    )}
+
+                    {activeTab === "actions" && (
+                      <div className="space-y-4">
+                        {meeting.action_items && meeting.action_items.length > 0 ? (
+                          <div className="space-y-3">
+                            {meeting.action_items.map((item: any, index: number) => (
+                              <div
+                                key={item.id || index}
+                                className="p-4 rounded-lg bg-white/[0.03] border border-white/10"
+                              >
+                                <div className="flex items-start justify-between">
+                                  <div className="flex-1">
+                                    <p className="text-white/90">{item.task}</p>
+                                    <div className="flex gap-4 mt-2 text-sm text-white/60">
+                                      {item.assignee && <span>Assigned to: {item.assignee}</span>}
+                                      {item.due_date && <span>Due: {format(new Date(item.due_date), "PP")}</span>}
+                                    </div>
+                                  </div>
+                                  <span
+                                    className={cn(
+                                      "px-3 py-1 rounded-full text-xs font-medium",
+                                      item.priority === "high" && "bg-red-500/20 text-red-400",
+                                      item.priority === "medium" && "bg-yellow-500/20 text-yellow-400",
+                                      item.priority === "low" && "bg-green-500/20 text-green-400"
+                                    )}
+                                  >
+                                    {item.priority}
+                                  </span>
+                                </div>
+                              </div>
                             ))}
-                          </ul>
+                          </div>
+                        ) : (
+                          <div className="text-center py-12">
+                            <FileText className="w-12 h-12 text-white/20 mx-auto mb-4" />
+                            <p className="text-white/60">No action items available</p>
+                          </div>
+                        )}
+                      </div>
+                    )}
+                  </CardContent>
+                </Card>
+              </div>
+
+              <div className="space-y-6">
+                <CollaborativeNotes
+                  value={notes}
+                  onChange={updateNotes}
+                  lastEditedBy={lastEditedBy}
+                  currentUserName={userInfo.name}
+                  onFocus={() => updateStatus("typing")}
+                  onBlur={() => updateStatus("active")}
+                />
+
+                {shareInfo && (
+                  <Card className="shadow-xl">
+                    <CardHeader>
+                      <CardTitle className="text-lg">Share Information</CardTitle>
+                    </CardHeader>
+                    <CardContent className="space-y-2 text-sm">
+                      <div>
+                        <span className="text-white/60">Created:</span> {format(new Date(shareInfo.created_at), "PP")}
+                      </div>
+                      {shareInfo.expires_at && (
+                        <div>
+                          <span className="text-white/60">Expires:</span> {format(new Date(shareInfo.expires_at), "PP")}
                         </div>
                       )}
-                    </>
-                  ) : (
-                    <div className="text-center py-12 text-white/50 italic">No summary available</div>
-                  )}
-                </div>
-              )}
-
-              {activeTab === "actions" && (
-                <div className="space-y-3">
-                  {meeting.action_items && meeting.action_items.length > 0 ? (
-                    meeting.action_items.map((item: any) => (
-                      <div key={item.id} className="p-4 rounded-lg bg-white/[0.03] border border-white/20">
-                        <p className="font-medium text-white/90">{item.task}</p>
-                        {item.assignee && <p className="text-sm text-white/50 mt-1">Assigned to: {item.assignee}</p>}
+                      <div>
+                        <span className="text-white/60">Views:</span> {shareInfo.access_count}
                       </div>
-                    ))
-                  ) : (
-                    <div className="text-center py-12 text-white/50 italic">No action items available</div>
-                  )}
-                </div>
-              )}
-            </CardContent>
-          </Card>
-
-          {/* Collaborative Notes */}
-          <Card className="shadow-xl">
-            <CardContent className="p-0">
-              <CollaborativeNotes
-                notes={notes}
-                onNotesChange={handleNotesChange}
-                isTyping={activeUsers.some((u) => u.status === "typing" && u.user_info.name !== userInfo.name)}
-                lastEditedBy={lastEditedBy}
-              />
-            </CardContent>
-          </Card>
-
-          {/* Footer */}
-          <div className="text-center py-8">
-            <p className="text-sm text-white/40">
-              Powered by{" "}
-              <span className="font-display">
-                <span className="text-white/60">Insight</span> <span className="gradient-text">Buddy</span>
-              </span>
-            </p>
+                    </CardContent>
+                  </Card>
+                )}
+              </div>
+            </div>
           </div>
         </div>
       </div>
