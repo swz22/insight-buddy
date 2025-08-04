@@ -1,14 +1,13 @@
-export function debounce<T extends (...args: any[]) => any>(func: T, delay: number): (...args: Parameters<T>) => void {
-  let timeoutId: NodeJS.Timeout | null = null;
+export function debounce<T extends (...args: any[]) => any>(func: T, wait: number): (...args: Parameters<T>) => void {
+  let timeout: NodeJS.Timeout | null = null;
 
-  return (...args: Parameters<T>) => {
-    if (timeoutId) {
-      clearTimeout(timeoutId);
+  return function debounced(...args: Parameters<T>) {
+    if (timeout) {
+      clearTimeout(timeout);
     }
 
-    timeoutId = setTimeout(() => {
+    timeout = setTimeout(() => {
       func(...args);
-      timeoutId = null;
-    }, delay);
+    }, wait);
   };
 }
