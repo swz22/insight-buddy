@@ -1,132 +1,139 @@
-DROP POLICY IF EXISTS "Anyone can view annotations for shared meetings" ON public.meeting_annotations;
-DROP POLICY IF EXISTS "Public can create annotations for shared meetings" ON public.meeting_annotations;
-DROP POLICY IF EXISTS "Anyone can update annotations for shared meetings" ON public.meeting_annotations;
-DROP POLICY IF EXISTS "Anyone can delete annotations for shared meetings" ON public.meeting_annotations;
+ALTER TABLE public.meeting_notes 
+  DROP CONSTRAINT IF EXISTS meeting_notes_unique;
 
-DROP POLICY IF EXISTS "Anyone can view notes for shared meetings" ON public.meeting_notes;
-DROP POLICY IF EXISTS "Public can create notes for shared meetings" ON public.meeting_notes;
-DROP POLICY IF EXISTS "Public can update notes for shared meetings" ON public.meeting_notes;
+ALTER TABLE public.meeting_notes
+  ADD CONSTRAINT meeting_notes_unique UNIQUE (meeting_id, share_token);
 
-DROP POLICY IF EXISTS "Anyone can view presence for shared meetings" ON public.meeting_presence;
-DROP POLICY IF EXISTS "Anyone can create presence for shared meetings" ON public.meeting_presence;
-DROP POLICY IF EXISTS "Anyone can update presence for shared meetings" ON public.meeting_presence;
-DROP POLICY IF EXISTS "Anyone can delete presence for shared meetings" ON public.meeting_presence;
+DROP POLICY IF EXISTS "Public annotations read" ON public.meeting_annotations;
+DROP POLICY IF EXISTS "Public annotations create" ON public.meeting_annotations;
+DROP POLICY IF EXISTS "Public annotations update" ON public.meeting_annotations;
+DROP POLICY IF EXISTS "Public annotations delete" ON public.meeting_annotations;
 
-CREATE POLICY "Public can view annotations for valid shares" ON public.meeting_annotations
-  FOR SELECT USING (
-    share_token IS NOT NULL AND 
-    EXISTS (
-      SELECT 1 FROM public.shared_meetings 
+DROP POLICY IF EXISTS "Public notes read" ON public.meeting_notes;
+DROP POLICY IF EXISTS "Public notes upsert" ON public.meeting_notes;
+
+DROP POLICY IF EXISTS "Public presence read" ON public.meeting_presence;
+DROP POLICY IF EXISTS "Public presence upsert" ON public.meeting_presence;
+DROP POLICY IF EXISTS "Public presence delete" ON public.meeting_presence;
+
+CREATE POLICY "Public annotations read"
+  ON public.meeting_annotations FOR SELECT
+  TO public
+  USING (
+    share_token IS NOT NULL
+    AND EXISTS (
+      SELECT 1 FROM public.shared_meetings
       WHERE shared_meetings.share_token = meeting_annotations.share_token
+      AND shared_meetings.meeting_id = meeting_annotations.meeting_id
       AND (shared_meetings.expires_at IS NULL OR shared_meetings.expires_at > NOW())
     )
   );
 
-CREATE POLICY "Public can create annotations for valid shares" ON public.meeting_annotations
-  FOR INSERT WITH CHECK (
-    share_token IS NOT NULL AND 
-    EXISTS (
-      SELECT 1 FROM public.shared_meetings 
+CREATE POLICY "Public annotations create"
+  ON public.meeting_annotations FOR INSERT
+  TO public
+  WITH CHECK (
+    share_token IS NOT NULL
+    AND EXISTS (
+      SELECT 1 FROM public.shared_meetings
       WHERE shared_meetings.share_token = meeting_annotations.share_token
+      AND shared_meetings.meeting_id = meeting_annotations.meeting_id
       AND (shared_meetings.expires_at IS NULL OR shared_meetings.expires_at > NOW())
     )
   );
 
-CREATE POLICY "Public can update own annotations" ON public.meeting_annotations
-  FOR UPDATE USING (
-    share_token IS NOT NULL AND 
-    EXISTS (
-      SELECT 1 FROM public.shared_meetings 
+CREATE POLICY "Public annotations update"
+  ON public.meeting_annotations FOR UPDATE
+  TO public
+  USING (
+    share_token IS NOT NULL
+    AND EXISTS (
+      SELECT 1 FROM public.shared_meetings
       WHERE shared_meetings.share_token = meeting_annotations.share_token
+      AND shared_meetings.meeting_id = meeting_annotations.meeting_id
       AND (shared_meetings.expires_at IS NULL OR shared_meetings.expires_at > NOW())
     )
-    AND user_info->>'sessionId' IS NOT NULL
   );
 
-CREATE POLICY "Public can delete own annotations" ON public.meeting_annotations
-  FOR DELETE USING (
-    share_token IS NOT NULL AND 
-    EXISTS (
-      SELECT 1 FROM public.shared_meetings 
+CREATE POLICY "Public annotations delete"
+  ON public.meeting_annotations FOR DELETE
+  TO public
+  USING (
+    share_token IS NOT NULL
+    AND EXISTS (
+      SELECT 1 FROM public.shared_meetings
       WHERE shared_meetings.share_token = meeting_annotations.share_token
+      AND shared_meetings.meeting_id = meeting_annotations.meeting_id
       AND (shared_meetings.expires_at IS NULL OR shared_meetings.expires_at > NOW())
     )
-    AND user_info->>'sessionId' IS NOT NULL
   );
 
-CREATE POLICY "Public can view notes for valid shares" ON public.meeting_notes
-  FOR SELECT USING (
-    share_token IS NOT NULL AND 
-    EXISTS (
-      SELECT 1 FROM public.shared_meetings 
+CREATE POLICY "Public notes read"
+  ON public.meeting_notes FOR SELECT
+  TO public
+  USING (
+    share_token IS NOT NULL
+    AND EXISTS (
+      SELECT 1 FROM public.shared_meetings
       WHERE shared_meetings.share_token = meeting_notes.share_token
+      AND shared_meetings.meeting_id = meeting_notes.meeting_id
       AND (shared_meetings.expires_at IS NULL OR shared_meetings.expires_at > NOW())
     )
   );
 
-CREATE POLICY "Public can create notes for valid shares" ON public.meeting_notes
-  FOR INSERT WITH CHECK (
-    share_token IS NOT NULL AND 
-    EXISTS (
-      SELECT 1 FROM public.shared_meetings 
+CREATE POLICY "Public notes upsert"
+  ON public.meeting_notes FOR ALL
+  TO public
+  USING (
+    share_token IS NOT NULL
+    AND EXISTS (
+      SELECT 1 FROM public.shared_meetings
       WHERE shared_meetings.share_token = meeting_notes.share_token
+      AND shared_meetings.meeting_id = meeting_notes.meeting_id
       AND (shared_meetings.expires_at IS NULL OR shared_meetings.expires_at > NOW())
     )
-  );
-
-CREATE POLICY "Public can update notes for valid shares" ON public.meeting_notes
-  FOR UPDATE USING (
-    share_token IS NOT NULL AND 
-    EXISTS (
-      SELECT 1 FROM public.shared_meetings 
+  )
+  WITH CHECK (
+    share_token IS NOT NULL
+    AND EXISTS (
+      SELECT 1 FROM public.shared_meetings
       WHERE shared_meetings.share_token = meeting_notes.share_token
-      AND (shared_meetings.expires_at IS NULL OR shared_meetings.expires_at > NOW())
-    )
-  ) WITH CHECK (
-    share_token IS NOT NULL AND 
-    EXISTS (
-      SELECT 1 FROM public.shared_meetings 
-      WHERE shared_meetings.share_token = meeting_notes.share_token
+      AND shared_meetings.meeting_id = meeting_notes.meeting_id
       AND (shared_meetings.expires_at IS NULL OR shared_meetings.expires_at > NOW())
     )
   );
 
-CREATE POLICY "Public can view presence for valid shares" ON public.meeting_presence
-  FOR SELECT USING (
-    share_token IS NOT NULL AND 
-    EXISTS (
-      SELECT 1 FROM public.shared_meetings 
+CREATE POLICY "Public presence read"
+  ON public.meeting_presence FOR SELECT
+  TO public
+  USING (
+    share_token IS NOT NULL
+    AND EXISTS (
+      SELECT 1 FROM public.shared_meetings
       WHERE shared_meetings.share_token = meeting_presence.share_token
+      AND shared_meetings.meeting_id = meeting_presence.meeting_id
       AND (shared_meetings.expires_at IS NULL OR shared_meetings.expires_at > NOW())
     )
   );
 
-CREATE POLICY "Public can create presence for valid shares" ON public.meeting_presence
-  FOR INSERT WITH CHECK (
-    share_token IS NOT NULL AND 
-    EXISTS (
-      SELECT 1 FROM public.shared_meetings 
+CREATE POLICY "Public presence upsert"
+  ON public.meeting_presence FOR ALL
+  TO public
+  USING (
+    share_token IS NOT NULL
+    AND EXISTS (
+      SELECT 1 FROM public.shared_meetings
       WHERE shared_meetings.share_token = meeting_presence.share_token
+      AND shared_meetings.meeting_id = meeting_presence.meeting_id
       AND (shared_meetings.expires_at IS NULL OR shared_meetings.expires_at > NOW())
     )
-  );
-
-CREATE POLICY "Public can update presence for valid shares" ON public.meeting_presence
-  FOR UPDATE USING (
-    share_token IS NOT NULL AND 
-    EXISTS (
-      SELECT 1 FROM public.shared_meetings 
+  )
+  WITH CHECK (
+    share_token IS NOT NULL
+    AND EXISTS (
+      SELECT 1 FROM public.shared_meetings
       WHERE shared_meetings.share_token = meeting_presence.share_token
-      AND (shared_meetings.expires_at IS NULL OR shared_meetings.expires_at > NOW())
-    )
-  );
-
-CREATE POLICY "Public can delete presence for valid shares" ON public.meeting_presence
-  FOR DELETE USING (
-    share_token IS NOT NULL AND 
-    EXISTS (
-      SELECT 1 FROM public.shared_meetings 
-      WHERE shared_meetings.share_token = meeting_presence.share_token
+      AND shared_meetings.meeting_id = meeting_presence.meeting_id
       AND (shared_meetings.expires_at IS NULL OR shared_meetings.expires_at > NOW())
     )
   );
@@ -181,7 +188,6 @@ BEGIN
 END;
 $$ LANGUAGE plpgsql SECURITY DEFINER;
 
-CREATE INDEX idx_annotations_session_id ON public.meeting_annotations ((user_info->>'sessionId'));
-CREATE INDEX idx_presence_session_id ON public.meeting_presence ((user_info->>'sessionId'));
-
+CREATE INDEX IF NOT EXISTS idx_annotations_session_id ON public.meeting_annotations ((user_info->>'sessionId'));
+CREATE INDEX IF NOT EXISTS idx_presence_session_id ON public.meeting_presence ((user_info->>'sessionId'));
 GRANT EXECUTE ON FUNCTION public.cleanup_orphaned_collaboration_data TO anon, authenticated;
