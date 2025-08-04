@@ -111,114 +111,75 @@ export function useCollaboration(
       return;
     }
 
-    const supabase = supabaseRef.current;
     isProcessingQueueRef.current = true;
     const queue = [...operationQueueRef.current];
 
     for (const operation of queue) {
+      if (operation.retries >= MAX_RETRIES) {
+        operationQueueRef.current = operationQueueRef.current.filter((op) => op.id !== operation.id);
+        toastError(`Failed to sync ${operation.type} after ${MAX_RETRIES} attempts`);
+        continue;
+      }
+
       try {
+        let success = false;
+
         switch (operation.type) {
           case "annotation_create":
-            const { data: createdData, error: createError } = await supabase
-              .from("meeting_annotations")
-              .insert(operation.payload)
-              .select()
-              .single();
-
-            if (createError) throw createError;
-
-            if (channelRef.current) {
-              try {
-                channelRef.current.send({
-                  type: "broadcast",
-                  event: "annotation",
-                  payload: createdData,
-                });
-              } catch (err) {
-                console.error("Failed to broadcast annotation:", err);
-              }
-            }
-
-            setState((prev) => ({
-              ...prev,
-              annotations: [...prev.annotations, createdData],
-            }));
+            const createResponse = await fetch("/api/public/annotations", {
+              method: "POST",
+              headers: { "Content-Type": "application/json" },
+              body: JSON.stringify(operation.payload),
+            });
+            success = createResponse.ok;
             break;
 
           case "annotation_delete":
-            const { error: deleteError } = await supabase
-              .from("meeting_annotations")
-              .delete()
-              .eq("id", operation.payload.id)
-              .eq("share_token", shareToken);
-
-            if (deleteError) throw deleteError;
-
-            if (channelRef.current) {
-              try {
-                channelRef.current.send({
-                  type: "broadcast",
-                  event: "annotation_delete",
-                  payload: { id: operation.payload.id },
-                });
-              } catch (err) {
-                console.error("Failed to broadcast annotation delete:", err);
-              }
-            }
-
-            setState((prev) => ({
-              ...prev,
-              annotations: prev.annotations.filter((a) => a.id !== operation.payload.id),
-            }));
+            const deleteResponse = await fetch("/api/public/annotations", {
+              method: "DELETE",
+              headers: { "Content-Type": "application/json" },
+              body: JSON.stringify({
+                id: operation.payload.id,
+                share_token: shareToken,
+                sessionId: stableUserInfo.sessionId,
+              }),
+            });
+            success = deleteResponse.ok;
             break;
 
           case "notes_update":
-            const { error: notesError } = await supabase
-              .from("meeting_notes")
-              .upsert({
+            const notesResponse = await fetch("/api/public/notes", {
+              method: "POST",
+              headers: { "Content-Type": "application/json" },
+              body: JSON.stringify({
                 meeting_id: meetingId,
                 share_token: shareToken,
                 content: operation.payload.content,
                 last_edited_by: operation.payload.userInfo,
-                updated_at: new Date().toISOString(),
-              })
-              .eq("meeting_id", meetingId)
-              .eq("share_token", shareToken);
-
-            if (notesError) throw notesError;
-
-            if (channelRef.current) {
-              try {
-                channelRef.current.send({
-                  type: "broadcast",
-                  event: "notes_update",
-                  payload: operation.payload,
-                });
-              } catch (err) {
-                console.error("Failed to broadcast notes update:", err);
-              }
-            }
+              }),
+            });
+            success = notesResponse.ok;
             break;
         }
 
-        // Remove successful operation
-        operationQueueRef.current = operationQueueRef.current.filter((op) => op.id !== operation.id);
-      } catch (error: any) {
-        console.error(`Failed to process operation ${operation.type}:`, error);
-
-        operation.retries++;
-        if (operation.retries >= MAX_RETRIES) {
-          toastError(`Failed to save ${operation.type.replace("_", " ")} after multiple attempts`);
+        if (success) {
           operationQueueRef.current = operationQueueRef.current.filter((op) => op.id !== operation.id);
         } else {
-          // Retry later
+          operation.retries++;
           setTimeout(() => processOperationQueue(), RETRY_DELAY * operation.retries);
+        }
+      } catch (error) {
+        operation.retries++;
+        if (operation.retries < MAX_RETRIES) {
+          setTimeout(() => processOperationQueue(), RETRY_DELAY * operation.retries);
+        } else {
+          operationQueueRef.current = operationQueueRef.current.filter((op) => op.id !== operation.id);
         }
       }
     }
 
     isProcessingQueueRef.current = false;
-  }, [meetingId, shareToken, toastError]);
+  }, [meetingId, shareToken, stableUserInfo.sessionId, toastError]);
 
   const cleanupStalePresence = useCallback(() => {
     const now = Date.now();
@@ -318,6 +279,8 @@ export function useCollaboration(
             },
           },
         });
+
+        channelRef.current = channel;
 
         // Handle presence sync
         channel
@@ -428,37 +391,27 @@ export function useCollaboration(
               hasJoinedRef.current = true;
 
               // Process any queued operations
-              processOperationQueue();
-            } else if (status === "CLOSED" || status === "CHANNEL_ERROR") {
+              if (operationQueueRef.current.length > 0) {
+                processOperationQueue();
+              }
+            } else if (status === "CHANNEL_ERROR") {
               if (mounted) {
                 setState((prev) => ({ ...prev, isConnected: false, connectionError: true }));
-
-                // Schedule reconnection
-                if (!reconnectTimeoutRef.current) {
-                  reconnectTimeoutRef.current = setTimeout(() => {
-                    reconnectTimeoutRef.current = null;
-                    if (mounted) {
-                      initializeCollaboration();
-                    }
-                  }, RECONNECT_DELAY);
-                }
+              }
+            } else if (status === "TIMED_OUT") {
+              if (mounted) {
+                setState((prev) => ({ ...prev, isConnected: false }));
               }
             }
           });
 
-        channelRef.current = channel;
-
         // Start cleanup interval
-        if (!cleanupIntervalRef.current) {
-          cleanupIntervalRef.current = setInterval(cleanupStalePresence, PRESENCE_CLEANUP_INTERVAL);
-        }
-      } catch (error: any) {
+        cleanupIntervalRef.current = setInterval(cleanupStalePresence, PRESENCE_CLEANUP_INTERVAL);
+      } catch (error) {
         console.error("Collaboration initialization error:", error);
         if (mounted) {
-          setState((prev) => ({ ...prev, connectionError: true }));
-          toastError("Failed to connect to collaboration session");
+          setState((prev) => ({ ...prev, connectionError: true, isConnected: false }));
 
-          // Schedule reconnection
           if (!reconnectTimeoutRef.current) {
             reconnectTimeoutRef.current = setTimeout(() => {
               reconnectTimeoutRef.current = null;
@@ -494,7 +447,7 @@ export function useCollaboration(
         cleanupIntervalRef.current = null;
       }
     };
-  }, [meetingId, shareToken, stableUserInfo.name, stableUserInfo.sessionId]); // Minimal dependencies
+  }, [meetingId, shareToken, stableUserInfo.name, stableUserInfo.sessionId]);
 
   useEffect(() => {}, [processOperationQueue, cleanupStalePresence, toastError, toastInfo]);
 
@@ -534,7 +487,7 @@ export function useCollaboration(
 
         if (channelRef.current) {
           try {
-            channelRef.current.send({
+            await channelRef.current.send({
               type: "broadcast",
               event: "annotation",
               payload: data,
@@ -599,7 +552,7 @@ export function useCollaboration(
 
         if (channelRef.current) {
           try {
-            channelRef.current.send({
+            await channelRef.current.send({
               type: "broadcast",
               event: "annotation",
               payload: data,
@@ -638,7 +591,6 @@ export function useCollaboration(
           payload: { id: annotationId },
         });
 
-        // Optimistically update UI
         setState((prev) => ({
           ...prev,
           annotations: prev.annotations.filter((a) => a.id !== annotationId),
@@ -649,17 +601,21 @@ export function useCollaboration(
       }
 
       try {
-        const { error } = await supabaseRef.current
-          .from("meeting_annotations")
-          .delete()
-          .eq("id", annotationId)
-          .eq("share_token", shareToken);
+        const response = await fetch("/api/public/annotations", {
+          method: "DELETE",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            id: annotationId,
+            share_token: shareToken,
+            sessionId: stableUserInfo.sessionId,
+          }),
+        });
 
-        if (error) throw error;
+        if (!response.ok) throw new Error("Failed to delete annotation");
 
         if (channelRef.current) {
           try {
-            channelRef.current.send({
+            await channelRef.current.send({
               type: "broadcast",
               event: "annotation_delete",
               payload: { id: annotationId },
@@ -684,7 +640,7 @@ export function useCollaboration(
         toastError("Failed to delete, will retry");
       }
     },
-    [shareToken, state.isConnected, toastSuccess, toastError, toastInfo, queueOperation]
+    [shareToken, state.isConnected, stableUserInfo.sessionId, toastSuccess, toastError, toastInfo, queueOperation]
   );
 
   // Edit annotation
@@ -698,7 +654,6 @@ export function useCollaboration(
       const updatedAnnotation = { ...annotation, content: newContent };
 
       if (!state.isConnected) {
-        // Optimistically update UI
         setState((prev) => ({
           ...prev,
           annotations: prev.annotations.map((a) => (a.id === annotationId ? updatedAnnotation : a)),
@@ -726,7 +681,7 @@ export function useCollaboration(
 
         if (channelRef.current) {
           try {
-            channelRef.current.send({
+            await channelRef.current.send({
               type: "broadcast",
               event: "annotation",
               payload: data,
@@ -780,19 +735,22 @@ export function useCollaboration(
 
         if (!response.ok) throw new Error("Failed to update notes");
 
-        if (channelRef.current) {
+        if (channelRef.current && channelRef.current.state === "joined") {
           try {
-            channelRef.current.send({
+            await channelRef.current.send({
               type: "broadcast",
               event: "notes_update",
-              payload,
+              payload: {
+                content,
+                userInfo,
+              },
             });
-          } catch (sendError) {
-            console.error("Failed to broadcast notes update:", sendError);
+          } catch (err) {
+            console.error("Failed to broadcast notes update:", err);
           }
         }
-      } catch (error: any) {
-        console.error("Failed to update notes:", error);
+      } catch (error) {
+        console.error("Update notes error:", error);
         queueOperation({
           type: "notes_update",
           payload,
@@ -812,52 +770,38 @@ export function useCollaboration(
         lastEditedBy: stableUserInfo,
       }));
 
-      // Debounced save to database
       debouncedUpdateNotes(content, stableUserInfo);
     },
     [stableUserInfo, debouncedUpdateNotes]
   );
 
-  // Update status
   const updateStatus = useCallback(
-    (status: "active" | "idle" | "typing") => {
-      if (!channelRef.current || !hasJoinedRef.current || !state.isConnected) return;
-
-      lastActivityRef.current = Date.now();
+    async (status: "active" | "idle" | "typing") => {
+      if (!channelRef.current || !hasJoinedRef.current) return;
 
       try {
-        channelRef.current.send({
-          type: "broadcast",
-          event: "status_update",
-          payload: {
-            user_key: presenceKeyRef.current,
-            status,
-          },
+        await channelRef.current.track({
+          user_info: stableUserInfo,
+          status,
+          joined_at: presenceRef.current[presenceKeyRef.current]?.joined_at || new Date().toISOString(),
         });
 
-        setState((prev) => {
-          if (prev.presence[presenceKeyRef.current]) {
-            return {
-              ...prev,
-              presence: {
-                ...prev.presence,
-                [presenceKeyRef.current]: {
-                  ...prev.presence[presenceKeyRef.current],
-                  status,
-                },
-              },
-            };
-          }
-          return prev;
-        });
-      } catch (error: any) {
-        console.error("Failed to update status:", error);
+        if (channelRef.current.state === "joined") {
+          await channelRef.current.send({
+            type: "broadcast",
+            event: "status_update",
+            payload: {
+              user_key: presenceKeyRef.current,
+              status,
+            },
+          });
+        }
+      } catch (error) {
+        console.error("Update status error:", error);
       }
     },
-    [state.isConnected]
+    [stableUserInfo]
   );
-
-  const activeUsers = Object.values(state.presence);
 
   return {
     presence: state.presence,
@@ -866,7 +810,6 @@ export function useCollaboration(
     lastEditedBy: state.lastEditedBy,
     isConnected: state.isConnected,
     connectionError: state.connectionError,
-    activeUsers,
     addHighlight,
     addComment,
     deleteAnnotation,
