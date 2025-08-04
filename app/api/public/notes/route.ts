@@ -16,6 +16,8 @@ const updateNotesSchema = z.object({
     name: z.string(),
     color: z.string(),
     sessionId: z.string(),
+    email: z.string().optional(),
+    avatar_url: z.string().optional(),
   }),
 });
 
@@ -53,16 +55,19 @@ export async function POST(request: NextRequest) {
 
     const { data: notes, error: upsertError } = await serviceSupabase
       .from("meeting_notes")
-      .upsert({
-        meeting_id: data.meeting_id,
-        share_token: data.share_token,
-        content: data.content,
-        last_edited_by: data.last_edited_by,
-        version: 1,
-        updated_at: new Date().toISOString(),
-      })
-      .eq("meeting_id", data.meeting_id)
-      .eq("share_token", data.share_token)
+      .upsert(
+        {
+          meeting_id: data.meeting_id,
+          share_token: data.share_token,
+          content: data.content,
+          last_edited_by: data.last_edited_by,
+          version: 1,
+          updated_at: new Date().toISOString(),
+        },
+        {
+          onConflict: "meeting_id,share_token",
+        }
+      )
       .select()
       .single();
 
