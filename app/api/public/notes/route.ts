@@ -6,12 +6,10 @@ import { z } from "zod";
 
 export const dynamic = "force-dynamic";
 
-const MAX_NOTES_LENGTH = 50000; // 50KB limit
-
-const updateNotesSchema = z.object({
+const createOrUpdateNotesSchema = z.object({
   meeting_id: z.string().uuid(),
   share_token: z.string().min(8).max(8),
-  content: z.string().max(MAX_NOTES_LENGTH),
+  content: z.string().max(50000),
   last_edited_by: z.object({
     name: z.string(),
     color: z.string(),
@@ -27,7 +25,7 @@ export async function POST(request: NextRequest) {
     const rateLimitResponse = await rateLimiters.publicNotes(request, body.share_token);
     if (rateLimitResponse) return rateLimitResponse;
 
-    const validation = updateNotesSchema.safeParse(body);
+    const validation = createOrUpdateNotesSchema.safeParse(body);
     if (!validation.success) {
       return apiError("Invalid request data", 400, "VALIDATION_ERROR", validation.error.issues);
     }
@@ -62,18 +60,18 @@ export async function POST(request: NextRequest) {
           content: data.content,
           last_edited_by: data.last_edited_by,
           version: 1,
-          updated_at: new Date().toISOString(),
         },
         {
           onConflict: "meeting_id,share_token",
+          ignoreDuplicates: false,
         }
       )
       .select()
       .single();
 
     if (upsertError) {
-      console.error("Failed to update notes:", upsertError);
-      return apiError("Failed to update notes", 500, "UPDATE_ERROR");
+      console.error("Failed to upsert notes:", upsertError);
+      return apiError("Failed to save notes", 500, "UPSERT_ERROR");
     }
 
     return apiSuccess(notes);
@@ -118,14 +116,20 @@ export async function GET(request: NextRequest) {
       .select("*")
       .eq("meeting_id", meetingId)
       .eq("share_token", shareToken)
-      .single();
+      .maybeSingle();
 
     if (notesError && notesError.code !== "PGRST116") {
       console.error("Failed to fetch notes:", notesError);
       return apiError("Failed to fetch notes", 500, "FETCH_ERROR");
     }
 
-    return apiSuccess(notes || { content: "", last_edited_by: null });
+    return apiSuccess(
+      notes || {
+        content: "",
+        last_edited_by: null,
+        version: 0,
+      }
+    );
   } catch (error) {
     console.error("Notes fetch error:", error);
     return apiError("Internal server error", 500, "INTERNAL_ERROR");

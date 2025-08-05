@@ -1,76 +1,125 @@
-import { NextRequest } from "next/server";
-import { apiError } from "@/lib/api/response";
+import { NextRequest, NextResponse } from "next/server";
+import { apiError } from "./response";
 
 interface RateLimitConfig {
-  requests: number;
-  window: number;
+  interval: number;
+  maxRequests: number;
 }
 
-const rateLimitStore = new Map<string, { count: number; resetAt: number }>();
+interface RateLimitEntry {
+  count: number;
+  resetTime: number;
+}
 
-setInterval(() => {
-  const now = Date.now();
-  for (const [key, value] of rateLimitStore.entries()) {
-    if (value.resetAt < now) {
-      rateLimitStore.delete(key);
+class RateLimiter {
+  private limits: Map<string, RateLimitEntry> = new Map();
+  private config: RateLimitConfig;
+
+  constructor(config: RateLimitConfig) {
+    this.config = config;
+  }
+
+  check(key: string): boolean {
+    const now = Date.now();
+    const entry = this.limits.get(key);
+
+    if (!entry || now > entry.resetTime) {
+      this.limits.set(key, {
+        count: 1,
+        resetTime: now + this.config.interval,
+      });
+      return true;
+    }
+
+    if (entry.count >= this.config.maxRequests) {
+      return false;
+    }
+
+    entry.count++;
+    return true;
+  }
+
+  cleanup() {
+    const now = Date.now();
+    for (const [key, entry] of this.limits.entries()) {
+      if (now > entry.resetTime) {
+        this.limits.delete(key);
+      }
     }
   }
-}, 60000);
-
-export function rateLimit(config: RateLimitConfig) {
-  return async function checkRateLimit(request: NextRequest, identifier?: string): Promise<Response | null> {
-    const clientId =
-      identifier || request.headers.get("x-forwarded-for") || request.headers.get("x-real-ip") || "anonymous";
-
-    const now = Date.now();
-    const windowMs = config.window * 1000;
-    const resetAt = now + windowMs;
-
-    const current = rateLimitStore.get(clientId);
-
-    if (!current || current.resetAt < now) {
-      rateLimitStore.set(clientId, { count: 1, resetAt });
-      return null;
-    }
-
-    if (current.count >= config.requests) {
-      const retryAfter = Math.ceil((current.resetAt - now) / 1000);
-
-      return apiError("Too many requests", 429, "RATE_LIMIT_EXCEEDED", {
-        retryAfter,
-        limit: config.requests,
-        window: config.window,
-      });
-    }
-
-    current.count++;
-    return null;
-  };
 }
 
+const limiters = {
+  // Public endpoints
+  publicAnnotations: new RateLimiter({ interval: 60000, maxRequests: 30 }),
+  publicNotes: new RateLimiter({ interval: 60000, maxRequests: 60 }),
+  publicShares: new RateLimiter({ interval: 60000, maxRequests: 10 }),
+
+  // Authenticated endpoints
+  meetings: new RateLimiter({ interval: 60000, maxRequests: 60 }),
+  upload: new RateLimiter({ interval: 300000, maxRequests: 10 }),
+  transcribe: new RateLimiter({ interval: 3600000, maxRequests: 20 }),
+};
+
+setInterval(() => {
+  Object.values(limiters).forEach((limiter) => limiter.cleanup());
+}, 300000);
+
 export const rateLimiters = {
-  publicAnnotations: rateLimit({
-    requests: 30,
-    window: 60,
-  }),
+  publicAnnotations: async (request: NextRequest, shareToken: string) => {
+    const ip = request.headers.get("x-forwarded-for") || request.headers.get("x-real-ip") || "unknown";
+    const key = `${ip}-${shareToken}`;
 
-  publicNotes: rateLimit({
-    requests: 60,
-    window: 60,
-  }),
+    if (!limiters.publicAnnotations.check(key)) {
+      return apiError("Rate limit exceeded", 429, "RATE_LIMIT");
+    }
+    return null;
+  },
 
-  upload: rateLimit({
-    requests: 10,
-    window: 3600,
-  }),
+  publicNotes: async (request: NextRequest, shareToken: string) => {
+    const ip = request.headers.get("x-forwarded-for") || request.headers.get("x-real-ip") || "unknown";
+    const key = `${ip}-${shareToken}`;
 
-  transcription: rateLimit({
-    requests: 5,
-    window: 3600,
-  }),
+    if (!limiters.publicNotes.check(key)) {
+      return apiError("Rate limit exceeded", 429, "RATE_LIMIT");
+    }
+    return null;
+  },
 
-  sharing: rateLimit({
-    requests: 20,
-    window: 3600,
-  }),
+  publicShares: async (request: NextRequest, shareToken: string) => {
+    const ip = request.headers.get("x-forwarded-for") || request.headers.get("x-real-ip") || "unknown";
+    const key = `${ip}-${shareToken}`;
+
+    if (!limiters.publicShares.check(key)) {
+      return apiError("Rate limit exceeded", 429, "RATE_LIMIT");
+    }
+    return null;
+  },
+
+  meetings: async (request: NextRequest, userId: string) => {
+    const key = `user-${userId}`;
+
+    if (!limiters.meetings.check(key)) {
+      return apiError("Rate limit exceeded", 429, "RATE_LIMIT");
+    }
+    return null;
+  },
+
+  upload: async (request: NextRequest, userId: string) => {
+    const key = `upload-${userId}`;
+
+    if (!limiters.upload.check(key)) {
+      return apiError("Upload rate limit exceeded", 429, "RATE_LIMIT");
+    }
+    return null;
+  },
+
+  transcribe: async (request: NextRequest, userId: string) => {
+    const key = `transcribe-${userId}`;
+
+    if (!limiters.transcribe.check(key)) {
+      return apiError("Transcription rate limit exceeded", 429, "RATE_LIMIT");
+    }
+    return null;
+  },
 };
