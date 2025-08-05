@@ -1,10 +1,9 @@
 "use client";
 
-import { useEffect, useState, useCallback, useRef } from "react";
+import { useEffect, useState, useCallback, useRef, useMemo } from "react";
 import { RealtimeChannel } from "@supabase/supabase-js";
 import { useToast } from "@/hooks/use-toast";
 import { createPublicClient } from "@/lib/supabase/public-client";
-import { debounce } from "@/lib/utils/debounce";
 
 interface UserInfo {
   name: string;
@@ -50,7 +49,7 @@ interface QueuedOperation {
   timestamp: number;
 }
 
-function isPresence(obj: any): obj is Presence {
+function isValidPresence(obj: any): obj is Presence {
   return (
     obj &&
     typeof obj === "object" &&
@@ -70,6 +69,7 @@ const RETRY_DELAY = 1000;
 const RECONNECT_DELAY = 3000;
 const PRESENCE_CLEANUP_INTERVAL = 30000;
 const IDLE_TIMEOUT = 120000;
+const NOTES_DEBOUNCE_DELAY = 500;
 
 export function useCollaboration(
   meetingId: string,
@@ -89,22 +89,27 @@ export function useCollaboration(
   const channelRef = useRef<RealtimeChannel | null>(null);
   const supabaseRef = useRef(createPublicClient());
   const presenceRef = useRef<Record<string, Presence>>({});
-  const presenceKeyRef = useRef<string>("");
-  const hasJoinedRef = useRef(false);
-  const reconnectTimeoutRef = useRef<NodeJS.Timeout | null>(null);
-  const cleanupIntervalRef = useRef<NodeJS.Timeout | null>(null);
   const operationQueueRef = useRef<QueuedOperation[]>([]);
   const isProcessingQueueRef = useRef(false);
   const lastActivityRef = useRef(Date.now());
-  const isInitializedRef = useRef(false);
+  const notesUpdateTimeoutRef = useRef<NodeJS.Timeout | null>(null);
+  const lastBroadcastedNotesRef = useRef<string>("");
+  const joinAnnouncedRef = useRef<Set<string>>(new Set());
+  const stableUserInfo = useMemo<UserInfo>(
+    () => ({
+      name: userInfo.name,
+      email: "email" in userInfo ? userInfo.email : undefined,
+      avatar_url: "avatar_url" in userInfo ? userInfo.avatar_url : undefined,
+      color: userInfo.color,
+      sessionId: userInfo.sessionId,
+    }),
+    [userInfo.name, userInfo.color, userInfo.sessionId]
+  );
 
-  const stableUserInfo: UserInfo = {
-    name: userInfo.name,
-    email: "email" in userInfo ? userInfo.email : undefined,
-    avatar_url: "avatar_url" in userInfo ? userInfo.avatar_url : undefined,
-    color: userInfo.color,
-    sessionId: userInfo.sessionId,
-  };
+  const presenceKey = useMemo(
+    () => `${shareToken}-${stableUserInfo.sessionId}`,
+    [shareToken, stableUserInfo.sessionId]
+  );
 
   const processOperationQueue = useCallback(async () => {
     if (isProcessingQueueRef.current || operationQueueRef.current.length === 0) {
@@ -181,23 +186,6 @@ export function useCollaboration(
     isProcessingQueueRef.current = false;
   }, [meetingId, shareToken, stableUserInfo.sessionId, toastError]);
 
-  const cleanupStalePresence = useCallback(() => {
-    const now = Date.now();
-    const staleThreshold = now - IDLE_TIMEOUT;
-
-    Object.entries(presenceRef.current).forEach(([key, presence]) => {
-      const joinedAt = new Date(presence.joined_at).getTime();
-      if (joinedAt < staleThreshold && key !== presenceKeyRef.current) {
-        delete presenceRef.current[key];
-        setState((prev) => {
-          const newPresence = { ...prev.presence };
-          delete newPresence[key];
-          return { ...prev, presence: newPresence };
-        });
-      }
-    });
-  }, []);
-
   const queueOperation = useCallback(
     (operation: Omit<QueuedOperation, "id" | "retries" | "timestamp">) => {
       const queuedOp: QueuedOperation = {
@@ -217,65 +205,51 @@ export function useCollaboration(
   );
 
   useEffect(() => {
-    if (!meetingId || !shareToken || !stableUserInfo.name || isInitializedRef.current) {
+    if (!meetingId || !shareToken || !stableUserInfo.name) {
       return;
     }
 
-    isInitializedRef.current = true;
-    const supabase = supabaseRef.current;
-    presenceKeyRef.current = `${shareToken}-${stableUserInfo.sessionId}`;
     let mounted = true;
+    let hasTrackedPresence = false;
+    let reconnectTimeout: NodeJS.Timeout | null = null;
+    let cleanupInterval: NodeJS.Timeout | null = null;
 
     const initializeCollaboration = async () => {
       try {
         if (!mounted) return;
 
+        setState((prev) => ({ ...prev, connectionError: false }));
+
+        const [annotationsRes, notesRes] = await Promise.all([
+          fetch(`/api/public/annotations?meeting_id=${meetingId}&share_token=${shareToken}`),
+          fetch(`/api/public/notes?meeting_id=${meetingId}&share_token=${shareToken}`),
+        ]);
+
         if (mounted) {
-          setState((prev) => ({ ...prev, connectionError: false }));
-        }
-
-        // Fetch existing annotations
-        try {
-          const annotationsResponse = await fetch(
-            `/api/public/annotations?meeting_id=${meetingId}&share_token=${shareToken}`
-          );
-          if (annotationsResponse.ok) {
-            const annotations = await annotationsResponse.json();
-            if (mounted && Array.isArray(annotations)) {
-              setState((prev) => ({ ...prev, annotations }));
-            }
+          if (annotationsRes.ok) {
+            const annotations = await annotationsRes.json();
+            setState((prev) => ({ ...prev, annotations: Array.isArray(annotations) ? annotations : [] }));
           }
-        } catch (err) {
-          console.error("Failed to fetch annotations:", err);
-        }
 
-        // Fetch collaborative notes
-        try {
-          const notesResponse = await fetch(`/api/public/notes?meeting_id=${meetingId}&share_token=${shareToken}`);
-          if (notesResponse.ok) {
-            const notesData = await notesResponse.json();
-            if (mounted && notesData) {
-              setState((prev) => ({
-                ...prev,
-                notes: notesData.content || "",
-                lastEditedBy: notesData.last_edited_by || null,
-              }));
-            }
+          if (notesRes.ok) {
+            const notesData = await notesRes.json();
+            setState((prev) => ({
+              ...prev,
+              notes: notesData.content || "",
+              lastEditedBy: notesData.last_edited_by || null,
+            }));
+            lastBroadcastedNotesRef.current = notesData.content || "";
           }
-        } catch (err) {
-          console.error("Failed to fetch notes:", err);
         }
 
-        const channelName = `public:meeting-${shareToken}`;
-
-        const channel = supabase.channel(channelName, {
+        const channel = supabaseRef.current.channel(`public:meeting-${shareToken}`, {
           config: {
             presence: {
-              key: presenceKeyRef.current,
+              key: presenceKey,
             },
             broadcast: {
               self: false,
-              ack: false,
+              ack: true,
             },
           },
         });
@@ -283,104 +257,108 @@ export function useCollaboration(
         channelRef.current = channel;
 
         // Handle presence sync
-        channel
-          .on("presence", { event: "sync" }, () => {
-            if (!mounted) return;
+        channel.on("presence", { event: "sync" }, () => {
+          if (!mounted) return;
 
-            const presenceState = channel.presenceState();
-            const newPresence: Record<string, Presence> = {};
+          const presenceState = channel.presenceState();
+          const newPresence: Record<string, Presence> = {};
 
-            Object.entries(presenceState).forEach(([key, presences]) => {
-              if (Array.isArray(presences) && presences.length > 0) {
-                const presenceData = presences[0];
-                if (isPresence(presenceData)) {
-                  newPresence[key] = presenceData;
-                }
+          Object.entries(presenceState).forEach(([key, presences]) => {
+            if (Array.isArray(presences) && presences.length > 0) {
+              const presenceData = presences[0];
+              if (isValidPresence(presenceData)) {
+                newPresence[key] = presenceData;
               }
-            });
-
-            presenceRef.current = newPresence;
-            if (mounted) {
-              setState((prev) => ({
-                ...prev,
-                presence: newPresence,
-              }));
             }
-          })
-          .on("presence", { event: "join" }, ({ key, newPresences }: any) => {
-            if (!mounted || !hasJoinedRef.current) return;
+          });
 
-            if (Array.isArray(newPresences) && newPresences.length > 0) {
-              const presenceData = newPresences[0];
-              if (isPresence(presenceData) && presenceData.user_info.name !== stableUserInfo.name) {
+          presenceRef.current = newPresence;
+          setState((prev) => ({ ...prev, presence: newPresence }));
+        });
+
+        channel.on("presence", { event: "join" }, ({ key, newPresences }) => {
+          if (!mounted || !hasTrackedPresence) return;
+
+          if (Array.isArray(newPresences) && newPresences.length > 0) {
+            const presenceData = newPresences[0];
+            if (presenceData?.user_info?.name && presenceData.user_info.name !== stableUserInfo.name) {
+              const joinKey = `${key}-${presenceData.user_info.name}`;
+              if (!joinAnnouncedRef.current.has(joinKey)) {
+                joinAnnouncedRef.current.add(joinKey);
                 toastInfo(`${presenceData.user_info.name} joined the session`);
+                setTimeout(() => joinAnnouncedRef.current.delete(joinKey), 300000);
               }
             }
-          })
-          .on("presence", { event: "leave" }, ({ key, leftPresences }: any) => {
-            if (!mounted || !hasJoinedRef.current) return;
+          }
+        });
 
-            if (Array.isArray(leftPresences) && leftPresences.length > 0) {
-              const presenceData = leftPresences[0];
-              if (isPresence(presenceData) && presenceData.user_info.name !== stableUserInfo.name) {
-                toastInfo(`${presenceData.user_info.name} left the session`);
-              }
+        channel.on("presence", { event: "leave" }, ({ key, leftPresences }) => {
+          if (!mounted || !hasTrackedPresence) return;
+
+          if (Array.isArray(leftPresences) && leftPresences.length > 0) {
+            const presenceData = leftPresences[0];
+            if (presenceData?.user_info?.name && presenceData.user_info.name !== stableUserInfo.name) {
+              toastInfo(`${presenceData.user_info.name} left the session`);
+              const joinKey = `${key}-${presenceData.user_info.name}`;
+              joinAnnouncedRef.current.delete(joinKey);
             }
-          })
-          .on("broadcast", { event: "annotation" }, ({ payload }) => {
-            if (!mounted) return;
+          }
+        });
 
-            setState((prev) => {
-              const exists = prev.annotations.some((a) => a.id === payload.id);
-              if (exists) {
-                return {
-                  ...prev,
-                  annotations: prev.annotations.map((a) => (a.id === payload.id ? payload : a)),
-                };
-              }
+        channel.on("broadcast", { event: "annotation" }, ({ payload }) => {
+          if (!mounted) return;
+
+          setState((prev) => {
+            const exists = prev.annotations.some((a) => a.id === payload.id);
+            if (exists) {
               return {
                 ...prev,
-                annotations: [...prev.annotations, payload],
+                annotations: prev.annotations.map((a) => (a.id === payload.id ? payload : a)),
               };
-            });
-          })
-          .on("broadcast", { event: "annotation_delete" }, ({ payload }) => {
-            if (!mounted) return;
-
-            setState((prev) => ({
+            }
+            return {
               ...prev,
-              annotations: prev.annotations.filter((a) => a.id !== payload.id),
-            }));
-          })
-          .on("broadcast", { event: "notes_update" }, ({ payload }) => {
-            if (!mounted) return;
+              annotations: [...prev.annotations, payload],
+            };
+          });
+        });
 
+        channel.on("broadcast", { event: "annotation_delete" }, ({ payload }) => {
+          if (!mounted) return;
+
+          setState((prev) => ({
+            ...prev,
+            annotations: prev.annotations.filter((a) => a.id !== payload.id),
+          }));
+        });
+
+        channel.on("broadcast", { event: "notes_update" }, ({ payload }) => {
+          if (!mounted) return;
+
+          console.log("[Collaboration] Received notes update:", {
+            content: payload.content?.substring(0, 50) + "...",
+            from: payload.userInfo?.name,
+            sessionId: payload.userInfo?.sessionId,
+            mySessionId: stableUserInfo.sessionId,
+          });
+
+          if (payload.userInfo?.sessionId !== stableUserInfo.sessionId) {
+            lastBroadcastedNotesRef.current = payload.content;
             setState((prev) => ({
               ...prev,
               notes: payload.content,
               lastEditedBy: payload.userInfo,
             }));
-          })
-          .on("broadcast", { event: "status_update" }, ({ payload }) => {
-            if (!mounted) return;
+          }
+        });
 
-            const { user_key, status } = payload;
-            if (presenceRef.current[user_key]) {
-              presenceRef.current[user_key].status = status;
-              if (mounted) {
-                setState((prev) => ({
-                  ...prev,
-                  presence: { ...presenceRef.current },
-                }));
-              }
-            }
-          })
-          .subscribe(async (status) => {
-            if (status === "SUBSCRIBED") {
-              if (mounted) {
-                setState((prev) => ({ ...prev, isConnected: true, connectionError: false }));
-              }
+        await channel.subscribe(async (status) => {
+          console.log("[Collaboration] Channel status:", status);
 
+          if (status === "SUBSCRIBED" && mounted) {
+            setState((prev) => ({ ...prev, isConnected: true, connectionError: false }));
+
+            if (!hasTrackedPresence) {
               const presenceData: Presence = {
                 user_info: stableUserInfo,
                 status: "active",
@@ -388,38 +366,50 @@ export function useCollaboration(
               };
 
               await channel.track(presenceData);
-              hasJoinedRef.current = true;
+              hasTrackedPresence = true;
+            }
 
-              // Process any queued operations
-              if (operationQueueRef.current.length > 0) {
-                processOperationQueue();
-              }
-            } else if (status === "CHANNEL_ERROR") {
-              if (mounted) {
-                setState((prev) => ({ ...prev, isConnected: false, connectionError: true }));
-              }
-            } else if (status === "TIMED_OUT") {
-              if (mounted) {
-                setState((prev) => ({ ...prev, isConnected: false }));
+            if (operationQueueRef.current.length > 0) {
+              processOperationQueue();
+            }
+          } else if (status === "CHANNEL_ERROR" && mounted) {
+            console.error("[Collaboration] Channel error");
+            setState((prev) => ({ ...prev, isConnected: false, connectionError: true }));
+          } else if (status === "CLOSED" && mounted) {
+            console.log("[Collaboration] Channel closed");
+            setState((prev) => ({ ...prev, isConnected: false }));
+            hasTrackedPresence = false;
+          }
+        });
+
+        cleanupInterval = setInterval(() => {
+          const now = Date.now();
+          const staleThreshold = now - IDLE_TIMEOUT;
+
+          Object.entries(presenceRef.current).forEach(([key, presence]) => {
+            if (key !== presenceKey) {
+              const joinedAt = new Date(presence.joined_at).getTime();
+              if (joinedAt < staleThreshold) {
+                delete presenceRef.current[key];
+                setState((prev) => {
+                  const newPresence = { ...prev.presence };
+                  delete newPresence[key];
+                  return { ...prev, presence: newPresence };
+                });
               }
             }
           });
-
-        // Start cleanup interval
-        cleanupIntervalRef.current = setInterval(cleanupStalePresence, PRESENCE_CLEANUP_INTERVAL);
+        }, PRESENCE_CLEANUP_INTERVAL);
       } catch (error) {
         console.error("Collaboration initialization error:", error);
         if (mounted) {
           setState((prev) => ({ ...prev, connectionError: true, isConnected: false }));
 
-          if (!reconnectTimeoutRef.current) {
-            reconnectTimeoutRef.current = setTimeout(() => {
-              reconnectTimeoutRef.current = null;
-              if (mounted) {
-                initializeCollaboration();
-              }
-            }, RECONNECT_DELAY);
-          }
+          reconnectTimeout = setTimeout(() => {
+            if (mounted) {
+              initializeCollaboration();
+            }
+          }, RECONNECT_DELAY);
         }
       }
     };
@@ -429,27 +419,102 @@ export function useCollaboration(
     // Cleanup
     return () => {
       mounted = false;
-      isInitializedRef.current = false;
-      hasJoinedRef.current = false;
+      joinAnnouncedRef.current.clear();
 
       if (channelRef.current) {
         channelRef.current.unsubscribe();
         channelRef.current = null;
       }
 
-      if (reconnectTimeoutRef.current) {
-        clearTimeout(reconnectTimeoutRef.current);
-        reconnectTimeoutRef.current = null;
+      if (reconnectTimeout) {
+        clearTimeout(reconnectTimeout);
       }
 
-      if (cleanupIntervalRef.current) {
-        clearInterval(cleanupIntervalRef.current);
-        cleanupIntervalRef.current = null;
+      if (cleanupInterval) {
+        clearInterval(cleanupInterval);
+      }
+
+      if (notesUpdateTimeoutRef.current) {
+        clearTimeout(notesUpdateTimeoutRef.current);
       }
     };
-  }, [meetingId, shareToken, stableUserInfo.name, stableUserInfo.sessionId]);
+  }, [meetingId, shareToken, stableUserInfo.name, presenceKey]);
 
-  useEffect(() => {}, [processOperationQueue, cleanupStalePresence, toastError, toastInfo]);
+  useEffect(() => {
+    if (state.isConnected && operationQueueRef.current.length > 0) {
+      processOperationQueue();
+    }
+  }, [state.isConnected, processOperationQueue]);
+
+  const updateNotes = useCallback(
+    (content: string) => {
+      lastActivityRef.current = Date.now();
+
+      setState((prev) => ({
+        ...prev,
+        notes: content,
+        lastEditedBy: stableUserInfo,
+      }));
+
+      if (notesUpdateTimeoutRef.current) {
+        clearTimeout(notesUpdateTimeoutRef.current);
+      }
+
+      notesUpdateTimeoutRef.current = setTimeout(async () => {
+        if (content === lastBroadcastedNotesRef.current) {
+          return;
+        }
+
+        lastBroadcastedNotesRef.current = content;
+
+        if (!state.isConnected) {
+          queueOperation({
+            type: "notes_update",
+            payload: { content, userInfo: stableUserInfo },
+          });
+          return;
+        }
+
+        try {
+          const response = await fetch("/api/public/notes", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({
+              meeting_id: meetingId,
+              share_token: shareToken,
+              content,
+              last_edited_by: stableUserInfo,
+            }),
+          });
+
+          if (!response.ok) throw new Error("Failed to update notes");
+
+          if (channelRef.current?.state === "joined") {
+            console.log("[Collaboration] Broadcasting notes update:", {
+              content: content.substring(0, 50) + "...",
+              channelState: channelRef.current.state,
+              user: stableUserInfo.name,
+            });
+
+            await channelRef.current.send({
+              type: "broadcast",
+              event: "notes_update",
+              payload: { content, userInfo: stableUserInfo },
+            });
+          } else {
+            console.warn("[Collaboration] Cannot broadcast - channel not joined:", channelRef.current?.state);
+          }
+        } catch (error) {
+          console.error("Update notes error:", error);
+          queueOperation({
+            type: "notes_update",
+            payload: { content, userInfo: stableUserInfo },
+          });
+        }
+      }, NOTES_DEBOUNCE_DELAY);
+    },
+    [meetingId, shareToken, stableUserInfo, state.isConnected, queueOperation]
+  );
 
   // Add highlight
   const addHighlight = useCallback(
@@ -466,10 +531,7 @@ export function useCollaboration(
       };
 
       if (!state.isConnected) {
-        queueOperation({
-          type: "annotation_create",
-          payload: annotation,
-        });
+        queueOperation({ type: "annotation_create", payload: annotation });
         toastInfo("Highlight saved offline, will sync when connected");
         return;
       }
@@ -485,16 +547,12 @@ export function useCollaboration(
 
         const data = await response.json();
 
-        if (channelRef.current) {
-          try {
-            await channelRef.current.send({
-              type: "broadcast",
-              event: "annotation",
-              payload: data,
-            });
-          } catch (err) {
-            console.error("Failed to broadcast highlight:", err);
-          }
+        if (channelRef.current?.state === "joined") {
+          await channelRef.current.send({
+            type: "broadcast",
+            event: "annotation",
+            payload: data,
+          });
         }
 
         setState((prev) => ({
@@ -503,12 +561,9 @@ export function useCollaboration(
         }));
 
         toastSuccess("Highlight added");
-      } catch (error: any) {
+      } catch (error) {
         console.error("Add highlight error:", error);
-        queueOperation({
-          type: "annotation_create",
-          payload: annotation,
-        });
+        queueOperation({ type: "annotation_create", payload: annotation });
         toastError("Failed to add highlight, will retry");
       }
     },
@@ -531,10 +586,7 @@ export function useCollaboration(
       };
 
       if (!state.isConnected) {
-        queueOperation({
-          type: "annotation_create",
-          payload: annotation,
-        });
+        queueOperation({ type: "annotation_create", payload: annotation });
         toastInfo("Comment saved offline, will sync when connected");
         return;
       }
@@ -550,16 +602,12 @@ export function useCollaboration(
 
         const data = await response.json();
 
-        if (channelRef.current) {
-          try {
-            await channelRef.current.send({
-              type: "broadcast",
-              event: "annotation",
-              payload: data,
-            });
-          } catch (err) {
-            console.error("Failed to broadcast comment:", err);
-          }
+        if (channelRef.current?.state === "joined") {
+          await channelRef.current.send({
+            type: "broadcast",
+            event: "annotation",
+            payload: data,
+          });
         }
 
         setState((prev) => ({
@@ -568,12 +616,9 @@ export function useCollaboration(
         }));
 
         toastSuccess("Comment added");
-      } catch (error: any) {
+      } catch (error) {
         console.error("Add comment error:", error);
-        queueOperation({
-          type: "annotation_create",
-          payload: annotation,
-        });
+        queueOperation({ type: "annotation_create", payload: annotation });
         toastError("Failed to add comment, will retry");
       }
     },
@@ -585,17 +630,13 @@ export function useCollaboration(
     async (annotationId: string) => {
       lastActivityRef.current = Date.now();
 
+      setState((prev) => ({
+        ...prev,
+        annotations: prev.annotations.filter((a) => a.id !== annotationId),
+      }));
+
       if (!state.isConnected) {
-        queueOperation({
-          type: "annotation_delete",
-          payload: { id: annotationId },
-        });
-
-        setState((prev) => ({
-          ...prev,
-          annotations: prev.annotations.filter((a) => a.id !== annotationId),
-        }));
-
+        queueOperation({ type: "annotation_delete", payload: { id: annotationId } });
         toastInfo("Delete saved offline, will sync when connected");
         return;
       }
@@ -613,30 +654,18 @@ export function useCollaboration(
 
         if (!response.ok) throw new Error("Failed to delete annotation");
 
-        if (channelRef.current) {
-          try {
-            await channelRef.current.send({
-              type: "broadcast",
-              event: "annotation_delete",
-              payload: { id: annotationId },
-            });
-          } catch (err) {
-            console.error("Failed to broadcast delete:", err);
-          }
+        if (channelRef.current?.state === "joined") {
+          await channelRef.current.send({
+            type: "broadcast",
+            event: "annotation_delete",
+            payload: { id: annotationId },
+          });
         }
 
-        setState((prev) => ({
-          ...prev,
-          annotations: prev.annotations.filter((a) => a.id !== annotationId),
-        }));
-
         toastSuccess("Annotation deleted");
-      } catch (error: any) {
+      } catch (error) {
         console.error("Delete annotation error:", error);
-        queueOperation({
-          type: "annotation_delete",
-          payload: { id: annotationId },
-        });
+        queueOperation({ type: "annotation_delete", payload: { id: annotationId } });
         toastError("Failed to delete, will retry");
       }
     },
@@ -653,15 +682,10 @@ export function useCollaboration(
 
       const updatedAnnotation = { ...annotation, content: newContent };
 
-      if (!state.isConnected) {
-        setState((prev) => ({
-          ...prev,
-          annotations: prev.annotations.map((a) => (a.id === annotationId ? updatedAnnotation : a)),
-        }));
-
-        toastInfo("Edit saved offline, will sync when connected");
-        return;
-      }
+      setState((prev) => ({
+        ...prev,
+        annotations: prev.annotations.map((a) => (a.id === annotationId ? updatedAnnotation : a)),
+      }));
 
       try {
         const response = await fetch("/api/public/annotations", {
@@ -679,16 +703,12 @@ export function useCollaboration(
 
         const data = await response.json();
 
-        if (channelRef.current) {
-          try {
-            await channelRef.current.send({
-              type: "broadcast",
-              event: "annotation",
-              payload: data,
-            });
-          } catch (err) {
-            console.error("Failed to broadcast edit:", err);
-          }
+        if (channelRef.current?.state === "joined") {
+          await channelRef.current.send({
+            type: "broadcast",
+            event: "annotation",
+            payload: data,
+          });
         }
 
         setState((prev) => ({
@@ -697,110 +717,29 @@ export function useCollaboration(
         }));
 
         toastSuccess("Annotation updated");
-      } catch (error: any) {
+      } catch (error) {
         console.error("Edit annotation error:", error);
         toastError("Failed to update annotation");
       }
     },
-    [shareToken, state.annotations, state.isConnected, stableUserInfo.sessionId, toastSuccess, toastError, toastInfo]
-  );
-
-  const debouncedUpdateNotes = useRef(
-    debounce(async (content: string, userInfo: UserInfo) => {
-      const payload = {
-        content,
-        userInfo,
-        timestamp: Date.now(),
-      };
-
-      if (!state.isConnected) {
-        queueOperation({
-          type: "notes_update",
-          payload,
-        });
-        return;
-      }
-
-      try {
-        const response = await fetch("/api/public/notes", {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({
-            meeting_id: meetingId,
-            share_token: shareToken,
-            content,
-            last_edited_by: userInfo,
-          }),
-        });
-
-        if (!response.ok) throw new Error("Failed to update notes");
-
-        if (channelRef.current && channelRef.current.state === "joined") {
-          try {
-            await channelRef.current.send({
-              type: "broadcast",
-              event: "notes_update",
-              payload: {
-                content,
-                userInfo,
-              },
-            });
-          } catch (err) {
-            console.error("Failed to broadcast notes update:", err);
-          }
-        }
-      } catch (error) {
-        console.error("Update notes error:", error);
-        queueOperation({
-          type: "notes_update",
-          payload,
-        });
-      }
-    }, 1000)
-  ).current;
-
-  const updateNotes = useCallback(
-    (content: string) => {
-      lastActivityRef.current = Date.now();
-
-      // Update local state immediately
-      setState((prev) => ({
-        ...prev,
-        notes: content,
-        lastEditedBy: stableUserInfo,
-      }));
-
-      debouncedUpdateNotes(content, stableUserInfo);
-    },
-    [stableUserInfo, debouncedUpdateNotes]
+    [shareToken, state.annotations, stableUserInfo.sessionId, toastSuccess, toastError]
   );
 
   const updateStatus = useCallback(
     async (status: "active" | "idle" | "typing") => {
-      if (!channelRef.current || !hasJoinedRef.current) return;
+      if (!channelRef.current || channelRef.current.state !== "joined") return;
 
       try {
         await channelRef.current.track({
           user_info: stableUserInfo,
           status,
-          joined_at: presenceRef.current[presenceKeyRef.current]?.joined_at || new Date().toISOString(),
+          joined_at: presenceRef.current[presenceKey]?.joined_at || new Date().toISOString(),
         });
-
-        if (channelRef.current.state === "joined") {
-          await channelRef.current.send({
-            type: "broadcast",
-            event: "status_update",
-            payload: {
-              user_key: presenceKeyRef.current,
-              status,
-            },
-          });
-        }
       } catch (error) {
         console.error("Update status error:", error);
       }
     },
-    [stableUserInfo]
+    [stableUserInfo, presenceKey]
   );
 
   return {
