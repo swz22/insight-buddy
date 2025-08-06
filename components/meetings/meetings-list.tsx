@@ -2,6 +2,7 @@
 
 import { useState } from "react";
 import { Button } from "@/components/ui/button";
+import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { useMeetings, useDeleteMeeting } from "@/hooks/use-meetings";
 import { useMeetingFilters } from "@/hooks/use-meeting-filters";
 import { MeetingCard } from "./meeting-card";
@@ -53,109 +54,101 @@ export function MeetingsList({ userEmail }: MeetingsListProps) {
     }
   };
 
-  return (
-    <>
-      <div className="flex justify-between items-center mb-8 animate-fade-in">
-        <div>
-          <h1 className="text-4xl font-bold font-display text-white mb-2">
-            Your <span className="gradient-text">Meetings</span>
-          </h1>
-          <p className="text-white/60">
-            Welcome back, <span className="text-white/90 font-medium">{userEmail}</span>
-            {meetings && meetings.length > 0 && (
-              <span className="text-white/50 ml-2">• {meetings.length} total meetings</span>
-            )}
-          </p>
-        </div>
-        <Link href="/dashboard/upload">
-          <Button variant="glow" size="lg" className="font-medium shadow-lg shadow-purple-500/25">
-            Upload Recording
-          </Button>
-        </Link>
-      </div>
+  const handleShareClick = (e: React.MouseEvent, meeting: Meeting) => {
+    e.stopPropagation();
+    router.push(`/dashboard/meetings/${meeting.id}?share=true`);
+  };
 
-      {isLoading && (
-        <div className="grid gap-6 md:grid-cols-2 lg:grid-cols-3">
+  const handleUpdateSuccess = (updatedMeeting: Meeting) => {
+    queryClient.invalidateQueries({ queryKey: ["meetings"] });
+    setEditingMeeting(null);
+    toast.success("Meeting updated successfully");
+  };
+
+  if (isLoading) {
+    return (
+      <div className="space-y-6">
+        <div className="flex items-center justify-between mb-6">
+          <h1 className="text-3xl font-display gradient-text">Meetings</h1>
+        </div>
+        <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-3">
           {[...Array(6)].map((_, i) => (
-            <div key={i} className="stagger-animation">
-              <SkeletonCard />
-            </div>
+            <SkeletonCard key={i} />
           ))}
         </div>
-      )}
+      </div>
+    );
+  }
 
-      {error && <div className="text-center py-8 text-red-400">Failed to load meetings. Please try again.</div>}
+  if (error) {
+    return (
+      <div className="text-center py-12">
+        <p className="text-red-500">Failed to load meetings</p>
+        <Button variant="glass" className="mt-4" onClick={() => router.refresh()}>
+          Try Again
+        </Button>
+      </div>
+    );
+  }
 
-      {!isLoading && !error && meetings && (
-        <>
-          <MeetingFilters
-            searchTerm={searchTerm}
-            onSearchChange={setSearchTerm}
-            dateRange={dateRange}
-            onDateRangeChange={setDateRange}
-            onClearFilters={clearFilters}
-          />
+  const displayMeetings = filteredMeetings || meetings || [];
 
-          {filteredMeetings.length === 0 ? (
-            <div className="text-center py-16 animate-fade-in">
-              <div className="glass rounded-2xl p-12 max-w-md mx-auto">
-                {hasActiveFilters ? (
-                  <>
-                    <p className="text-white/60 mb-6 text-lg">No meetings match your filters.</p>
-                    <Button variant="outline" onClick={clearFilters} className="hover:border-cyan-500/60">
-                      Clear filters
-                    </Button>
-                  </>
-                ) : (
-                  <>
-                    <div className="w-16 h-16 rounded-full bg-gradient-to-r from-purple-500/20 to-cyan-500/20 flex items-center justify-center mx-auto mb-6">
-                      <FileText className="w-8 h-8 text-white/40" />
-                    </div>
-                    <p className="text-white/60 mb-2 text-lg">No meetings yet.</p>
-                    <p className="text-sm text-white/50">Click "Upload Recording" above to get started.</p>
-                  </>
-                )}
-              </div>
-            </div>
+  return (
+    <div className="space-y-6">
+      <div className="flex items-center justify-between">
+        <div>
+          <h1 className="text-3xl font-display gradient-text">Meetings</h1>
+          <p className="text-white/60 mt-1">Logged in as {userEmail}</p>
+        </div>
+        <Button variant="glow" size="lg" asChild className="shadow-lg hover:shadow-cyan-500/20">
+          <Link href="/dashboard/upload">Upload Meeting</Link>
+        </Button>
+      </div>
+
+      <MeetingFilters
+        searchTerm={searchTerm}
+        onSearchChange={setSearchTerm}
+        dateRange={dateRange}
+        onDateRangeChange={setDateRange}
+        onClearFilters={clearFilters}
+      />
+
+      {displayMeetings.length === 0 ? (
+        <Card className="p-12 text-center">
+          <FileText className="w-16 h-16 mx-auto mb-4 text-white/20" />
+          <h3 className="text-xl font-semibold mb-2">
+            {hasActiveFilters ? "No meetings match your filters" : "No meetings yet"}
+          </h3>
+          <p className="text-white/60 mb-6">
+            {hasActiveFilters ? "Try adjusting your search criteria" : "Upload your first meeting to get started"}
+          </p>
+          {hasActiveFilters ? (
+            <Button variant="glass" onClick={clearFilters}>
+              Clear Filters
+            </Button>
           ) : (
-            <>
-              <div className="mb-4 text-sm text-white/50 animate-fade-in">
-                Showing {filteredMeetings.length} of {meetings.length} meetings
-              </div>
-
-              {/* Use virtual scrolling for large lists */}
-              {filteredMeetings.length > 12 ? (
-                <VirtualMeetingsList
-                  meetings={filteredMeetings}
-                  onView={handleView}
-                  onEdit={handleEdit}
-                  onDelete={handleDelete}
-                />
-              ) : (
-                <div className="grid gap-6 md:grid-cols-2 lg:grid-cols-3">
-                  {filteredMeetings.map((meeting) => (
-                    <div key={meeting.id} className="stagger-animation">
-                      <MeetingCard meeting={meeting} onView={handleView} onEdit={handleEdit} onDelete={handleDelete} />
-                    </div>
-                  ))}
-                </div>
-              )}
-            </>
+            <Button variant="glow" asChild>
+              <Link href="/dashboard/upload">Upload Your First Meeting</Link>
+            </Button>
           )}
-        </>
+        </Card>
+      ) : (
+        <VirtualMeetingsList
+          meetings={displayMeetings}
+          onView={handleView}
+          onEdit={handleEdit}
+          onDelete={handleDelete}
+        />
       )}
 
       {editingMeeting && (
         <EditMeetingDialog
           meeting={editingMeeting}
-          isOpen={true}
+          isOpen={!!editingMeeting}
           onClose={() => setEditingMeeting(null)}
-          onUpdate={() => {
-            queryClient.invalidateQueries({ queryKey: ["meetings"] });
-            setEditingMeeting(null);
-          }}
+          onUpdate={handleUpdateSuccess}
         />
       )}
-    </>
+    </div>
   );
 }
