@@ -1,58 +1,47 @@
-"use client";
-
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { Database } from "@/types/supabase";
 import { ApiClientError, parseApiError } from "@/lib/types/error";
 
 type Meeting = Database["public"]["Tables"]["meetings"]["Row"];
-type MeetingInsert = Omit<
-  Database["public"]["Tables"]["meetings"]["Insert"],
-  "id" | "user_id" | "created_at" | "updated_at"
->;
+type MeetingInsert = {
+  title: string;
+  description?: string | null;
+  recorded_at?: string | null;
+  participants?: string[];
+  audio_url?: string | null;
+};
 
 export function useMeetings() {
-  return useQuery<Meeting[]>({
+  return useQuery<Meeting[], Error>({
     queryKey: ["meetings"],
     queryFn: async () => {
       const response = await fetch("/api/meetings");
+
       if (!response.ok) {
-        const errorText = await response.text();
-        console.error("Fetch meetings error - Status:", response.status);
-        console.error("Fetch meetings error - Response:", errorText);
-
-        let error;
-        try {
-          error = JSON.parse(errorText);
-        } catch {
-          error = { error: errorText };
-        }
-
+        const error = await response.json();
         throw new ApiClientError(parseApiError(error), response.status, error.code);
       }
+
       return response.json();
     },
+    staleTime: 30 * 1000,
+    gcTime: 5 * 60 * 1000,
   });
 }
 
-export function useMeeting(id: string) {
-  return useQuery<Meeting>({
+export function useMeeting(id: string | undefined) {
+  return useQuery<Meeting, Error>({
     queryKey: ["meetings", id],
     queryFn: async () => {
+      if (!id) throw new Error("Meeting ID is required");
+
       const response = await fetch(`/api/meetings/${id}`);
+
       if (!response.ok) {
-        const errorText = await response.text();
-        console.error("Fetch meeting error - Status:", response.status);
-        console.error("Fetch meeting error - Response:", errorText);
-
-        let error;
-        try {
-          error = JSON.parse(errorText);
-        } catch {
-          error = { error: errorText };
-        }
-
+        const error = await response.json();
         throw new ApiClientError(parseApiError(error), response.status, error.code);
       }
+
       return response.json();
     },
     enabled: !!id,
@@ -98,10 +87,15 @@ export function useCreateMeeting() {
   });
 }
 
+interface UpdateMeetingContext {
+  previousMeetings?: Meeting[];
+  previousMeeting?: Meeting;
+}
+
 export function useUpdateMeeting() {
   const queryClient = useQueryClient();
 
-  return useMutation<Meeting, Error, { id: string; data: Partial<Meeting> }>({
+  return useMutation<Meeting, Error, { id: string; data: Partial<Meeting> }, UpdateMeetingContext>({
     mutationFn: async ({ id, data }) => {
       const response = await fetch(`/api/meetings/${id}`, {
         method: "PATCH",
@@ -149,10 +143,14 @@ export function useUpdateMeeting() {
   });
 }
 
+interface DeleteMeetingContext {
+  previousMeetings?: Meeting[];
+}
+
 export function useDeleteMeeting() {
   const queryClient = useQueryClient();
 
-  return useMutation<void, Error, string>({
+  return useMutation<void, Error, string, DeleteMeetingContext>({
     mutationFn: async (id) => {
       const response = await fetch(`/api/meetings/${id}`, {
         method: "DELETE",
@@ -164,19 +162,15 @@ export function useDeleteMeeting() {
       }
     },
     onMutate: async (id) => {
-      // Cancel outgoing refetches
       await queryClient.cancelQueries({ queryKey: ["meetings"] });
 
-      // Snapshot previous value
       const previousMeetings = queryClient.getQueryData<Meeting[]>(["meetings"]);
 
-      // Optimistically remove
       queryClient.setQueryData<Meeting[]>(["meetings"], (old) => (old ? old.filter((m) => m.id !== id) : []));
 
       return { previousMeetings };
     },
     onError: (err, id, context) => {
-      // Rollback on error
       if (context?.previousMeetings) {
         queryClient.setQueryData(["meetings"], context.previousMeetings);
       }
