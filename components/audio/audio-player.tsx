@@ -182,67 +182,68 @@ export function AudioPlayer({ audioUrl, url: urlProp, className }: AudioPlayerPr
   }
 
   return (
-    <div className={cn("bg-white/[0.03] backdrop-blur-sm rounded-lg p-4 border border-white/10", className)}>
+    <div className={cn("bg-black/40 backdrop-blur-sm rounded-lg p-4", className)}>
       {/* Waveform Container */}
       <div ref={containerRef} className="mb-4" />
 
       {/* Controls */}
       <div className="space-y-4">
         {/* Playback Controls */}
-        <div className="flex items-center justify-between">
-          <div className="flex items-center gap-2">
-            <Button
-              size="sm"
-              variant="ghost"
-              onClick={() => handleSkip(-10)}
-              disabled={isLoading}
-              className="hover:bg-white/10"
-            >
-              <SkipBack className="w-4 h-4" />
-            </Button>
+        <div className="flex items-center justify-center gap-3">
+          <Button
+            size="sm"
+            variant="ghost"
+            onClick={() => handleSkip(-10)}
+            disabled={isLoading}
+            className="hover:bg-white/5 rounded-full w-10 h-10 p-0 transition-all"
+          >
+            <SkipBack className="w-4 h-4" />
+          </Button>
 
-            <Button size="sm" variant="glow" onClick={handlePlayPause} disabled={isLoading} className="hover:scale-110">
-              {isLoading ? (
-                <div className="w-4 h-4 border-2 border-white/30 border-t-white rounded-full animate-spin" />
-              ) : isPlaying ? (
-                <Pause className="w-4 h-4" />
-              ) : (
-                <Play className="w-4 h-4" />
-              )}
-            </Button>
+          <Button
+            variant="glow"
+            onClick={handlePlayPause}
+            disabled={isLoading}
+            className="hover:scale-105 rounded-full w-14 h-14 p-0 transition-transform"
+          >
+            {isLoading ? (
+              <div className="w-5 h-5 border-2 border-white/30 border-t-white rounded-full animate-spin" />
+            ) : isPlaying ? (
+              <Pause className="w-6 h-6" />
+            ) : (
+              <Play className="w-6 h-6 ml-0.5" />
+            )}
+          </Button>
 
-            <Button
-              size="sm"
-              variant="ghost"
-              onClick={() => handleSkip(10)}
-              disabled={isLoading}
-              className="hover:bg-white/10"
-            >
-              <SkipForward className="w-4 h-4" />
-            </Button>
-          </div>
-
-          {/* Time Display */}
-          <div className="text-sm text-white/60">
-            {formatTime(currentTime)} / {formatTime(duration)}
-          </div>
+          <Button
+            size="sm"
+            variant="ghost"
+            onClick={() => handleSkip(10)}
+            disabled={isLoading}
+            className="hover:bg-white/5 rounded-full w-10 h-10 p-0 transition-all"
+          >
+            <SkipForward className="w-4 h-4" />
+          </Button>
         </div>
 
-        {/* Additional Controls */}
-        <div className="flex items-center justify-between">
-          {/* Playback Speed */}
+        {/* Time Display and Speed Control */}
+        <div className="grid grid-cols-3 items-center px-4">
           <Button
             size="sm"
             variant="ghost"
             onClick={handlePlaybackRateChange}
             disabled={isLoading}
-            className="hover:bg-white/10 text-xs"
+            className="hover:bg-white/5 text-xs justify-self-start transition-all"
           >
             {playbackRate}x
           </Button>
 
+          <div className="text-sm text-white/60 text-center">
+            {formatTime(currentTime)} / {formatTime(duration)}
+          </div>
+
           {/* Volume Control */}
-          <div className="flex items-center gap-2">
+          <div className="flex items-center gap-2 justify-self-end">
             <Volume2 className="w-4 h-4 text-white/60" />
             <input
               type="range"
@@ -251,7 +252,7 @@ export function AudioPlayer({ audioUrl, url: urlProp, className }: AudioPlayerPr
               step="0.1"
               value={volume}
               onChange={handleVolumeChange}
-              className="w-24 accent-purple-500"
+              className="w-20 accent-purple-500 cursor-pointer"
               disabled={isLoading}
             />
           </div>
