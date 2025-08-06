@@ -8,117 +8,92 @@ interface UserInfo {
   email?: string;
   avatar_url?: string;
   color: string;
-}
-
-interface Presence {
-  user_info: UserInfo;
-  status: "active" | "idle" | "typing";
-  joined_at: string;
+  sessionId?: string;
 }
 
 interface PresenceAvatarsProps {
-  presence: Record<string, Presence>;
-  currentUser?: string;
+  users: UserInfo[];
+  currentUserId?: string;
   maxDisplay?: number;
 }
 
-export function PresenceAvatars({ presence, currentUser, maxDisplay = 5 }: PresenceAvatarsProps) {
-  const presenceArray = Object.entries(presence)
-    .filter(([_, p]) => p.user_info?.name !== currentUser)
-    .map(([key, p]) => ({ key, ...p }))
-    .sort((a, b) => new Date(b.joined_at).getTime() - new Date(a.joined_at).getTime());
+export function PresenceAvatars({ users, currentUserId, maxDisplay = 5 }: PresenceAvatarsProps) {
+  const currentUser = users.find((user) => user.sessionId === currentUserId);
+  const otherUsers = users.filter((user) => user.sessionId !== currentUserId);
 
-  const displayUsers = presenceArray.slice(0, maxDisplay);
-  const remainingCount = Math.max(0, presenceArray.length - maxDisplay);
-
-  if (presenceArray.length === 0) {
-    return (
-      <div className="flex items-center gap-2">
-        <span className="text-sm text-white/40">No one else viewing</span>
-      </div>
-    );
-  }
+  const displayUsers = otherUsers.slice(0, maxDisplay);
+  const remainingCount = Math.max(0, otherUsers.length - maxDisplay);
 
   return (
     <div className="flex items-center gap-2">
-      <span className="text-sm text-white/60">
-        {presenceArray.length} {presenceArray.length === 1 ? "person" : "people"} viewing:
-      </span>
+      {otherUsers.length > 0 && (
+        <span className="text-sm text-white/60">
+          {otherUsers.length} {otherUsers.length === 1 ? "other person" : "other people"} viewing
+        </span>
+      )}
 
       <div className="flex -space-x-3">
+        {currentUser && (
+          <motion.div
+            initial={{ scale: 0, opacity: 0, x: -20 }}
+            animate={{ scale: 1, opacity: 1, x: 0 }}
+            className="relative group"
+            style={{ zIndex: users.length }}
+          >
+            {currentUser.avatar_url ? (
+              <img
+                src={currentUser.avatar_url}
+                alt={currentUser.name}
+                className="w-8 h-8 rounded-full ring-2 ring-purple-500 object-cover"
+              />
+            ) : (
+              <div
+                className="w-8 h-8 rounded-full ring-2 ring-purple-500 flex items-center justify-center text-xs font-medium text-white select-none"
+                style={{
+                  background: `linear-gradient(135deg, ${currentUser.color} 0%, ${currentUser.color}dd 100%)`,
+                }}
+              >
+                {currentUser.name.charAt(0).toUpperCase()}
+              </div>
+            )}
+
+            <div className="absolute -top-8 left-1/2 -translate-x-1/2 bg-black/90 text-white text-xs px-2 py-1 rounded opacity-0 group-hover:opacity-100 transition-opacity whitespace-nowrap pointer-events-none z-50">
+              {currentUser.name} (You)
+            </div>
+          </motion.div>
+        )}
+
         <AnimatePresence mode="popLayout">
-          {displayUsers.map((user) => (
+          {displayUsers.map((user, index) => (
             <motion.div
-              key={user.key}
+              key={user.sessionId || index}
               initial={{ scale: 0, opacity: 0, x: -20 }}
               animate={{ scale: 1, opacity: 1, x: 0 }}
               exit={{ scale: 0, opacity: 0, x: 20 }}
               transition={{ type: "spring", stiffness: 500, damping: 25 }}
               className="relative group"
-              style={{ zIndex: displayUsers.length - displayUsers.indexOf(user) }}
+              style={{ zIndex: displayUsers.length - index }}
             >
-              {user.user_info.avatar_url ? (
+              {user.avatar_url ? (
                 <img
-                  src={user.user_info.avatar_url}
-                  alt={user.user_info.name}
-                  className={cn(
-                    "w-8 h-8 rounded-full ring-2 ring-black",
-                    "transition-all duration-200",
-                    "group-hover:ring-4 group-hover:z-50",
-                    user.status === "idle" && "opacity-60",
-                    user.status === "typing" && "ring-blue-400"
-                  )}
-                  style={{ borderColor: user.user_info.color, borderWidth: "2px" }}
+                  src={user.avatar_url}
+                  alt={user.name}
+                  className="w-8 h-8 rounded-full ring-2 ring-black object-cover"
                 />
               ) : (
                 <div
-                  className={cn(
-                    "w-8 h-8 rounded-full flex items-center justify-center",
-                    "text-xs font-medium text-white ring-2 ring-black",
-                    "transition-all duration-200",
-                    "group-hover:ring-4 group-hover:z-50 group-hover:scale-110",
-                    user.status === "idle" && "opacity-60"
-                  )}
+                  className="w-8 h-8 rounded-full ring-2 ring-black flex items-center justify-center text-xs font-medium text-white select-none"
                   style={{
-                    backgroundColor: user.user_info.color,
-                    borderColor: user.status === "typing" ? "#60A5FA" : user.user_info.color,
-                    borderWidth: user.status === "typing" ? "2px" : "0",
-                    borderStyle: "solid",
+                    background: `linear-gradient(135deg, ${user.color} 0%, ${user.color}dd 100%)`,
                   }}
                 >
-                  {user.user_info.name.charAt(0).toUpperCase()}
+                  {user.name.charAt(0).toUpperCase()}
                 </div>
-              )}
-
-              {/* Status indicator */}
-              {user.status === "typing" && (
-                <div className="absolute -bottom-1 -right-1 w-4 h-4 bg-blue-500 rounded-full flex items-center justify-center ring-2 ring-black">
-                  <motion.div className="flex gap-0.5" initial={{ opacity: 0 }} animate={{ opacity: 1 }}>
-                    {[0, 1, 2].map((i) => (
-                      <motion.div
-                        key={i}
-                        className="w-1 h-1 bg-white rounded-full"
-                        animate={{ y: [0, -3, 0] }}
-                        transition={{
-                          duration: 0.6,
-                          repeat: Infinity,
-                          delay: i * 0.1,
-                        }}
-                      />
-                    ))}
-                  </motion.div>
-                </div>
-              )}
-
-              {user.status === "idle" && (
-                <div className="absolute -bottom-1 -right-1 w-4 h-4 bg-yellow-500 rounded-full ring-2 ring-black" />
               )}
 
               {/* Tooltip */}
               <div className="absolute -top-8 left-1/2 -translate-x-1/2 bg-black/90 text-white text-xs px-2 py-1 rounded opacity-0 group-hover:opacity-100 transition-opacity whitespace-nowrap pointer-events-none z-50">
-                {user.user_info.name}
-                {user.status === "idle" && " (idle)"}
-                {user.status === "typing" && " (typing...)"}
+                {user.name}
               </div>
             </motion.div>
           ))}
