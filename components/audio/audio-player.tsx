@@ -7,11 +7,13 @@ import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
 
 interface AudioPlayerProps {
-  url: string;
+  audioUrl?: string;
+  url?: string;
   className?: string;
 }
 
-export function AudioPlayer({ url, className }: AudioPlayerProps) {
+export function AudioPlayer({ audioUrl, url: urlProp, className }: AudioPlayerProps) {
+  const url = audioUrl || urlProp;
   const containerRef = useRef<HTMLDivElement>(null);
   const wavesurferRef = useRef<WaveSurfer | null>(null);
   const [isPlaying, setIsPlaying] = useState(false);
@@ -23,6 +25,12 @@ export function AudioPlayer({ url, className }: AudioPlayerProps) {
   const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
+    if (!url) {
+      setError("No audio URL provided");
+      setIsLoading(false);
+      return;
+    }
+
     let wavesurfer: WaveSurfer | null = null;
     let mounted = true;
 
@@ -47,9 +55,9 @@ export function AudioPlayer({ url, className }: AudioPlayerProps) {
 
         // Set up event listeners
         wavesurfer.on("ready", () => {
-          if (mounted) {
+          if (mounted && wavesurferRef.current) {
             setIsLoading(false);
-            setDuration(wavesurfer!.getDuration());
+            setDuration(wavesurferRef.current.getDuration());
             setError(null);
           }
         });
@@ -174,92 +182,84 @@ export function AudioPlayer({ url, className }: AudioPlayerProps) {
   }
 
   return (
-    <div className={cn("bg-white/[0.03] backdrop-blur-sm rounded-lg p-6 border border-white/10", className)}>
-      <div className="mb-4">
-        <div ref={containerRef} className="w-full" />
-        {isLoading && (
-          <div className="h-20 flex items-center justify-center">
-            <div className="text-sm text-white/50">Loading waveform...</div>
+    <div className={cn("bg-white/[0.03] backdrop-blur-sm rounded-lg p-4 border border-white/10", className)}>
+      {/* Waveform Container */}
+      <div ref={containerRef} className="mb-4" />
+
+      {/* Controls */}
+      <div className="space-y-4">
+        {/* Playback Controls */}
+        <div className="flex items-center justify-between">
+          <div className="flex items-center gap-2">
+            <Button
+              size="sm"
+              variant="ghost"
+              onClick={() => handleSkip(-10)}
+              disabled={isLoading}
+              className="hover:bg-white/10"
+            >
+              <SkipBack className="w-4 h-4" />
+            </Button>
+
+            <Button size="sm" variant="glow" onClick={handlePlayPause} disabled={isLoading} className="hover:scale-110">
+              {isLoading ? (
+                <div className="w-4 h-4 border-2 border-white/30 border-t-white rounded-full animate-spin" />
+              ) : isPlaying ? (
+                <Pause className="w-4 h-4" />
+              ) : (
+                <Play className="w-4 h-4" />
+              )}
+            </Button>
+
+            <Button
+              size="sm"
+              variant="ghost"
+              onClick={() => handleSkip(10)}
+              disabled={isLoading}
+              className="hover:bg-white/10"
+            >
+              <SkipForward className="w-4 h-4" />
+            </Button>
           </div>
-        )}
+
+          {/* Time Display */}
+          <div className="text-sm text-white/60">
+            {formatTime(currentTime)} / {formatTime(duration)}
+          </div>
+        </div>
+
+        {/* Additional Controls */}
+        <div className="flex items-center justify-between">
+          {/* Playback Speed */}
+          <Button
+            size="sm"
+            variant="ghost"
+            onClick={handlePlaybackRateChange}
+            disabled={isLoading}
+            className="hover:bg-white/10 text-xs"
+          >
+            {playbackRate}x
+          </Button>
+
+          {/* Volume Control */}
+          <div className="flex items-center gap-2">
+            <Volume2 className="w-4 h-4 text-white/60" />
+            <input
+              type="range"
+              min="0"
+              max="1"
+              step="0.1"
+              value={volume}
+              onChange={handleVolumeChange}
+              className="w-24 accent-purple-500"
+              disabled={isLoading}
+            />
+          </div>
+        </div>
+
+        {/* Keyboard Shortcuts Help */}
+        <div className="text-xs text-white/40 text-center">Space: Play/Pause • ←/→: Skip 10s</div>
       </div>
-
-      {!isLoading && (
-        <>
-          <div className="space-y-3">
-            <div className="flex items-center justify-between text-sm text-white/60">
-              <span>{formatTime(currentTime)}</span>
-              <span>{formatTime(duration)}</span>
-            </div>
-
-            <div className="flex items-center justify-center gap-2">
-              <Button
-                variant="glass"
-                size="sm"
-                onClick={() => handleSkip(-10)}
-                disabled={isLoading}
-                title="Skip back 10 seconds"
-                className="hover:bg-purple-500/10 hover:border-purple-400/50"
-              >
-                <SkipBack className="w-4 h-4" />
-              </Button>
-
-              <button
-                onClick={handlePlayPause}
-                disabled={isLoading}
-                className="relative w-14 h-14 rounded-full bg-gradient-to-r from-purple-500 to-cyan-500 text-white shadow-lg shadow-purple-500/25 hover:scale-105 active:scale-95 transition-transform disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center"
-                title={isPlaying ? "Pause" : "Play"}
-              >
-                {isPlaying ? <Pause className="w-6 h-6" /> : <Play className="w-6 h-6" />}
-              </button>
-
-              <Button
-                variant="glass"
-                size="sm"
-                onClick={() => handleSkip(10)}
-                disabled={isLoading}
-                title="Skip forward 10 seconds"
-                className="hover:bg-cyan-500/10 hover:border-cyan-400/50"
-              >
-                <SkipForward className="w-4 h-4" />
-              </Button>
-            </div>
-
-            <div className="flex items-center gap-4">
-              <Button
-                variant="glass"
-                size="sm"
-                onClick={handlePlaybackRateChange}
-                disabled={isLoading}
-                className="min-w-[60px]"
-                title="Playback speed"
-              >
-                {playbackRate}x
-              </Button>
-
-              <div className="flex items-center gap-2 flex-1">
-                <Volume2 className="w-4 h-4 text-white/60" />
-                <input
-                  type="range"
-                  min="0"
-                  max="1"
-                  step="0.1"
-                  value={volume}
-                  onChange={handleVolumeChange}
-                  className="flex-1 accent-purple-500"
-                  disabled={isLoading}
-                />
-              </div>
-            </div>
-          </div>
-
-          <div className="mt-4 text-xs text-white/40 text-center">
-            Press <kbd className="px-1 py-0.5 bg-white/10 rounded text-white/60">Space</kbd> to play/pause,{" "}
-            <kbd className="px-1 py-0.5 bg-white/10 rounded text-white/60">←</kbd>{" "}
-            <kbd className="px-1 py-0.5 bg-white/10 rounded text-white/60">→</kbd> to skip
-          </div>
-        </>
-      )}
     </div>
   );
 }
