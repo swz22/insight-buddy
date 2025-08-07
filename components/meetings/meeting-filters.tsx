@@ -1,7 +1,9 @@
 "use client";
 
-import { Search, Calendar, X } from "lucide-react";
+import { Search, X, Calendar } from "lucide-react";
 import { Button } from "@/components/ui/button";
+import { useRef } from "react";
+import { format } from "date-fns";
 
 interface MeetingFiltersProps {
   searchTerm: string;
@@ -19,6 +21,17 @@ export function MeetingFilters({
   onClearFilters,
 }: MeetingFiltersProps) {
   const hasActiveFilters = searchTerm || dateRange.start || dateRange.end;
+  const startInputRef = useRef<HTMLInputElement>(null);
+  const endInputRef = useRef<HTMLInputElement>(null);
+
+  const formatDateDisplay = (dateString: string) => {
+    if (!dateString) return "";
+    try {
+      return format(new Date(dateString), "MMM d, yyyy");
+    } catch {
+      return dateString;
+    }
+  };
 
   return (
     <div className="w-full mb-8 space-y-4">
@@ -40,61 +53,45 @@ export function MeetingFilters({
       {/* Date Filters */}
       <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
         {/* Start Date */}
-        <div className="relative group">
-          <div className="absolute inset-0 bg-blue-400/5 rounded-xl blur-lg opacity-0 group-hover:opacity-100 group-focus-within:opacity-100 transition-opacity duration-300" />
-          <div className="relative">
-            <Calendar className="absolute left-4 top-1/2 -translate-y-1/2 text-white/40 w-5 h-5 pointer-events-none z-10 transition-all duration-300 group-focus-within:text-blue-400/70 group-focus-within:scale-110" />
-            <input
-              type="date"
-              value={dateRange.start}
-              onChange={(e) => onDateRangeChange({ ...dateRange, start: e.target.value })}
-              onMouseDown={(e) => {
-                // Prevent text selection but allow normal date picker behavior
-                const input = e.target as HTMLInputElement;
-                setTimeout(() => {
-                  if (document.activeElement !== input) {
-                    input.focus();
-                  }
-                }, 0);
-              }}
-              className="w-full h-12 pl-12 pr-12 rounded-xl text-white transition-all duration-300 cursor-pointer smooth-border"
-              style={{ colorScheme: "dark" }}
-            />
-            {!dateRange.start && (
-              <span className="absolute inset-y-0 left-12 right-4 flex items-center text-sm text-white/40 pointer-events-none">
-                Start date
-              </span>
-            )}
-          </div>
+        <div className="relative">
+          <button
+            onClick={() => startInputRef.current?.showPicker()}
+            className="w-full h-12 px-4 rounded-xl text-left flex items-center gap-3 transition-all duration-300 smooth-border focus:border-blue-400/50 focus:bg-white/[0.05]"
+          >
+            <Calendar className="w-5 h-5 text-white/40" />
+            <span className={dateRange.start ? "text-white" : "text-white/40"}>
+              {dateRange.start ? formatDateDisplay(dateRange.start) : "Start date"}
+            </span>
+          </button>
+          <input
+            ref={startInputRef}
+            type="date"
+            value={dateRange.start}
+            onChange={(e) => onDateRangeChange({ ...dateRange, start: e.target.value })}
+            className="absolute opacity-0 pointer-events-none"
+            tabIndex={-1}
+          />
         </div>
 
         {/* End Date */}
-        <div className="relative group">
-          <div className="absolute inset-0 bg-blue-500/5 rounded-xl blur-lg opacity-0 group-hover:opacity-100 group-focus-within:opacity-100 transition-opacity duration-300" />
-          <div className="relative">
-            <Calendar className="absolute left-4 top-1/2 -translate-y-1/2 text-white/40 w-5 h-5 pointer-events-none z-10 transition-all duration-300 group-focus-within:text-blue-400/70 group-focus-within:scale-110" />
-            <input
-              type="date"
-              value={dateRange.end}
-              onChange={(e) => onDateRangeChange({ ...dateRange, end: e.target.value })}
-              onMouseDown={(e) => {
-                // Prevent text selection but allow normal date picker behavior
-                const input = e.target as HTMLInputElement;
-                setTimeout(() => {
-                  if (document.activeElement !== input) {
-                    input.focus();
-                  }
-                }, 0);
-              }}
-              className="w-full h-12 pl-12 pr-12 rounded-xl text-white transition-all duration-300 cursor-pointer smooth-border"
-              style={{ colorScheme: "dark" }}
-            />
-            {!dateRange.end && (
-              <span className="absolute inset-y-0 left-12 right-4 flex items-center text-sm text-white/40 pointer-events-none">
-                End date
-              </span>
-            )}
-          </div>
+        <div className="relative">
+          <button
+            onClick={() => endInputRef.current?.showPicker()}
+            className="w-full h-12 px-4 rounded-xl text-left flex items-center gap-3 transition-all duration-300 smooth-border focus:border-blue-400/50 focus:bg-white/[0.05]"
+          >
+            <Calendar className="w-5 h-5 text-white/40" />
+            <span className={dateRange.end ? "text-white" : "text-white/40"}>
+              {dateRange.end ? formatDateDisplay(dateRange.end) : "End date"}
+            </span>
+          </button>
+          <input
+            ref={endInputRef}
+            type="date"
+            value={dateRange.end}
+            onChange={(e) => onDateRangeChange({ ...dateRange, end: e.target.value })}
+            className="absolute opacity-0 pointer-events-none"
+            tabIndex={-1}
+          />
         </div>
       </div>
 
