@@ -1,21 +1,18 @@
 "use client";
 
-import { useState, FormEvent, useRef, useCallback, useEffect } from "react";
+import { useState, FormEvent, useRef, useEffect } from "react";
 import { useRouter } from "next/navigation";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
+import { Card } from "@/components/ui/card";
 import { FileUpload } from "@/components/upload/file-upload";
 import { useCreateMeeting } from "@/hooks/use-meetings";
-import { useMeetingData } from "@/hooks/use-meeting-data";
 import { useToast } from "@/hooks/use-toast";
 import { useAppStore } from "@/stores/app-store";
 import { uploadFile } from "@/lib/services/upload";
-import { meetingFormSchema, type MeetingFormData } from "@/lib/validations/meeting";
-import { z } from "zod";
-import { TemplateSystem } from "@/components/templates/template-system";
-import { ArrowLeft } from "lucide-react";
+import { ArrowLeft, Sparkles, Upload } from "lucide-react";
 import Link from "next/link";
+import { cn } from "@/lib/utils";
 
 interface FormData {
   title: string;
@@ -26,7 +23,6 @@ export default function UploadPage() {
   const router = useRouter();
   const toast = useToast();
   const createMeeting = useCreateMeeting();
-  const { previousParticipants, previousProjects } = useMeetingData();
   const setUploadProgress = useAppStore((state) => state.setUploadProgress);
   const abortControllerRef = useRef<AbortController | null>(null);
 
@@ -38,7 +34,6 @@ export default function UploadPage() {
   const [isUploading, setIsUploading] = useState(false);
   const [transcriptionEnabled, setTranscriptionEnabled] = useState(false);
 
-  // Check if transcription is enabled
   useEffect(() => {
     fetch("/api/config")
       .then((res) => res.json())
@@ -50,86 +45,70 @@ export default function UploadPage() {
       });
   }, []);
 
-  const handleTitleChange = useCallback((title: string) => {
-    setFormData((prev) => ({ ...prev, title }));
-  }, []);
-
   const handleSubmit = async (e: FormEvent<HTMLFormElement>) => {
     e.preventDefault();
 
     if (!selectedFile) {
-      toast.error("Please select an audio or video file");
+      toast.error("Please select a file to upload");
       return;
     }
 
-    // Validate form data
-    try {
-      meetingFormSchema.parse(formData);
-    } catch (error) {
-      if (error instanceof z.ZodError) {
-        toast.error(error.issues[0]?.message || "Validation error");
-        return;
-      }
+    if (!formData.title.trim()) {
+      toast.error("Please enter a meeting title");
+      return;
     }
 
     setIsUploading(true);
     abortControllerRef.current = new AbortController();
 
     try {
-      // Upload file with real progress tracking
       const uploadResult = await uploadFile(
         selectedFile,
         (progress) => {
-          console.log("Setting upload progress:", progress.percentage);
           setUploadProgress(progress.percentage);
         },
         abortControllerRef.current.signal
       );
 
-      // Create meeting record
-      const newMeeting = await createMeeting.mutateAsync({
-        title: formData.title,
-        description: formData.description || null,
+      const meetingData = {
+        title: formData.title.trim(),
+        description: formData.description.trim() || null,
         audio_url: uploadResult.url,
-        participants: [],
         recorded_at: new Date().toISOString(),
-      });
+        participants: [],
+      };
 
-      toast.success("Meeting uploaded successfully!");
+      const meeting = await createMeeting.mutateAsync(meetingData);
 
-      setTimeout(() => setUploadProgress(0), 1000);
-
-      // Automatically start transcription
-      if (newMeeting && transcriptionEnabled) {
-        fetch(`/api/meetings/${newMeeting.id}/transcribe`, { method: "POST" })
-          .then(async (response) => {
-            if (response.ok) {
-              toast.info("AI transcription started in the background");
-            } else {
-              const error = await response.json();
-              console.error("Failed to start auto-transcription:", error);
-            }
-          })
-          .catch((err) => {
-            console.error("Failed to start auto-transcription:", err);
+      const shouldTranscribe = transcriptionEnabled && meeting.audio_url;
+      if (shouldTranscribe) {
+        try {
+          const transcriptResponse = await fetch("/api/transcribe", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ meetingId: meeting.id }),
           });
-      }
 
-      router.push("/dashboard");
-    } catch (error) {
-      console.error("Failed to create meeting:", error);
-
-      if (error instanceof Error) {
-        if (error.message === "Upload cancelled") {
-          toast.info("Upload cancelled");
-        } else {
-          toast.error(error.message || "Failed to create meeting");
+          if (!transcriptResponse.ok) {
+            console.error("Failed to start transcription");
+          }
+        } catch (error) {
+          console.error("Error starting transcription:", error);
         }
-      } else {
-        toast.error("Failed to create meeting. Please try again.");
       }
 
       setUploadProgress(0);
+      toast.success("Meeting uploaded successfully!");
+      router.push(`/dashboard/meetings/${meeting.id}`);
+    } catch (error: any) {
+      console.error("Upload error:", error);
+      setUploadProgress(0);
+
+      if (error.name === "AbortError") {
+        toast.info("Upload cancelled");
+      } else {
+        toast.error(error.message || "Failed to upload meeting");
+      }
     } finally {
       setIsUploading(false);
       abortControllerRef.current = null;
@@ -137,97 +116,152 @@ export default function UploadPage() {
   };
 
   const handleCancel = () => {
-    if (abortControllerRef.current && isUploading) {
+    if (abortControllerRef.current) {
       abortControllerRef.current.abort();
-    } else {
-      router.push("/dashboard");
+      setUploadProgress(0);
     }
   };
 
   return (
-    <div className="min-h-[calc(100vh-4rem)] flex items-center justify-center p-4">
-      <div className="w-full max-w-2xl space-y-6 animate-fade-in">
-        <Link
-          href="/dashboard"
-          className="inline-flex items-center text-white/60 hover:text-white/90 transition-colors group"
-        >
-          <ArrowLeft className="w-4 h-4 mr-2 group-hover:-translate-x-1 transition-transform" />
-          Back to dashboard
-        </Link>
+    <div className="container max-w-4xl mx-auto py-6 sm:px-6 lg:px-8 animate-fade-in">
+      <Link
+        href="/dashboard"
+        className="inline-flex items-center text-white/60 hover:text-white/90 transition-colors group mb-6"
+      >
+        <ArrowLeft className="w-4 h-4 mr-2 group-hover:-translate-x-1 transition-transform" />
+        Back to dashboard
+      </Link>
 
-        <Card className="shadow-2xl">
-          <CardHeader className="space-y-1 pb-8">
-            <CardTitle className="text-3xl font-display">
-              Upload <span className="gradient-text">Meeting Recording</span>
-            </CardTitle>
-            <CardDescription className="text-white/60 text-base">
-              Upload an audio or video file from your meeting
-            </CardDescription>
-          </CardHeader>
-          <CardContent>
-            <form onSubmit={handleSubmit} className="space-y-6">
-              <TemplateSystem
-                onTitleChange={handleTitleChange}
-                previousParticipants={previousParticipants}
-                previousProjects={previousProjects}
-              />
+      <div className="space-y-8">
+        <div>
+          <h1 className="text-4xl font-bold font-display text-white mb-2">
+            Upload <span className="gradient-text">Meeting</span>
+          </h1>
+          <p className="text-white/60">Transform your recording into actionable insights with AI</p>
+        </div>
 
-              <div className="space-y-2">
-                <label htmlFor="title" className="block text-sm font-medium text-white/90">
-                  Meeting Title
+        <Card className="relative overflow-hidden">
+          <div className="absolute inset-0 bg-gradient-to-br from-purple-500/5 via-transparent to-cyan-500/5" />
+
+          <form onSubmit={handleSubmit} className="relative p-8 space-y-6">
+            <div className="space-y-6">
+              <div>
+                <label htmlFor="title" className="block text-sm font-medium text-white/90 mb-2">
+                  Meeting Title <span className="text-red-400">*</span>
                 </label>
                 <Input
                   id="title"
+                  name="title"
                   type="text"
                   required
+                  placeholder="e.g., Weekly Team Standup, Client Meeting, Project Review..."
                   value={formData.title}
                   onChange={(e) => setFormData({ ...formData, title: e.target.value })}
-                  placeholder="e.g., Weekly Team Standup"
-                  className="bg-white/[0.03] border-white/20 text-white placeholder:text-white/40 focus:border-purple-400/60 hover:bg-white/[0.05]"
+                  disabled={isUploading}
+                  className={cn(
+                    "w-full h-12 text-base",
+                    "bg-white/5 border-white/10",
+                    "placeholder:text-white/40",
+                    "focus:bg-white/10 focus:border-white/20",
+                    "transition-all duration-200"
+                  )}
                 />
+                <p className="mt-1.5 text-xs text-white/50">
+                  Give your meeting a descriptive title to find it easily later
+                </p>
               </div>
 
-              <div className="space-y-2">
-                <label htmlFor="description" className="block text-sm font-medium text-white/90">
-                  Description <span className="text-white/40">(optional)</span>
+              <div>
+                <label htmlFor="description" className="block text-sm font-medium text-white/90 mb-2">
+                  Description <span className="text-white/40 font-normal">(optional)</span>
                 </label>
                 <textarea
                   id="description"
-                  className="w-full px-3 py-2 rounded-lg bg-white/[0.03] backdrop-blur-sm border border-white/20 text-white placeholder:text-white/40 focus:outline-none focus:border-purple-400/60 focus:bg-white/[0.05] hover:border-white/30 hover:bg-white/[0.04] transition-all duration-200 min-h-[100px] resize-none"
+                  name="description"
                   rows={3}
+                  placeholder="Add any additional context, key topics discussed, or participants..."
                   value={formData.description}
                   onChange={(e) => setFormData({ ...formData, description: e.target.value })}
-                  placeholder="Brief description of the meeting..."
+                  disabled={isUploading}
+                  className={cn(
+                    "w-full px-4 py-3 text-base rounded-xl",
+                    "bg-white/5 border border-white/10",
+                    "placeholder:text-white/40 text-white",
+                    "focus:bg-white/10 focus:border-white/20 focus:outline-none",
+                    "transition-all duration-200 resize-none"
+                  )}
                 />
               </div>
 
-              <div className="space-y-2">
-                <label className="block text-sm font-medium text-white/90">Recording File</label>
+              <div>
+                <label className="block text-sm font-medium text-white/90 mb-2">
+                  Recording File <span className="text-red-400">*</span>
+                </label>
                 <FileUpload onFileSelect={setSelectedFile} disabled={isUploading} />
+                <p className="mt-2 text-xs text-white/50">
+                  Supported formats: MP3, WAV, M4A, MP4, WebM • Max size: 500MB
+                </p>
+              </div>
+            </div>
+
+            <div className="flex items-center justify-between pt-4">
+              <div className="flex items-center gap-2 text-sm text-white/60">
+                {transcriptionEnabled && (
+                  <>
+                    <Sparkles className="w-4 h-4" />
+                    <span>AI transcription enabled</span>
+                  </>
+                )}
               </div>
 
-              <div className="flex gap-4 pt-4">
+              <div className="flex gap-3">
+                {isUploading && (
+                  <Button type="button" variant="outline" onClick={handleCancel} className="min-w-[100px]">
+                    Cancel
+                  </Button>
+                )}
                 <Button
                   type="submit"
-                  variant="glow"
-                  disabled={createMeeting.isPending || isUploading || !selectedFile}
-                  className="min-w-[140px] shadow-lg"
+                  disabled={isUploading || !selectedFile || !formData.title.trim()}
+                  className={cn(
+                    "min-w-[140px] relative overflow-hidden",
+                    "bg-gradient-to-r from-purple-600 to-cyan-600",
+                    "hover:from-purple-700 hover:to-cyan-700",
+                    "disabled:from-gray-600 disabled:to-gray-700",
+                    "transition-all duration-300"
+                  )}
                 >
-                  {isUploading ? "Uploading..." : "Upload Meeting"}
-                </Button>
-                <Button
-                  type="button"
-                  variant="glass"
-                  onClick={handleCancel}
-                  disabled={createMeeting.isPending}
-                  className="hover:border-red-400/50 hover:text-red-300"
-                >
-                  {isUploading ? "Cancel Upload" : "Cancel"}
+                  {isUploading ? (
+                    <>
+                      <div className="absolute inset-0 bg-white/10 animate-pulse" />
+                      <span className="relative">Uploading...</span>
+                    </>
+                  ) : (
+                    <>
+                      <Upload className="w-4 h-4 mr-2" />
+                      Upload Meeting
+                    </>
+                  )}
                 </Button>
               </div>
-            </form>
-          </CardContent>
+            </div>
+          </form>
         </Card>
+
+        {!transcriptionEnabled && (
+          <Card className="p-6 bg-yellow-500/5 border-yellow-500/20">
+            <div className="flex gap-3">
+              <Sparkles className="w-5 h-5 text-yellow-500 flex-shrink-0 mt-0.5" />
+              <div className="space-y-1">
+                <p className="text-sm font-medium text-yellow-200">AI features not configured</p>
+                <p className="text-sm text-yellow-200/70">
+                  Transcription and summarization features are currently disabled. Configure your AI API keys in the
+                  environment settings to enable these features.
+                </p>
+              </div>
+            </div>
+          </Card>
+        )}
       </div>
     </div>
   );
