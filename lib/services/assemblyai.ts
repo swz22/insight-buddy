@@ -1,14 +1,25 @@
 import { z } from "zod";
 
-const ASSEMBLYAI_API_KEY = process.env.ASSEMBLYAI_API_KEY!;
-const ASSEMBLYAI_BASE_URL = "https://api.assemblyai.com/v2";
-
 export const transcriptSchema = z.object({
   id: z.string(),
   status: z.enum(["queued", "processing", "completed", "error"]),
   text: z.string().nullable(),
   error: z.string().optional(),
-  audio_duration: z.number().nullable(),
+  audio_duration: z.number().optional(),
+  confidence: z.number().optional(),
+  language_code: z.string().optional(),
+  language_confidence: z.number().optional(),
+  utterances: z
+    .array(
+      z.object({
+        speaker: z.string(),
+        text: z.string(),
+        start: z.number(),
+        end: z.number(),
+        confidence: z.number(),
+      })
+    )
+    .optional(),
   words: z
     .array(
       z.object({
@@ -16,127 +27,93 @@ export const transcriptSchema = z.object({
         start: z.number(),
         end: z.number(),
         confidence: z.number(),
+        speaker: z.string().nullable(),
       })
     )
-    .nullable()
-    .optional(),
-  utterances: z
-    .array(
-      z.object({
-        text: z.string(),
-        start: z.number(),
-        end: z.number(),
-        speaker: z.string(),
-      })
-    )
-    .nullable()
     .optional(),
 });
 
-export type TranscriptResponse = z.infer<typeof transcriptSchema>;
+export type Transcript = z.infer<typeof transcriptSchema>;
 
-interface TranscriptionOptions {
-  speaker_labels?: boolean;
-  speakers_expected?: number;
-  punctuate?: boolean;
-  format_text?: boolean;
-  disfluencies?: boolean;
+export interface TranscriptionOptions {
+  audio_url: string;
   webhook_url?: string;
-  webhook_auth_header_name?: string;
-  webhook_auth_header_value?: string;
+  speaker_labels?: boolean;
+  language_detection?: boolean;
+  language_code?: string;
 }
 
 export class AssemblyAIService {
-  private headers: Record<string, string>;
+  private apiKey: string;
+  private baseUrl = "https://api.assemblyai.com/v2";
 
-  constructor(apiKey: string = ASSEMBLYAI_API_KEY) {
-    if (!apiKey) {
+  constructor(apiKey?: string) {
+    const key = apiKey || process.env.ASSEMBLYAI_API_KEY;
+    if (!key) {
       throw new Error("AssemblyAI API key is required");
     }
-    this.headers = {
-      Authorization: apiKey,
-      "Content-Type": "application/json",
-    };
+    this.apiKey = key;
   }
 
-  async uploadAudio(audioUrl: string): Promise<string> {
-    const response = await fetch(`${ASSEMBLYAI_BASE_URL}/upload`, {
+  async createTranscription(options: TranscriptionOptions): Promise<{ id: string }> {
+    const response = await fetch(`${this.baseUrl}/transcript`, {
       method: "POST",
       headers: {
-        Authorization: this.headers.Authorization,
-        "Transfer-Encoding": "chunked",
+        authorization: this.apiKey,
+        "content-type": "application/json",
       },
-      body: audioUrl,
+      body: JSON.stringify({
+        audio_url: options.audio_url,
+        webhook_url: options.webhook_url,
+        speaker_labels: options.speaker_labels ?? true,
+        language_detection: options.language_detection ?? true,
+        language_code: options.language_code,
+        auto_chapters: true,
+        entity_detection: true,
+        sentiment_analysis: true,
+      }),
     });
 
     if (!response.ok) {
-      throw new Error(`Failed to upload audio: ${response.statusText}`);
+      const error = await response.text();
+      throw new Error(`Failed to create transcription: ${error}`);
     }
 
     const data = await response.json();
-    return data.upload_url;
+    return { id: data.id };
   }
 
-  async createTranscript(audioUrl: string, options: TranscriptionOptions = {}): Promise<TranscriptResponse> {
-    const webhookUrl = options.webhook_url || `${process.env.NEXT_PUBLIC_APP_URL}/api/webhooks/assemblyai`;
-
-    const body = {
-      audio_url: audioUrl,
-      speaker_labels: options.speaker_labels ?? true,
-      punctuate: options.punctuate ?? true,
-      format_text: options.format_text ?? true,
-      disfluencies: options.disfluencies ?? false,
-      webhook_url: webhookUrl,
-      ...options,
-    };
-
-    const response = await fetch(`${ASSEMBLYAI_BASE_URL}/transcript`, {
-      method: "POST",
-      headers: this.headers,
-      body: JSON.stringify(body),
+  async getTranscription(id: string): Promise<Transcript> {
+    const response = await fetch(`${this.baseUrl}/transcript/${id}`, {
+      headers: {
+        authorization: this.apiKey,
+      },
     });
 
     if (!response.ok) {
-      const errorText = await response.text();
-      throw new Error(`Failed to create transcript: ${response.status} - ${errorText}`);
-    }
-
-    const data = await response.json();
-
-    // Check if we got an error response
-    if (data.status === "error" && data.error) {
-      throw new Error(`AssemblyAI error: ${data.error}`);
-    }
-
-    return transcriptSchema.parse(data);
-  }
-
-  async getTranscript(transcriptId: string): Promise<TranscriptResponse> {
-    const response = await fetch(`${ASSEMBLYAI_BASE_URL}/transcript/${transcriptId}`, {
-      headers: this.headers,
-    });
-
-    if (!response.ok) {
-      throw new Error(`Failed to get transcript: ${response.statusText}`);
+      throw new Error(`Failed to get transcription: ${response.statusText}`);
     }
 
     const data = await response.json();
     return transcriptSchema.parse(data);
   }
 
-  async deleteTranscript(transcriptId: string): Promise<void> {
-    const response = await fetch(`${ASSEMBLYAI_BASE_URL}/transcript/${transcriptId}`, {
-      method: "DELETE",
-      headers: this.headers,
-    });
+  async waitForTranscription(id: string, maxAttempts = 60, intervalMs = 5000): Promise<Transcript> {
+    for (let i = 0; i < maxAttempts; i++) {
+      const transcript = await this.getTranscription(id);
 
-    if (!response.ok) {
-      throw new Error(`Failed to delete transcript: ${response.statusText}`);
+      if (transcript.status === "completed" || transcript.status === "error") {
+        return transcript;
+      }
+
+      await new Promise((resolve) => setTimeout(resolve, intervalMs));
     }
+
+    throw new Error("Transcription timeout");
   }
 
-  extractSpeakers(transcript: TranscriptResponse): string[] {
-    if (!transcript.utterances) return [];
+  extractSpeakers(transcript: Transcript): string[] {
+    if (!transcript.utterances) return ["Unknown Speaker"];
 
     const speakers = new Set<string>();
     transcript.utterances.forEach((utterance) => {
@@ -146,11 +123,35 @@ export class AssemblyAIService {
     return Array.from(speakers).map((speaker) => `Speaker ${speaker}`);
   }
 
-  formatTranscriptText(transcript: TranscriptResponse): string {
+  formatTranscriptText(transcript: Transcript): string {
+    if (!transcript.text) return "";
+
     if (!transcript.utterances || transcript.utterances.length === 0) {
-      return transcript.text || "";
+      return transcript.text;
     }
 
-    return transcript.utterances.map((utterance) => `Speaker ${utterance.speaker}: ${utterance.text}`).join("\n\n");
+    return transcript.utterances
+      .map((utterance) => {
+        const speaker = `Speaker ${utterance.speaker}`;
+        const timestamp = this.formatTimestamp(utterance.start);
+        return `[${timestamp}] ${speaker}: ${utterance.text}`;
+      })
+      .join("\n\n");
+  }
+
+  extractLanguageInfo(transcript: Transcript): { code: string; confidence: number } | null {
+    if (!transcript.language_code) return null;
+
+    return {
+      code: transcript.language_code,
+      confidence: transcript.language_confidence || 0,
+    };
+  }
+
+  private formatTimestamp(milliseconds: number): string {
+    const totalSeconds = Math.floor(milliseconds / 1000);
+    const minutes = Math.floor(totalSeconds / 60);
+    const seconds = totalSeconds % 60;
+    return `${minutes.toString().padStart(2, "0")}:${seconds.toString().padStart(2, "0")}`;
   }
 }

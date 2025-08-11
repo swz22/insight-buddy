@@ -7,6 +7,8 @@ export interface Database {
           email: string;
           name: string | null;
           avatar_url: string | null;
+          preferred_languages: string[];
+          auto_translate: boolean;
           created_at: string;
           updated_at: string;
         };
@@ -15,6 +17,8 @@ export interface Database {
           email: string;
           name?: string | null;
           avatar_url?: string | null;
+          preferred_languages?: string[];
+          auto_translate?: boolean;
           created_at?: string;
           updated_at?: string;
         };
@@ -23,6 +27,8 @@ export interface Database {
           email?: string;
           name?: string | null;
           avatar_url?: string | null;
+          preferred_languages?: string[];
+          auto_translate?: boolean;
           created_at?: string;
           updated_at?: string;
         };
@@ -76,6 +82,8 @@ export interface Database {
           participants: string[];
           duration: number | null;
           recorded_at: string | null;
+          language: string;
+          translations: Record<string, TranslatedContent> | null;
           created_at: string;
           updated_at: string;
         };
@@ -92,6 +100,8 @@ export interface Database {
           participants?: string[];
           duration?: number | null;
           recorded_at?: string | null;
+          language?: string;
+          translations?: Record<string, TranslatedContent> | null;
           created_at?: string;
           updated_at?: string;
         };
@@ -108,6 +118,8 @@ export interface Database {
           participants?: string[];
           duration?: number | null;
           recorded_at?: string | null;
+          language?: string;
+          translations?: Record<string, TranslatedContent> | null;
           created_at?: string;
           updated_at?: string;
         };
@@ -165,4 +177,13 @@ export interface ActionItem {
   due_date: string | null;
   priority: "low" | "medium" | "high";
   completed: boolean;
+}
+
+export interface TranslatedContent {
+  title: string;
+  description?: string;
+  transcript: string;
+  summary?: MeetingSummary;
+  translated_at: string;
+  translator: "ai" | "human";
 }
