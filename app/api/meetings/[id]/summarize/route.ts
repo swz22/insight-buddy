@@ -13,7 +13,7 @@ interface RouteParams {
 }
 
 export async function POST(request: Request, { params: paramsPromise }: RouteParams) {
-  const params = await paramsPromise;
+  const params = (await paramsPromise) as { id: string };
 
   try {
     const supabase = await createClient();
@@ -48,11 +48,17 @@ export async function POST(request: Request, { params: paramsPromise }: RoutePar
     const huggingFace = new HuggingFaceService();
 
     try {
+      // Validate transcript before processing
+      if (!meeting.transcript || meeting.transcript.trim().length < 50) {
+        throw new Error("Transcript too short for meaningful summarization");
+      }
+
       const summaryText = await huggingFace.summarizeText(meeting.transcript);
       const keyPoints = await huggingFace.extractKeyPoints(meeting.transcript);
       const decisions = huggingFace.extractDecisions(meeting.transcript);
       const nextSteps = huggingFace.extractNextSteps(meeting.transcript);
       const parsedActionItems = huggingFace.parseActionItems(meeting.transcript);
+
       const actionItems: ActionItem[] = parsedActionItems.map((item, index) => ({
         id: `${meeting.id}-action-${index + 1}`,
         task: item.task,
@@ -91,13 +97,22 @@ export async function POST(request: Request, { params: paramsPromise }: RoutePar
     } catch (aiError) {
       console.error("AI processing error:", aiError);
 
+      // More detailed error logging
+      const errorMessage = aiError instanceof Error ? aiError.message : "Unknown error";
+      console.error("Error details:", errorMessage);
+
       // Fallback to basic processing if AI fails
       const sentences = meeting.transcript.match(/[^.!?]+[.!?]+/g) || [];
-      const firstThreeSentences = sentences.slice(0, 3).join(" ");
+      const cleanedSentences = sentences
+        .map((s: string) => s.replace(/\[[\d:]+\]\s*/g, "").trim())
+        .filter((s: string) => s.length > 20);
+
+      const firstThreeSentences = cleanedSentences.slice(0, 3).join(" ");
 
       const fallbackSummary: MeetingSummary = {
-        overview: firstThreeSentences || "Meeting transcript available.",
-        key_points: sentences.slice(0, 3).map((s: string) => s.trim()),
+        overview:
+          firstThreeSentences || "Meeting transcript available. Unable to generate AI summary due to technical issues.",
+        key_points: cleanedSentences.slice(0, 3),
         decisions: [],
         next_steps: [],
       };
@@ -119,6 +134,7 @@ export async function POST(request: Request, { params: paramsPromise }: RoutePar
         summary: fallbackSummary,
         actionItems: [],
         fallback: true,
+        aiError: errorMessage,
       });
     }
   } catch (error) {

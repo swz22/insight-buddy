@@ -27,102 +27,128 @@ export class HuggingFaceService {
   }
 
   async summarizeText(text: string, maxLength: number = 250): Promise<string> {
+    if (!text || text.trim().length < 10) {
+      throw new Error("Text too short for summarization");
+    }
+
     const model = "facebook/bart-large-cnn";
+
+    const cleanedText = text
+      .replace(/\s+/g, " ")
+      .replace(/\[[\d:]+\]\s*/g, "")
+      .trim();
+
+    if (cleanedText.length < 50) {
+      return cleanedText;
+    }
 
     // Truncate text if too long
     const maxInputLength = 1024;
-    const truncatedText = text.length > maxInputLength ? text.substring(0, maxInputLength) + "..." : text;
+    const truncatedText =
+      cleanedText.length > maxInputLength ? cleanedText.substring(0, maxInputLength) + "..." : cleanedText;
 
-    const response = await fetch(`${HUGGINGFACE_API_URL}/${model}`, {
-      method: "POST",
-      headers: this.headers,
-      body: JSON.stringify({
-        inputs: truncatedText,
-        parameters: {
-          max_length: maxLength,
-          min_length: 50,
-          do_sample: false,
-        },
-      }),
-    });
+    try {
+      const response = await fetch(`${HUGGINGFACE_API_URL}/${model}`, {
+        method: "POST",
+        headers: this.headers,
+        body: JSON.stringify({
+          inputs: truncatedText,
+          parameters: {
+            max_length: maxLength,
+            min_length: 30,
+            do_sample: false,
+            truncation: true,
+          },
+          options: {
+            wait_for_model: true,
+          },
+        }),
+      });
 
-    if (!response.ok) {
-      const error = await response.text();
-      throw new Error(`Summarization failed: ${error}`);
+      if (!response.ok) {
+        const errorText = await response.text();
+        console.error("Hugging Face API error:", errorText);
+
+        // Handle rate limiting
+        if (response.status === 503) {
+          throw new Error("Model is loading, please try again in a few seconds");
+        }
+
+        throw new Error(`Summarization failed: ${errorText}`);
+      }
+
+      const data = await response.json();
+
+      // Handle array response
+      if (Array.isArray(data) && data.length > 0 && data[0].summary_text) {
+        return data[0].summary_text;
+      }
+
+      // Handle single object response
+      if (data.summary_text) {
+        return data.summary_text;
+      }
+
+      // Handle unexpected response format
+      if (Array.isArray(data) && data.length > 0) {
+        return JSON.stringify(data[0]);
+      }
+
+      throw new Error("Unexpected response format from Hugging Face API");
+    } catch (error) {
+      console.error("Summarization error:", error);
+      throw error;
     }
-
-    const data = await response.json();
-
-    // Handle array response
-    if (Array.isArray(data) && data.length > 0) {
-      return summaryResponseSchema.parse(data[0]).summary_text;
-    }
-
-    return summaryResponseSchema.parse(data).summary_text;
   }
 
   async extractKeyPoints(text: string): Promise<string[]> {
-    const model = "facebook/bart-large-mnli";
-    const candidateLabels = [
-      "decision",
-      "action item",
-      "important point",
-      "deadline",
-      "milestone",
-      "problem",
-      "solution",
-    ];
+    try {
+      const sentences = text.replace(/\[[\d:]+\]\s*/g, "").match(/[^.!?]+[.!?]+/g) || [];
 
-    const sentences = text.match(/[^.!?]+[.!?]+/g) || [];
-    const keyPoints: string[] = [];
+      if (sentences.length === 0) {
+        return [];
+      }
 
-    // Process in batches to avoid rate limits
-    const batchSize = 5;
-    for (let i = 0; i < Math.min(sentences.length, 20); i += batchSize) {
-      const batch = sentences.slice(i, i + batchSize);
+      const keyPoints = sentences
+        .map((s) => s.trim())
+        .filter((s) => s.length > 20)
+        .filter((s) => {
+          const lower = s.toLowerCase();
+          return (
+            lower.includes("important") ||
+            lower.includes("key") ||
+            lower.includes("main") ||
+            lower.includes("critical") ||
+            lower.includes("essential") ||
+            lower.includes("decided") ||
+            lower.includes("agreed") ||
+            lower.includes("will") ||
+            lower.includes("should") ||
+            lower.includes("must")
+          );
+        })
+        .slice(0, 5);
 
-      const promises = batch.map(async (sentence) => {
-        try {
-          const response = await fetch(`${HUGGINGFACE_API_URL}/${model}`, {
-            method: "POST",
-            headers: this.headers,
-            body: JSON.stringify({
-              inputs: sentence.trim(),
-              parameters: {
-                candidate_labels: candidateLabels,
-                multi_label: true,
-              },
-            }),
-          });
+      if (keyPoints.length === 0 && sentences.length > 0) {
+        return sentences
+          .filter((s) => s.trim().length > 20)
+          .slice(0, 3)
+          .map((s) => s.trim());
+      }
 
-          if (response.ok) {
-            const data = await response.json();
-            if (data.scores && data.scores[0] > 0.5) {
-              return sentence.trim();
-            }
-          }
-        } catch (error) {
-          console.error("Classification error:", error);
-        }
-        return null;
-      });
-
-      const results = await Promise.all(promises);
-      keyPoints.push(...(results.filter(Boolean) as string[]));
+      return keyPoints;
+    } catch (error) {
+      console.error("Key points extraction error:", error);
+      return [];
     }
-
-    // If no key points found, extract first few sentences
-    if (keyPoints.length === 0 && sentences.length > 0) {
-      return sentences.slice(0, 3).map((s) => s.trim());
-    }
-
-    return keyPoints.slice(0, 5);
   }
 
   parseActionItems(
     text: string
   ): Array<{ task: string; assignee: string | null; priority: "low" | "medium" | "high" }> {
     const actionItems: Array<{ task: string; assignee: string | null; priority: "low" | "medium" | "high" }> = [];
+
+    const cleanText = text.replace(/\[[\d:]+\]\s*/g, "");
     const actionPatterns = [
       /(?:will|should|must|need to|needs to|has to|have to)\s+(.+?)(?:\.|$)/gi,
       /(?:action item|task|todo|to-do):\s*(.+?)(?:\.|$)/gi,
@@ -134,7 +160,7 @@ export class HuggingFaceService {
     const mediumPriorityWords = ["soon", "this week", "next week", "priority"];
 
     actionPatterns.forEach((pattern) => {
-      const matches = text.matchAll(pattern);
+      const matches = cleanText.matchAll(pattern);
       for (const match of matches) {
         const taskText = match[2] || match[1];
         const assignee = match[1] && match[2] ? match[1] : null;
@@ -170,6 +196,8 @@ export class HuggingFaceService {
 
   extractDecisions(text: string): string[] {
     const decisions: string[] = [];
+    const cleanText = text.replace(/\[[\d:]+\]\s*/g, "");
+
     const decisionPatterns = [
       /(?:decided|agreed|concluded|determined|resolved) (?:that|to)\s+(.+?)(?:\.|$)/gi,
       /(?:decision|agreement|conclusion):\s*(.+?)(?:\.|$)/gi,
@@ -177,7 +205,7 @@ export class HuggingFaceService {
     ];
 
     decisionPatterns.forEach((pattern) => {
-      const matches = text.matchAll(pattern);
+      const matches = cleanText.matchAll(pattern);
       for (const match of matches) {
         const decision = match[1];
         if (decision && decision.length > 10 && decision.length < 200) {
@@ -191,6 +219,8 @@ export class HuggingFaceService {
 
   extractNextSteps(text: string): string[] {
     const nextSteps: string[] = [];
+    const cleanText = text.replace(/\[[\d:]+\]\s*/g, "");
+
     const nextStepPatterns = [
       /(?:next steps?|going forward|follow up):\s*(.+?)(?:\.|$)/gi,
       /(?:next|then|afterwards|following this),?\s*(?:we|they|I)\s*(?:will|need to|should)\s+(.+?)(?:\.|$)/gi,
@@ -198,7 +228,7 @@ export class HuggingFaceService {
     ];
 
     nextStepPatterns.forEach((pattern) => {
-      const matches = text.matchAll(pattern);
+      const matches = cleanText.matchAll(pattern);
       for (const match of matches) {
         const step = match[1] || match[2];
         if (step && step.length > 10 && step.length < 200) {
