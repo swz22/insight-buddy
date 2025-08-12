@@ -1,7 +1,7 @@
 import { createClient } from "@/lib/supabase/server";
 import { createServiceRoleClient } from "@/lib/supabase/service";
-import { AssemblyAIService } from "@/lib/services/assemblyai";
 import { apiError, apiSuccess } from "@/lib/api/response";
+import { AssemblyAIService } from "@/lib/services/assemblyai";
 
 export const dynamic = "force-dynamic";
 
@@ -24,7 +24,12 @@ export async function POST(request: Request, { params: paramsPromise }: RoutePar
       return apiError("Unauthorized", 401, "AUTH_REQUIRED");
     }
 
+    if (!process.env.ASSEMBLYAI_API_KEY) {
+      return apiError("Transcription service not configured", 503, "SERVICE_UNAVAILABLE");
+    }
+
     const serviceSupabase = createServiceRoleClient();
+
     const { data: meeting, error: fetchError } = await serviceSupabase
       .from("meetings")
       .select("*")
@@ -37,50 +42,38 @@ export async function POST(request: Request, { params: paramsPromise }: RoutePar
     }
 
     if (!meeting.audio_url) {
-      return apiError("No audio file attached to meeting", 400, "NO_AUDIO");
+      return apiError("No audio file found for this meeting", 400, "NO_AUDIO");
     }
 
-    if (meeting.transcript) {
-      return apiError("Meeting already has a transcript", 400, "ALREADY_TRANSCRIBED");
-    }
-
-    if (!process.env.ASSEMBLYAI_API_KEY) {
-      console.error("AssemblyAI API key not found");
-      return apiError("AssemblyAI API key not configured", 500, "MISSING_API_KEY");
+    if (meeting.transcript_id) {
+      return apiError("Transcription already in progress", 400, "ALREADY_TRANSCRIBING");
     }
 
     const assemblyAI = new AssemblyAIService();
 
-    // Create transcript with webhook
-    const isDevelopment = process.env.NODE_ENV === "development";
-    const webhookUrl = isDevelopment ? undefined : `${process.env.NEXT_PUBLIC_APP_URL}/api/webhooks/assemblyai`;
-
-    const transcript = await assemblyAI.createTranscript(meeting.audio_url, {
+    const webhookUrl = `${process.env.NEXT_PUBLIC_APP_URL}/api/webhooks/assemblyai?meeting_id=${params.id}`;
+    const { id: transcriptId } = await assemblyAI.createTranscription({
+      audio_url: meeting.audio_url,
       webhook_url: webhookUrl,
-      webhook_auth_header_name: webhookUrl ? "x-meeting-id" : undefined,
-      webhook_auth_header_value: webhookUrl ? meeting.id : undefined,
       speaker_labels: true,
-      punctuate: true,
-      format_text: true,
+      language_detection: true,
     });
 
     const { error: updateError } = await serviceSupabase
       .from("meetings")
       .update({
-        transcript_id: transcript.id,
+        transcript_id: transcriptId,
         updated_at: new Date().toISOString(),
       })
       .eq("id", params.id);
 
     if (updateError) {
-      console.error("Failed to store transcript ID:", updateError);
+      console.error("Failed to update meeting with transcript ID:", updateError);
     }
 
     return apiSuccess({
-      success: true,
-      transcriptId: transcript.id,
-      status: transcript.status,
-      message: "Transcription started. You'll be notified when it's complete.",
+      transcriptId,
+      message: "Transcription started",
     });
   } catch (error) {
     console.error("Transcription error:", error);
