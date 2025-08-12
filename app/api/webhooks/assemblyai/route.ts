@@ -18,7 +18,6 @@ export async function POST(request: NextRequest) {
       return apiSuccess({ received: true, status: transcript.status });
     }
 
-    // Extract meeting ID from webhook URL or headers
     const meetingId = request.headers.get("x-meeting-id");
     if (!meetingId) {
       console.error("No meeting ID in webhook request");
@@ -29,6 +28,8 @@ export async function POST(request: NextRequest) {
     const assemblyAI = new AssemblyAIService();
     const speakers = assemblyAI.extractSpeakers(transcript);
     const formattedTranscript = assemblyAI.formatTranscriptText(transcript);
+    const languageInfo = assemblyAI.extractLanguageInfo(transcript);
+
     const { error: updateError } = await supabase
       .from("meetings")
       .update({
@@ -36,6 +37,7 @@ export async function POST(request: NextRequest) {
         transcript_id: null,
         duration: transcript.audio_duration ? Math.round(transcript.audio_duration) : null,
         participants: speakers.length > 0 ? speakers : ["Unknown Speaker"],
+        language: languageInfo?.code || "en",
         updated_at: new Date().toISOString(),
       })
       .eq("id", meetingId);
@@ -45,7 +47,6 @@ export async function POST(request: NextRequest) {
       return apiError("Failed to update meeting", 500);
     }
 
-    // Trigger AI summary generation
     if (process.env.HUGGINGFACE_API_KEY) {
       await fetch(`${process.env.NEXT_PUBLIC_APP_URL}/api/meetings/${meetingId}/summarize`, {
         method: "POST",
@@ -58,6 +59,7 @@ export async function POST(request: NextRequest) {
       status: "completed",
       meetingId,
       transcriptId: transcript.id,
+      language: languageInfo?.code || "en",
     });
   } catch (error) {
     console.error("Webhook processing error:", error);
