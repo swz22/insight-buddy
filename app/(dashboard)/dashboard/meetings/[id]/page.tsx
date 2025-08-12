@@ -2,7 +2,18 @@
 
 import { useState, useEffect } from "react";
 import { useParams, useRouter } from "next/navigation";
-import { ArrowLeft, Calendar, Clock, Users, FileText, Lightbulb, ListChecks, Share2, Loader2 } from "lucide-react";
+import {
+  ArrowLeft,
+  Calendar,
+  Clock,
+  Users,
+  FileText,
+  Lightbulb,
+  ListChecks,
+  Share2,
+  Loader2,
+  BarChart3,
+} from "lucide-react";
 import Link from "next/link";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
@@ -11,6 +22,13 @@ import { AudioPlayer } from "@/components/audio/audio-player";
 import { ShareDialog } from "@/components/meetings/share-dialog";
 import { LanguageSelector } from "@/components/ui/language-selector";
 import { useTranslation } from "@/hooks/use-translation";
+import { useInsights } from "@/hooks/use-insights";
+import { useMeetingProcessing } from "@/hooks/use-meeting-processing";
+import { useTranscriptionStatus } from "@/hooks/use-transcription-status";
+import { SpeakerMetricsChart } from "@/components/insights/speaker-metrics-chart";
+import { SentimentTimeline } from "@/components/insights/sentiment-timeline";
+import { EngagementScore } from "@/components/insights/engagement-score";
+import { ConversationDynamics } from "@/components/insights/conversation-dynamics";
 import { cn } from "@/lib/utils";
 
 const formatDate = (date: Date): string => {
@@ -44,11 +62,22 @@ export default function MeetingDetailPage() {
   const router = useRouter();
   const meetingId = params.id as string;
   const { data: meeting, isLoading, error } = useMeeting(meetingId);
-  const [activeTab, setActiveTab] = useState<"transcript" | "summary" | "actions">("transcript");
+  const [activeTab, setActiveTab] = useState<"transcript" | "summary" | "actions" | "insights">("transcript");
   const [showShareDialog, setShowShareDialog] = useState(false);
 
   const { selectedLanguage, setSelectedLanguage, translate, isTranslating, currentTranslation, availableLanguages } =
     useTranslation({ meetingId, enabled: !!meeting });
+
+  const {
+    insights,
+    isLoading: isLoadingInsights,
+    isGenerating,
+    generateInsights,
+    hasInsights,
+  } = useInsights({ meetingId, enabled: !!meeting?.transcript });
+
+  useMeetingProcessing({ meeting, enabled: true });
+  const { isTranscribing } = useTranscriptionStatus({ meeting, enabled: true });
 
   useEffect(() => {
     if (meeting?.language && meeting.language !== "en") {
@@ -198,13 +227,31 @@ export default function MeetingDetailPage() {
           <ListChecks className="w-4 h-4" />
           Action Items
         </button>
+        <button
+          onClick={() => setActiveTab("insights")}
+          className={cn(
+            "px-4 py-2 flex items-center gap-2 transition-all",
+            activeTab === "insights"
+              ? "text-purple-400 border-b-2 border-purple-400"
+              : "text-white/60 hover:text-white/90"
+          )}
+        >
+          <BarChart3 className="w-4 h-4" />
+          Insights
+        </button>
       </div>
 
       <Card className="bg-white/[0.02] backdrop-blur-sm border-white/10">
         <CardContent className="p-6">
           {activeTab === "transcript" && (
             <div className="prose prose-invert max-w-none">
-              {displayTranscript ? (
+              {isTranscribing ? (
+                <div className="flex flex-col items-center justify-center py-12 space-y-4">
+                  <Loader2 className="w-8 h-8 animate-spin text-purple-400" />
+                  <p className="text-white/60">Transcribing audio... This may take a few minutes.</p>
+                  <p className="text-white/40 text-sm">The page will update automatically when complete.</p>
+                </div>
+              ) : displayTranscript ? (
                 <div className="whitespace-pre-wrap text-white/80 leading-relaxed">{displayTranscript}</div>
               ) : (
                 <p className="text-white/40 italic">No transcript available yet.</p>
@@ -308,6 +355,52 @@ export default function MeetingDetailPage() {
                 ))
               ) : (
                 <p className="text-white/40 italic">No action items identified.</p>
+              )}
+            </div>
+          )}
+
+          {activeTab === "insights" && (
+            <div>
+              {!hasInsights && !isLoadingInsights && meeting.transcript && (
+                <div className="text-center py-12">
+                  <BarChart3 className="w-12 h-12 text-white/20 mx-auto mb-4" />
+                  <p className="text-white/60 mb-4">No insights generated yet</p>
+                  <Button
+                    onClick={() => generateInsights()}
+                    disabled={isGenerating}
+                    className="bg-purple-500 hover:bg-purple-600"
+                  >
+                    {isGenerating ? (
+                      <>
+                        <Loader2 className="w-4 h-4 mr-2 animate-spin" />
+                        Analyzing...
+                      </>
+                    ) : (
+                      "Generate Insights"
+                    )}
+                  </Button>
+                </div>
+              )}
+
+              {isLoadingInsights && (
+                <div className="flex items-center justify-center py-12">
+                  <Loader2 className="w-8 h-8 animate-spin text-white/40" />
+                </div>
+              )}
+
+              {hasInsights && insights && (
+                <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+                  <EngagementScore score={insights.engagementScore} dynamics={insights.dynamics} />
+                  <SpeakerMetricsChart metrics={insights.speakerMetrics} />
+                  <SentimentTimeline sentiment={insights.sentiment} />
+                  <ConversationDynamics dynamics={insights.dynamics} />
+                </div>
+              )}
+
+              {!meeting.transcript && (
+                <p className="text-white/40 italic text-center py-12">
+                  Insights require a transcript. Please wait for transcription to complete.
+                </p>
               )}
             </div>
           )}
