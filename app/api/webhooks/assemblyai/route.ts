@@ -6,6 +6,12 @@ import { AssemblyAIService } from "@/lib/services/assemblyai";
 
 export async function POST(request: NextRequest) {
   try {
+    const contentLength = request.headers.get("content-length");
+
+    if (!contentLength || contentLength === "0") {
+      return apiSuccess({ received: true, status: "ping" });
+    }
+
     const body = await request.json();
     const transcript = transcriptSchema.parse(body);
 
@@ -18,7 +24,7 @@ export async function POST(request: NextRequest) {
       return apiSuccess({ received: true, status: transcript.status });
     }
 
-    const meetingId = request.headers.get("x-meeting-id");
+    const meetingId = request.headers.get("x-meeting-id") || request.nextUrl.searchParams.get("meeting_id");
     if (!meetingId) {
       console.error("No meeting ID in webhook request");
       return apiError("Missing meeting ID", 400);

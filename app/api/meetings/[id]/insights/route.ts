@@ -61,16 +61,28 @@ export async function POST(request: Request, { params: paramsPromise }: RoutePar
 
     let transcript;
     if (meeting.transcript_id) {
-      transcript = await assemblyAI.getTranscription(meeting.transcript_id);
+      try {
+        transcript = await assemblyAI.getTranscription(meeting.transcript_id);
+      } catch (error) {
+        console.error("Failed to get AssemblyAI transcript:", error);
+        // Fall back to stored transcript
+        transcript = {
+          id: meeting.transcript_id,
+          status: "completed" as const,
+          text: meeting.transcript,
+          utterances: [],
+          audio_duration: meeting.duration || 0,
+        };
+      }
     } else {
-      const mockTranscript = {
-        id: "mock",
+      // Create mock transcript from stored text
+      transcript = {
+        id: "stored",
         status: "completed" as const,
         text: meeting.transcript,
         utterances: [],
         audio_duration: meeting.duration || 0,
       };
-      transcript = mockTranscript;
     }
 
     const insights = await insightsService.analyzeMeeting(params.id, transcript);

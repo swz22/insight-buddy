@@ -20,8 +20,33 @@ export class InsightsService {
   }
 
   async analyzeMeeting(meetingId: string, transcript: Transcript): Promise<MeetingInsights> {
+    // Handle case where utterances are not available
     if (!transcript.utterances || transcript.utterances.length === 0) {
-      throw new Error("No utterances found in transcript");
+      // Fallback to basic analysis without speaker separation
+      if (!transcript.text) {
+        throw new Error("No transcript text available for analysis");
+      }
+
+      // Create mock utterances from the text for analysis
+      const mockUtterances = this.createMockUtterances(transcript.text);
+      const enhancedTranscript = { ...transcript, utterances: mockUtterances };
+
+      const speakerMetrics = this.calculateSpeakerMetrics(enhancedTranscript);
+      const sentiment = await this.analyzeSentiment(enhancedTranscript);
+      const dynamics = this.analyzeConversationDynamics(enhancedTranscript, speakerMetrics);
+      const keyMoments = this.identifyKeyMoments(enhancedTranscript, sentiment);
+      const engagementScore = this.calculateEngagementScore(speakerMetrics, sentiment, dynamics);
+
+      return {
+        id: crypto.randomUUID(),
+        meetingId,
+        speakerMetrics,
+        sentiment,
+        dynamics,
+        keyMoments,
+        engagementScore,
+        generatedAt: new Date().toISOString(),
+      };
     }
 
     const speakerMetrics = this.calculateSpeakerMetrics(transcript);
@@ -40,6 +65,27 @@ export class InsightsService {
       engagementScore,
       generatedAt: new Date().toISOString(),
     };
+  }
+
+  private createMockUtterances(text: string): any[] {
+    // Split text into sentences and create mock utterances
+    const sentences = text.match(/[^.!?]+[.!?]+/g) || [text];
+    const utterances: any[] = [];
+    let currentTime = 0;
+
+    sentences.forEach((sentence, index) => {
+      const duration = Math.max(3000, sentence.length * 50); // Estimate duration based on text length
+      utterances.push({
+        text: sentence.trim(),
+        speaker: "A", // Single speaker for non-diarized transcripts
+        start: currentTime,
+        end: currentTime + duration,
+        confidence: 0.9,
+      });
+      currentTime += duration + 500; // Add small gap between sentences
+    });
+
+    return utterances;
   }
 
   private calculateSpeakerMetrics(transcript: Transcript): SpeakerMetrics[] {
