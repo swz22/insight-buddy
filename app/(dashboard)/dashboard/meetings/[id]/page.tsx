@@ -382,10 +382,14 @@ export default function MeetingDetailPage() {
 
               {hasInsights && insights && (
                 <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-                  <EngagementScore score={insights.engagementScore} dynamics={insights.dynamics} />
-                  <SpeakerMetricsChart metrics={transformSpeakerMetrics(insights.speakerMetrics)} />
-                  <SentimentTimeline sentiment={insights.sentiment} />
-                  <ConversationDynamics dynamics={insights.dynamics} />
+                  {insights.engagementScore !== undefined && insights.dynamics && (
+                    <EngagementScore score={insights.engagementScore} dynamics={insights.dynamics} />
+                  )}
+                  {insights.speakerMetrics && insights.speakerMetrics.length > 0 && (
+                    <SpeakerMetricsChart metrics={transformSpeakerMetrics(insights.speakerMetrics)} />
+                  )}
+                  {insights.sentiment && <SentimentTimeline sentiment={insights.sentiment} />}
+                  {insights.dynamics && <ConversationDynamics dynamics={insights.dynamics} />}
                 </div>
               )}
 
