@@ -1,509 +1,404 @@
-export interface ProcessedTranscript {
+import { MeetingSummary, ActionItem } from "@/types/supabase";
+
+interface ProcessedTranscript {
+  speakers: string[];
   segments: TranscriptSegment[];
-  speakers: Speaker[];
-  decisions: Decision[];
+  wordCount: number;
+  duration: number;
 }
 
 interface TranscriptSegment {
-  text: string;
   speaker: string;
-  timestamp: string;
-  topic?: string;
+  text: string;
+  start: number;
+  end: number;
 }
 
-interface Speaker {
-  id: string;
-  name: string;
-  mentions: number;
+interface HFResponse {
+  generated_text?: string;
+  summary_text?: string;
+  error?: string;
+  message?: string;
 }
 
-interface Decision {
-  description: string;
-  owner?: string;
-  context: string;
-}
+class ApiUsageTracker {
+  private static instance: ApiUsageTracker;
+  private count: number = 0;
+  private month: number = new Date().getMonth();
+  private readonly limit = 30000;
 
-interface ExtractedInfo {
-  decisions: string[];
-  problems: string[];
-  metrics: string[];
-  nextSteps: string[];
-}
+  static getInstance(): ApiUsageTracker {
+    if (!ApiUsageTracker.instance) {
+      ApiUsageTracker.instance = new ApiUsageTracker();
+    }
+    return ApiUsageTracker.instance;
+  }
 
-const CACHE_KEY_PREFIX = "hf_cache_";
-const API_CALL_LIMIT = 30000;
-const CALLS_PER_MEETING = 5;
+  canMakeRequest(): boolean {
+    const currentMonth = new Date().getMonth();
+    if (currentMonth !== this.month) {
+      this.count = 0;
+      this.month = currentMonth;
+    }
+    return this.count < this.limit;
+  }
+
+  incrementCount(): void {
+    this.count++;
+  }
+
+  getUsage(): { count: number; limit: number; month: number } {
+    return { count: this.count, limit: this.limit, month: this.month };
+  }
+}
 
 export class HuggingFacePipeline {
   private apiKey: string;
-  private apiCallCount: number = 0;
-  private cache: Map<string, any> = new Map();
+  private usageTracker: ApiUsageTracker;
+
+  private readonly models = {
+    summarization: "facebook/bart-large-cnn",
+    zeroShot: "facebook/bart-large-mnli",
+    textGeneration: "mistralai/Mistral-7B-Instruct-v0.1",
+  };
 
   constructor(apiKey: string) {
     this.apiKey = apiKey;
-    this.loadApiCallCount();
-  }
-
-  private loadApiCallCount() {
-    const stored = localStorage.getItem("hf_api_count");
-    const data = stored ? JSON.parse(stored) : { count: 0, month: new Date().getMonth() };
-
-    if (data.month !== new Date().getMonth()) {
-      this.apiCallCount = 0;
-      this.saveApiCallCount();
-    } else {
-      this.apiCallCount = data.count;
-    }
-  }
-
-  private saveApiCallCount() {
-    localStorage.setItem(
-      "hf_api_count",
-      JSON.stringify({
-        count: this.apiCallCount,
-        month: new Date().getMonth(),
-      })
-    );
-  }
-
-  private async checkApiLimit(): Promise<boolean> {
-    return this.apiCallCount < API_CALL_LIMIT - CALLS_PER_MEETING;
-  }
-
-  private getCacheKey(text: string, operation: string): string {
-    const hash = text.substring(0, 50) + text.length;
-    return `${CACHE_KEY_PREFIX}${operation}_${hash}`;
+    this.usageTracker = ApiUsageTracker.getInstance();
   }
 
   async processTranscript(transcript: string): Promise<ProcessedTranscript> {
-    const segments = this.parseTranscript(transcript);
-    const speakers = this.extractSpeakers(segments);
+    const lines = transcript.split("\n").filter((line) => line.trim());
+    const speakers = new Set<string>();
+    const segments: TranscriptSegment[] = [];
+    let totalWords = 0;
 
-    const decisions = await this.extractDecisions(segments);
+    lines.forEach((line, index) => {
+      const speakerMatch = line.match(/^([^:]+):/);
+      if (speakerMatch) {
+        const speaker = speakerMatch[1].trim();
+        const text = line.substring(speakerMatch[0].length).trim();
+        speakers.add(speaker);
+        segments.push({
+          speaker,
+          text,
+          start: index * 10,
+          end: (index + 1) * 10,
+        });
+        totalWords += text.split(/\s+/).length;
+      } else if (line.trim() && segments.length > 0) {
+        segments[segments.length - 1].text += " " + line.trim();
+        totalWords += line.trim().split(/\s+/).length;
+      }
+    });
 
     return {
+      speakers: Array.from(speakers),
       segments,
-      speakers,
-      decisions,
+      wordCount: totalWords,
+      duration: segments.length * 10,
     };
   }
 
-  private parseTranscript(transcript: string): TranscriptSegment[] {
-    const lines = transcript.split("\n");
-    const segments: TranscriptSegment[] = [];
-    const speakerPattern = /\[(\d{2}:\d{2})\]\s*Speaker\s*([A-Z]):\s*(.*)/;
+  async generateStructuredSummary(
+    transcript: string,
+    processedTranscript: ProcessedTranscript
+  ): Promise<MeetingSummary> {
+    if (!this.usageTracker.canMakeRequest()) {
+      console.log("Hugging Face API limit reached, using fallback summary");
+      return this.generateFallbackSummary(transcript, processedTranscript);
+    }
 
-    let currentSegment: TranscriptSegment | null = null;
+    try {
+      const chunks = this.chunkTranscript(transcript, 800);
+      const summaryPromises = chunks.map((chunk) => this.callHuggingFaceAPI(this.models.summarization, chunk));
 
-    for (const line of lines) {
-      const match = line.match(speakerPattern);
-      if (match) {
-        if (currentSegment) {
-          segments.push(currentSegment);
-        }
-        currentSegment = {
-          timestamp: match[1],
-          speaker: match[2],
-          text: match[3],
-        };
-      } else if (currentSegment && line.trim()) {
-        currentSegment.text += " " + line.trim();
+      const summaries = await Promise.all(summaryPromises);
+      const combinedSummary = summaries
+        .filter((s) => s && typeof s === "string")
+        .join(" ")
+        .trim();
+
+      if (!combinedSummary) {
+        return this.generateFallbackSummary(transcript, processedTranscript);
+      }
+
+      const structuredSummary = await this.extractStructuredElements(combinedSummary, transcript);
+      this.usageTracker.incrementCount();
+
+      return structuredSummary;
+    } catch (error) {
+      console.error("Summary generation failed:", error);
+      return this.generateFallbackSummary(transcript, processedTranscript);
+    }
+  }
+
+  async generateActionItems(
+    transcript: string,
+    processedTranscript: ProcessedTranscript,
+    summary: MeetingSummary
+  ): Promise<ActionItem[]> {
+    if (!this.usageTracker.canMakeRequest()) {
+      return this.extractActionItemsFromText(transcript);
+    }
+
+    try {
+      const prompt = `Extract action items from this meeting summary. For each action item, identify:
+1. The specific task
+2. Who it's assigned to (if mentioned)
+3. Priority level (high/medium/low)
+
+Meeting Summary:
+${summary.overview}
+
+Key Points:
+${summary.key_points.join("\n")}
+
+Next Steps:
+${summary.next_steps.join("\n")}
+
+Format: List each action item clearly.`;
+
+      const response = await this.callHuggingFaceAPI(this.models.textGeneration, prompt, {
+        max_new_tokens: 300,
+        temperature: 0.3,
+      });
+
+      const actionItems = this.parseActionItemsResponse(response || "");
+      this.usageTracker.incrementCount();
+
+      return actionItems.length > 0 ? actionItems : this.extractActionItemsFromText(transcript);
+    } catch (error) {
+      console.error("Action items generation failed:", error);
+      return this.extractActionItemsFromText(transcript);
+    }
+  }
+
+  private async callHuggingFaceAPI(
+    model: string,
+    inputs: string,
+    parameters: Record<string, any> = {}
+  ): Promise<string | null> {
+    try {
+      const response = await fetch(`https://api-inference.huggingface.co/models/${model}`, {
+        method: "POST",
+        headers: {
+          Authorization: `Bearer ${this.apiKey}`,
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({ inputs, parameters }),
+      });
+
+      if (!response.ok) {
+        const error = await response.text();
+        console.error(`HF API error (${response.status}):`, error);
+        return null;
+      }
+
+      const data = (await response.json()) as HFResponse | HFResponse[];
+
+      if (Array.isArray(data)) {
+        return data[0]?.generated_text || data[0]?.summary_text || null;
+      }
+
+      return data.generated_text || data.summary_text || null;
+    } catch (error) {
+      console.error("HF API call failed:", error);
+      return null;
+    }
+  }
+
+  private chunkTranscript(transcript: string, maxChunkSize: number): string[] {
+    const sentences = transcript.match(/[^.!?]+[.!?]+/g) || [transcript];
+    const chunks: string[] = [];
+    let currentChunk = "";
+
+    for (const sentence of sentences) {
+      if ((currentChunk + sentence).length > maxChunkSize && currentChunk) {
+        chunks.push(currentChunk.trim());
+        currentChunk = sentence;
+      } else {
+        currentChunk += " " + sentence;
       }
     }
 
-    if (currentSegment) {
-      segments.push(currentSegment);
+    if (currentChunk.trim()) {
+      chunks.push(currentChunk.trim());
     }
 
-    return segments;
+    return chunks;
   }
 
-  private extractSpeakers(segments: TranscriptSegment[]): Speaker[] {
-    const speakerMap = new Map<string, Speaker>();
+  private async extractStructuredElements(summary: string, transcript: string): Promise<MeetingSummary> {
+    const overview = summary.slice(0, 500).trim() || "Meeting summary could not be generated.";
 
-    segments.forEach((segment) => {
-      const existing = speakerMap.get(segment.speaker) || {
-        id: segment.speaker,
-        name: this.identifySpeakerName(segment.text, segment.speaker),
-        mentions: 0,
-      };
-      existing.mentions++;
-      speakerMap.set(segment.speaker, existing);
-    });
+    const keyPoints = this.extractKeyPoints(summary + "\n" + transcript);
+    const decisions = this.extractDecisions(transcript);
+    const nextSteps = this.extractNextSteps(transcript);
 
-    return Array.from(speakerMap.values());
+    return {
+      overview,
+      key_points: keyPoints.slice(0, 5),
+      decisions: decisions.slice(0, 5),
+      next_steps: nextSteps.slice(0, 5),
+    };
   }
 
-  private identifySpeakerName(text: string, speakerId: string): string {
-    const introPattern = /(?:this is|i'm|i am|my name is)\s+([A-Z][a-z]+(?:\s+[A-Z][a-z]+)?)/i;
-    const match = text.match(introPattern);
-
-    if (match) {
-      return match[1];
-    }
-
-    return `Speaker ${speakerId}`;
-  }
-
-  async extractDecisions(segments: TranscriptSegment[]): Promise<Decision[]> {
-    const decisions: Decision[] = [];
-    const decisionPhrases = [
-      "propose",
-      "proposal",
-      "we'll try",
-      "let's do",
-      "we should",
-      "agreed",
-      "decision",
-      "we will",
-      "going to",
-      "plan to",
-      "need to",
+  private extractKeyPoints(text: string): string[] {
+    const keyPhrases = [
+      "important",
+      "key point",
+      "main",
+      "critical",
+      "essential",
+      "significant",
+      "notable",
+      "highlight",
     ];
 
-    for (const segment of segments) {
-      const hasDecisionPhrase = decisionPhrases.some((phrase) => segment.text.toLowerCase().includes(phrase));
+    const sentences = text.split(/[.!?]+/).filter((s) => s.trim().length > 20);
+    const keyPoints: string[] = [];
 
-      if (hasDecisionPhrase) {
-        const context = this.getContextForSegment(segments, segment);
-        decisions.push({
-          description: segment.text,
-          owner: segment.speaker,
-          context,
-        });
+    sentences.forEach((sentence) => {
+      const lower = sentence.toLowerCase();
+      if (keyPhrases.some((phrase) => lower.includes(phrase))) {
+        keyPoints.push(sentence.trim());
       }
+    });
+
+    if (keyPoints.length === 0 && sentences.length > 0) {
+      return sentences.slice(0, 3).map((s) => s.trim());
     }
+
+    return keyPoints;
+  }
+
+  private extractDecisions(text: string): string[] {
+    const decisionPhrases = [
+      "decided",
+      "agreed",
+      "concluded",
+      "resolved",
+      "determined",
+      "will proceed",
+      "approved",
+      "confirmed",
+    ];
+
+    const sentences = text.split(/[.!?]+/).filter((s) => s.trim().length > 20);
+    const decisions: string[] = [];
+
+    sentences.forEach((sentence) => {
+      const lower = sentence.toLowerCase();
+      if (decisionPhrases.some((phrase) => lower.includes(phrase))) {
+        decisions.push(sentence.trim());
+      }
+    });
 
     return decisions;
   }
 
-  private getContextForSegment(segments: TranscriptSegment[], target: TranscriptSegment): string {
-    const index = segments.indexOf(target);
-    const start = Math.max(0, index - 2);
-    const end = Math.min(segments.length, index + 3);
+  private extractNextSteps(text: string): string[] {
+    const nextStepPhrases = ["next step", "will", "plan to", "need to", "should", "must", "action item", "follow up"];
 
-    return segments
-      .slice(start, end)
-      .map((s) => `${s.speaker}: ${s.text}`)
-      .join(" ");
-  }
-
-  async generateStructuredSummary(transcript: string, processedData: ProcessedTranscript): Promise<any> {
-    if (!(await this.checkApiLimit())) {
-      return this.generateLocalSummary(processedData);
-    }
-
-    const cacheKey = this.getCacheKey(transcript, "summary");
-    const cached = this.cache.get(cacheKey);
-    if (cached) return cached;
-
-    try {
-      const extractedInfo = await this.extractKeyInformation(processedData);
-
-      const summaryPrompt = this.buildSummaryPrompt(extractedInfo, processedData);
-
-      const response = await fetch("https://api-inference.huggingface.co/models/google/flan-t5-base", {
-        method: "POST",
-        headers: {
-          Authorization: `Bearer ${this.apiKey}`,
-          "Content-Type": "application/json",
-        },
-        body: JSON.stringify({
-          inputs: summaryPrompt,
-          parameters: {
-            max_new_tokens: 512,
-            temperature: 0.3,
-            do_sample: false,
-          },
-        }),
-      });
-
-      if (!response.ok) {
-        throw new Error(`HF API error: ${response.status}`);
-      }
-
-      const result = await response.json();
-      const generatedText = result[0]?.generated_text || result.generated_text || "";
-
-      this.apiCallCount++;
-      this.saveApiCallCount();
-
-      const structured = this.structureSummary(generatedText, extractedInfo);
-      this.cache.set(cacheKey, structured);
-
-      return structured;
-    } catch (error) {
-      console.error("API call failed, falling back to local:", error);
-      return this.generateLocalSummary(processedData);
-    }
-  }
-
-  private async extractKeyInformation(data: ProcessedTranscript): Promise<ExtractedInfo> {
-    const decisions: string[] = [];
-    const problems: string[] = [];
-    const metrics: string[] = [];
+    const sentences = text.split(/[.!?]+/).filter((s) => s.trim().length > 20);
     const nextSteps: string[] = [];
 
-    const problemKeywords = ["problem", "issue", "concern", "challenge", "difficult"];
-    const metricKeywords = ["rate", "percentage", "number", "count", "metric", "kpi", "slo"];
-    const nextStepKeywords = ["will", "going to", "need to", "should", "next", "action"];
-
-    data.segments.forEach((segment) => {
-      const text = segment.text.toLowerCase();
-
-      if (problemKeywords.some((kw) => text.includes(kw))) {
-        problems.push(segment.text);
-      }
-
-      if (metricKeywords.some((kw) => text.includes(kw))) {
-        metrics.push(segment.text);
-      }
-
-      if (nextStepKeywords.some((kw) => text.includes(kw)) && text.length < 200) {
-        nextSteps.push(segment.text);
+    sentences.forEach((sentence) => {
+      const lower = sentence.toLowerCase();
+      if (nextStepPhrases.some((phrase) => lower.includes(phrase))) {
+        nextSteps.push(sentence.trim());
       }
     });
 
-    data.decisions.forEach((d) => decisions.push(d.description));
-
-    return { decisions, problems, metrics, nextSteps };
+    return nextSteps;
   }
 
-  private buildSummaryPrompt(info: ExtractedInfo, data: ProcessedTranscript): string {
-    const mainTopics = this.identifyMainTopics(data.segments);
-
-    return `Summarize this meeting with the following key points:
-Topics discussed: ${mainTopics.join(", ")}
-Key decisions: ${info.decisions.slice(0, 3).join("; ")}
-Problems identified: ${info.problems.slice(0, 3).join("; ")}
-Metrics mentioned: ${info.metrics.slice(0, 3).join("; ")}
-
-Create a brief overview and list the main points.`;
-  }
-
-  private identifyMainTopics(segments: TranscriptSegment[]): string[] {
-    const topics = new Set<string>();
-    const topicKeywords = {
-      "mr rate": "MR Rate metrics",
-      bug: "Bug tracking",
-      slo: "SLO compliance",
-      security: "Security concerns",
-      infrastructure: "Infrastructure issues",
-      community: "Community contributions",
-      department: "Department structure",
-    };
-
-    segments.forEach((segment) => {
-      const text = segment.text.toLowerCase();
-      Object.entries(topicKeywords).forEach(([keyword, topic]) => {
-        if (text.includes(keyword)) {
-          topics.add(topic);
-        }
-      });
-    });
-
-    return Array.from(topics);
-  }
-
-  private structureSummary(generatedText: string, info: ExtractedInfo): any {
-    const lines = generatedText.split(/[.!?]+/).filter((l) => l.trim());
-
-    return {
-      overview: lines[0] || "Meeting discussed various engineering metrics and organizational changes.",
-      key_points: [
-        ...info.decisions.slice(0, 3).map((d) => this.cleanText(d)),
-        ...info.problems.slice(0, 2).map((p) => `Issue: ${this.cleanText(p)}`),
-        ...info.metrics.slice(0, 2).map((m) => `Metric: ${this.cleanText(m)}`),
-      ].filter((p) => p.length > 10),
-      decisions: info.decisions.slice(0, 5).map((d) => this.cleanText(d)),
-      next_steps: info.nextSteps.slice(0, 5).map((n) => this.cleanText(n)),
-    };
-  }
-
-  private cleanText(text: string): string {
-    return text
-      .replace(/\s+/g, " ")
-      .replace(/^[\s,.-]+|[\s,.-]+$/g, "")
-      .substring(0, 200);
-  }
-
-  async generateActionItems(transcript: string, processedData: ProcessedTranscript, summary: any): Promise<any[]> {
-    if (!(await this.checkApiLimit())) {
-      return this.generateLocalActionItems(processedData, summary);
-    }
-
-    const cacheKey = this.getCacheKey(transcript, "actions");
-    const cached = this.cache.get(cacheKey);
-    if (cached) return cached;
-
-    try {
-      const actionPrompt = this.buildActionItemPrompt(processedData, summary);
-
-      const response = await fetch("https://api-inference.huggingface.co/models/google/flan-t5-small", {
-        method: "POST",
-        headers: {
-          Authorization: `Bearer ${this.apiKey}`,
-          "Content-Type": "application/json",
-        },
-        body: JSON.stringify({
-          inputs: actionPrompt,
-          parameters: {
-            max_new_tokens: 256,
-            temperature: 0.2,
-          },
-        }),
-      });
-
-      if (!response.ok) {
-        throw new Error(`HF API error: ${response.status}`);
-      }
-
-      const result = await response.json();
-      const generatedText = result[0]?.generated_text || result.generated_text || "";
-
-      this.apiCallCount++;
-      this.saveApiCallCount();
-
-      const actions = this.parseActionItems(generatedText, processedData);
-      this.cache.set(cacheKey, actions);
-
-      return actions;
-    } catch (error) {
-      console.error("API call failed for actions:", error);
-      return this.generateLocalActionItems(processedData, summary);
-    }
-  }
-
-  private buildActionItemPrompt(data: ProcessedTranscript, summary: any): string {
-    const relevantSegments = data.segments
-      .filter((s) => s.text.toLowerCase().match(/will|going to|need to|should|action|todo/))
-      .slice(0, 10)
-      .map((s) => `${s.speaker}: ${s.text}`)
-      .join("\n");
-
-    return `Extract action items from these meeting excerpts. Format: [Owner] - [Task]
-${relevantSegments}
-
-List specific tasks with clear owners:`;
-  }
-
-  private parseActionItems(generatedText: string, data: ProcessedTranscript): any[] {
-    const actions: any[] = [];
-    const lines = generatedText.split("\n").filter((l) => l.trim());
+  private parseActionItemsResponse(response: string): ActionItem[] {
+    const lines = response.split("\n").filter((line) => line.trim());
+    const actionItems: ActionItem[] = [];
 
     lines.forEach((line) => {
-      const match = line.match(/(?:([A-Z][a-z]+|\w+)\s*[-:]?\s*)(.+)/);
-      if (match) {
-        const [_, owner, task] = match;
-        actions.push({
-          id: `action_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`,
-          task: this.cleanText(task),
-          assignee: this.findSpeakerName(owner, data.speakers),
-          due_date: this.extractDueDate(task),
-          priority: this.determinePriority(task),
+      const priorityMatch = line.match(/\b(high|medium|low)\b/i);
+      const assigneeMatch = line.match(/assigned to:?\s*([^,\n]+)/i);
+
+      const cleanedTask = line
+        .replace(/^[-*•]\s*/, "")
+        .replace(/\b(high|medium|low)\b/gi, "")
+        .replace(/assigned to:?\s*[^,\n]+/gi, "")
+        .trim();
+
+      if (cleanedTask.length > 10) {
+        actionItems.push({
+          id: crypto.randomUUID(),
+          task: cleanedTask,
+          assignee: assigneeMatch ? assigneeMatch[1].trim() : null,
+          due_date: null,
+          priority: (priorityMatch ? priorityMatch[1].toLowerCase() : "medium") as "high" | "medium" | "low",
           completed: false,
         });
       }
     });
 
-    return actions.length > 0 ? actions : this.generateLocalActionItems(data, {});
+    return actionItems;
   }
 
-  private findSpeakerName(reference: string, speakers: Speaker[]): string {
-    const speaker = speakers.find((s) => s.name.toLowerCase().includes(reference.toLowerCase()) || s.id === reference);
-    return speaker?.name || reference;
-  }
-
-  private extractDueDate(text: string): string | null {
-    const patterns = [/by (\w+ \d+)/i, /before (\w+ \d+)/i, /until (\w+ \d+)/i, /next (\w+)/i];
-
-    for (const pattern of patterns) {
-      const match = text.match(pattern);
-      if (match) {
-        return new Date().toISOString();
-      }
-    }
-
-    return null;
-  }
-
-  private determinePriority(text: string): "low" | "medium" | "high" {
-    const highPriorityWords = ["urgent", "asap", "immediately", "critical", "blocker"];
-    const mediumPriorityWords = ["important", "needed", "required", "should"];
-
-    const lower = text.toLowerCase();
-
-    if (highPriorityWords.some((w) => lower.includes(w))) return "high";
-    if (mediumPriorityWords.some((w) => lower.includes(w))) return "medium";
-
-    return "low";
-  }
-
-  private generateLocalSummary(data: ProcessedTranscript): any {
-    const topics = this.identifyMainTopics(data.segments);
-    const decisions = data.decisions.slice(0, 5);
-
-    return {
-      overview: `Meeting discussed ${topics.slice(0, 3).join(", ")}. ${decisions.length} key decisions were made.`,
-      key_points: [
-        ...decisions.slice(0, 3).map((d) => d.description),
-        `${data.speakers.length} participants in discussion`,
-        `Meeting duration: ${this.estimateDuration(data.segments)}`,
-      ],
-      decisions: decisions.map((d) => d.description),
-      next_steps: this.extractNextSteps(data.segments),
-    };
-  }
-
-  private generateLocalActionItems(data: ProcessedTranscript, summary: any): any[] {
-    const actions: any[] = [];
+  private extractActionItemsFromText(text: string): ActionItem[] {
     const actionPhrases = [
-      { pattern: /(\w+)\s+will\s+(.+)/i, type: "will" },
-      { pattern: /(\w+)\s+to\s+(.+)/i, type: "to" },
-      { pattern: /need\s+to\s+(.+)/i, type: "need" },
+      /(?:will|should|must|need to|needs to|has to|have to)\s+(.+?)(?:\.|$)/gi,
+      /(?:action item|task|todo|to-do):\s*(.+?)(?:\.|$)/gi,
     ];
 
-    data.segments.forEach((segment) => {
-      actionPhrases.forEach(({ pattern }) => {
-        const match = segment.text.match(pattern);
-        if (match) {
-          actions.push({
-            id: `action_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`,
-            task: this.cleanText(match[2] || match[1]),
-            assignee: data.speakers.find((s) => s.id === segment.speaker)?.name || segment.speaker,
+    const actionItems: ActionItem[] = [];
+    const seen = new Set<string>();
+
+    actionPhrases.forEach((pattern) => {
+      const matches = text.matchAll(pattern);
+      for (const match of matches) {
+        const task = match[1].trim();
+        const taskLower = task.toLowerCase();
+
+        if (task.length > 15 && task.length < 200 && !seen.has(taskLower)) {
+          seen.add(taskLower);
+
+          const priority =
+            taskLower.includes("urgent") || taskLower.includes("asap")
+              ? "high"
+              : taskLower.includes("important") || taskLower.includes("priority")
+              ? "medium"
+              : "low";
+
+          actionItems.push({
+            id: crypto.randomUUID(),
+            task,
+            assignee: null,
             due_date: null,
-            priority: "medium",
+            priority,
             completed: false,
           });
         }
-      });
-    });
-
-    return actions.slice(0, 10);
-  }
-
-  private extractNextSteps(segments: TranscriptSegment[]): string[] {
-    const nextSteps: string[] = [];
-    const patterns = [/next\s+steps?/i, /going\s+forward/i, /action\s+items?/i];
-
-    segments.forEach((segment) => {
-      if (patterns.some((p) => segment.text.match(p))) {
-        nextSteps.push(this.cleanText(segment.text));
       }
     });
 
-    return nextSteps.slice(0, 5);
+    return actionItems.slice(0, 10);
   }
 
-  private estimateDuration(segments: TranscriptSegment[]): string {
-    if (segments.length === 0) return "Unknown";
+  private generateFallbackSummary(transcript: string, processedTranscript: ProcessedTranscript): MeetingSummary {
+    const overview = `Meeting with ${
+      processedTranscript.speakers.length
+    } participant(s) discussing various topics. Total duration: approximately ${Math.round(
+      processedTranscript.duration / 60
+    )} minutes.`;
 
-    const firstTime = segments[0].timestamp;
-    const lastTime = segments[segments.length - 1].timestamp;
+    const keyPoints = this.extractKeyPoints(transcript);
+    const decisions = this.extractDecisions(transcript);
+    const nextSteps = this.extractNextSteps(transcript);
 
-    const [firstMin] = firstTime.split(":").map(Number);
-    const [lastMin] = lastTime.split(":").map(Number);
-
-    return `~${lastMin - firstMin} minutes`;
+    return {
+      overview,
+      key_points: keyPoints.slice(0, 5),
+      decisions: decisions.slice(0, 5),
+      next_steps: nextSteps.slice(0, 5),
+    };
   }
 }
