@@ -25,7 +25,7 @@ import { useTranslation } from "@/hooks/use-translation";
 import { useInsights } from "@/hooks/use-insights";
 import { useMeetingProcessing } from "@/hooks/use-meeting-processing";
 import { useTranscriptionStatus } from "@/hooks/use-transcription-status";
-import { SpeakerMetricsChart } from "@/components/insights/speaker-metrics-chart";
+import { SpeakerMetricsChart, type SpeakerMetric } from "@/components/insights/speaker-metrics-chart";
 import { SentimentTimeline } from "@/components/insights/sentiment-timeline";
 import { EngagementScore } from "@/components/insights/engagement-score";
 import { ConversationDynamics } from "@/components/insights/conversation-dynamics";
@@ -57,6 +57,15 @@ const formatDuration = (seconds: number): string => {
   }
 };
 
+const transformSpeakerMetrics = (speakerMetrics: any[]): SpeakerMetric[] => {
+  return speakerMetrics.map((metric) => ({
+    speaker: metric.speaker,
+    duration: Math.round(metric.totalDuration),
+    wordCount: Math.round((metric.totalDuration / 60) * 150),
+    percentage: Math.round(metric.speakingPercentage),
+  }));
+};
+
 export default function MeetingDetailPage() {
   const params = useParams();
   const router = useRouter();
@@ -66,7 +75,10 @@ export default function MeetingDetailPage() {
   const [showShareDialog, setShowShareDialog] = useState(false);
 
   const { selectedLanguage, setSelectedLanguage, translate, isTranslating, currentTranslation, availableLanguages } =
-    useTranslation({ meetingId, enabled: !!meeting });
+    useTranslation({
+      meetingId,
+      enabled: !!meeting,
+    });
 
   const {
     insights,
@@ -74,40 +86,50 @@ export default function MeetingDetailPage() {
     isGenerating,
     generateInsights,
     hasInsights,
-  } = useInsights({ meetingId, enabled: !!meeting?.transcript });
+  } = useInsights({ meetingId, enabled: !!meeting && activeTab === "insights" });
 
-  useMeetingProcessing({ meeting, enabled: true });
-  const { isTranscribing } = useTranscriptionStatus({ meeting, enabled: true });
+  const { isProcessing } = useMeetingProcessing({ meeting, enabled: !!meeting });
+  const { isTranscribing } = useTranscriptionStatus({ meeting, enabled: !!meeting });
 
   useEffect(() => {
-    if (meeting?.language && meeting.language !== "en") {
-      setSelectedLanguage(meeting.language);
+    if (error) {
+      console.error("Error loading meeting:", error);
     }
-  }, [meeting?.language, setSelectedLanguage]);
+  }, [error]);
 
-  if (isLoading) {
+  if (error) {
     return (
-      <div className="flex items-center justify-center min-h-[400px]">
+      <div className="flex items-center justify-center h-64">
+        <div className="text-center">
+          <p className="text-red-400 mb-4">Failed to load meeting</p>
+          <Button onClick={() => router.push("/dashboard")} variant="outline">
+            Back to Dashboard
+          </Button>
+        </div>
+      </div>
+    );
+  }
+
+  if (isLoading || !meeting) {
+    return (
+      <div className="flex items-center justify-center h-64">
         <Loader2 className="w-8 h-8 animate-spin text-white/40" />
       </div>
     );
   }
 
-  if (error || !meeting) {
-    return (
-      <div className="text-center py-12">
-        <p className="text-white/60">Meeting not found</p>
-        <Button onClick={() => router.push("/dashboard")} className="mt-4">
-          Go back to dashboard
-        </Button>
-      </div>
-    );
-  }
+  const recordedDate = meeting.recorded_at ? new Date(meeting.recorded_at) : new Date(meeting.created_at);
 
-  const displayTitle = currentTranslation?.title || meeting.title;
-  const displayDescription = currentTranslation?.description || meeting.description;
-  const displayTranscript = currentTranslation?.transcript || meeting.transcript;
-  const displaySummary = currentTranslation?.summary || meeting.summary;
+  const tabs = [
+    { id: "transcript" as const, label: "Transcript", icon: FileText },
+    { id: "summary" as const, label: "Summary", icon: Lightbulb },
+    { id: "actions" as const, label: "Action Items", icon: ListChecks },
+    { id: "insights" as const, label: "Insights", icon: BarChart3 },
+  ];
+
+  const displayedTranscript = currentTranslation?.transcript || meeting.transcript;
+  const displayedSummary = currentTranslation?.summary || meeting.summary;
+  const displayedActionItems = meeting.action_items; // Action items are not translated
 
   return (
     <div className="space-y-6 animate-fade-in">
@@ -119,186 +141,152 @@ export default function MeetingDetailPage() {
           <ArrowLeft className="w-4 h-4 mr-2 group-hover:-translate-x-1 transition-transform" />
           Back to meetings
         </Link>
+        <Button
+          variant="outline"
+          onClick={() => setShowShareDialog(true)}
+          className="gap-2 bg-white/5 border-white/10 hover:bg-white/10"
+        >
+          <Share2 className="w-4 h-4" />
+          Share
+        </Button>
+      </div>
 
-        <div className="flex items-center gap-3">
-          <LanguageSelector
-            value={selectedLanguage}
-            onChange={setSelectedLanguage}
-            onTranslate={translate}
-            availableTranslations={availableLanguages}
-            isTranslating={isTranslating}
-          />
-          <Button
-            onClick={() => setShowShareDialog(true)}
-            className="bg-white/[0.05] hover:bg-white/[0.1] backdrop-blur-sm border border-white/10"
-          >
-            <Share2 className="w-4 h-4 mr-2" />
-            Share
-          </Button>
+      <div className="space-y-4">
+        <div>
+          <h1 className="text-3xl font-bold text-white font-display">{meeting.title}</h1>
+          {meeting.description && <p className="text-white/60 mt-2">{meeting.description}</p>}
         </div>
-      </div>
 
-      <div>
-        <h1 className="text-4xl font-bold font-display text-white">{displayTitle}</h1>
-        {displayDescription && <p className="text-white/60 mt-2 text-lg">{displayDescription}</p>}
-      </div>
-
-      <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-        <Card className="bg-white/[0.02] backdrop-blur-sm border-white/10">
-          <CardContent className="flex items-center gap-3 p-4">
-            <Calendar className="w-5 h-5 text-purple-400" />
-            <div>
-              <p className="text-sm text-white/60">Recorded</p>
-              <p className="text-white font-medium">
-                {meeting.recorded_at ? formatDate(new Date(meeting.recorded_at)) : "Unknown"}
-              </p>
+        <div className="flex flex-wrap gap-4 text-sm text-white/60">
+          <div className="flex items-center gap-2">
+            <Calendar className="w-4 h-4" />
+            {formatDate(recordedDate)}
+          </div>
+          {meeting.duration && (
+            <div className="flex items-center gap-2">
+              <Clock className="w-4 h-4" />
+              {formatDuration(meeting.duration)}
             </div>
-          </CardContent>
-        </Card>
-
-        <Card className="bg-white/[0.02] backdrop-blur-sm border-white/10">
-          <CardContent className="flex items-center gap-3 p-4">
-            <Clock className="w-5 h-5 text-blue-400" />
-            <div>
-              <p className="text-sm text-white/60">Duration</p>
-              <p className="text-white font-medium">
-                {meeting.duration ? formatDuration(meeting.duration) : "Unknown"}
-              </p>
+          )}
+          {meeting.participants && meeting.participants.length > 0 && (
+            <div className="flex items-center gap-2">
+              <Users className="w-4 h-4" />
+              {meeting.participants.join(", ")}
             </div>
-          </CardContent>
-        </Card>
+          )}
+        </div>
 
-        <Card className="bg-white/[0.02] backdrop-blur-sm border-white/10">
-          <CardContent className="flex items-center gap-3 p-4">
-            <Users className="w-5 h-5 text-green-400" />
-            <div>
-              <p className="text-sm text-white/60">Participants</p>
-              <p className="text-white font-medium">{meeting.participants.length || 0}</p>
-            </div>
-          </CardContent>
-        </Card>
-      </div>
-
-      {meeting.audio_url && (
-        <Card className="bg-white/[0.02] backdrop-blur-sm border-white/10">
-          <CardHeader>
-            <CardTitle className="text-white">Audio Recording</CardTitle>
-          </CardHeader>
-          <CardContent>
-            <AudioPlayer audioUrl={meeting.audio_url} />
-          </CardContent>
-        </Card>
-      )}
-
-      <div className="flex gap-2 border-b border-white/10">
-        <button
-          onClick={() => setActiveTab("transcript")}
-          className={cn(
-            "px-4 py-2 flex items-center gap-2 transition-all",
-            activeTab === "transcript"
-              ? "text-purple-400 border-b-2 border-purple-400"
-              : "text-white/60 hover:text-white/90"
-          )}
-        >
-          <FileText className="w-4 h-4" />
-          Transcript
-        </button>
-        <button
-          onClick={() => setActiveTab("summary")}
-          className={cn(
-            "px-4 py-2 flex items-center gap-2 transition-all",
-            activeTab === "summary"
-              ? "text-purple-400 border-b-2 border-purple-400"
-              : "text-white/60 hover:text-white/90"
-          )}
-        >
-          <Lightbulb className="w-4 h-4" />
-          Summary
-        </button>
-        <button
-          onClick={() => setActiveTab("actions")}
-          className={cn(
-            "px-4 py-2 flex items-center gap-2 transition-all",
-            activeTab === "actions"
-              ? "text-purple-400 border-b-2 border-purple-400"
-              : "text-white/60 hover:text-white/90"
-          )}
-        >
-          <ListChecks className="w-4 h-4" />
-          Action Items
-        </button>
-        <button
-          onClick={() => setActiveTab("insights")}
-          className={cn(
-            "px-4 py-2 flex items-center gap-2 transition-all",
-            activeTab === "insights"
-              ? "text-purple-400 border-b-2 border-purple-400"
-              : "text-white/60 hover:text-white/90"
-          )}
-        >
-          <BarChart3 className="w-4 h-4" />
-          Insights
-        </button>
+        {meeting.audio_url && (
+          <Card className="bg-white/[0.02] backdrop-blur-sm border-white/10">
+            <CardContent className="p-6">
+              <AudioPlayer url={meeting.audio_url} />
+            </CardContent>
+          </Card>
+        )}
       </div>
 
       <Card className="bg-white/[0.02] backdrop-blur-sm border-white/10">
-        <CardContent className="p-6">
+        <CardHeader>
+          <div className="flex items-center justify-between">
+            <div className="flex items-center gap-4">
+              {tabs.map((tab) => (
+                <button
+                  key={tab.id}
+                  type="button"
+                  onClick={() => setActiveTab(tab.id)}
+                  className={cn(
+                    "flex items-center gap-2 px-4 py-2 rounded-lg transition-all",
+                    activeTab === tab.id
+                      ? "bg-white/10 text-white"
+                      : "text-white/60 hover:text-white/90 hover:bg-white/5"
+                  )}
+                >
+                  <tab.icon className="w-4 h-4" />
+                  {tab.label}
+                </button>
+              ))}
+            </div>
+            {(activeTab === "transcript" || activeTab === "summary" || activeTab === "actions") &&
+              meeting.transcript &&
+              availableLanguages.length > 0 && (
+                <LanguageSelector
+                  value={selectedLanguage}
+                  onChange={setSelectedLanguage}
+                  availableTranslations={availableLanguages}
+                  onTranslate={() => translate(selectedLanguage)}
+                  isTranslating={isTranslating}
+                />
+              )}
+          </div>
+        </CardHeader>
+        <CardContent>
+          {(isProcessing || isTranscribing) && (
+            <div className="mb-4 p-4 bg-blue-500/10 border border-blue-500/20 rounded-lg">
+              <div className="flex items-center gap-2">
+                <Loader2 className="w-4 h-4 animate-spin text-blue-400" />
+                <p className="text-sm text-blue-400">
+                  {isTranscribing ? "Transcribing audio..." : "Processing meeting data..."}
+                </p>
+              </div>
+            </div>
+          )}
+
           {activeTab === "transcript" && (
             <div className="prose prose-invert max-w-none">
-              {isTranscribing ? (
-                <div className="flex flex-col items-center justify-center py-12 space-y-4">
-                  <Loader2 className="w-8 h-8 animate-spin text-purple-400" />
-                  <p className="text-white/60">Transcribing audio... This may take a few minutes.</p>
-                  <p className="text-white/40 text-sm">The page will update automatically when complete.</p>
-                </div>
-              ) : displayTranscript ? (
-                <div className="whitespace-pre-wrap text-white/80 leading-relaxed">{displayTranscript}</div>
+              {displayedTranscript ? (
+                <div className="whitespace-pre-wrap text-white/80 leading-relaxed">{displayedTranscript}</div>
               ) : (
-                <p className="text-white/40 italic">No transcript available yet.</p>
+                <p className="text-white/40 italic">
+                  {meeting.audio_url
+                    ? "Transcript will be available after processing is complete."
+                    : "No audio file uploaded for this meeting."}
+                </p>
               )}
             </div>
           )}
 
           {activeTab === "summary" && (
             <div className="space-y-6">
-              {displaySummary ? (
+              {displayedSummary ? (
                 <>
                   <div>
-                    <h3 className="text-lg font-semibold text-white mb-2">Overview</h3>
-                    <p className="text-white/80 leading-relaxed">{displaySummary.overview}</p>
+                    <h3 className="text-lg font-semibold text-white mb-3">Overview</h3>
+                    <p className="text-white/80 leading-relaxed">{displayedSummary.overview}</p>
                   </div>
-
-                  <div>
-                    <h3 className="text-lg font-semibold text-white mb-2">Key Points</h3>
-                    <ul className="list-disc list-inside space-y-1">
-                      {displaySummary.key_points.map((point, index) => (
-                        <li key={index} className="text-white/80">
-                          {point}
-                        </li>
-                      ))}
-                    </ul>
-                  </div>
-
-                  {displaySummary.decisions.length > 0 && (
+                  {displayedSummary.key_points && displayedSummary.key_points.length > 0 && (
                     <div>
-                      <h3 className="text-lg font-semibold text-white mb-2">Decisions Made</h3>
-                      <ul className="list-disc list-inside space-y-1">
-                        {displaySummary.decisions.map((decision, index) => (
-                          <li key={index} className="text-white/80">
-                            {decision}
+                      <h3 className="text-lg font-semibold text-white mb-3">Key Points</h3>
+                      <ul className="space-y-2">
+                        {displayedSummary.key_points.map((point: string, index: number) => (
+                          <li key={index} className="flex items-start gap-2">
+                            <span className="text-purple-400 mt-1">•</span>
+                            <span className="text-white/80">{point}</span>
                           </li>
                         ))}
                       </ul>
                     </div>
                   )}
-
-                  {displaySummary.next_steps.length > 0 && (
+                  {displayedSummary.decisions && displayedSummary.decisions.length > 0 && (
                     <div>
-                      <h3 className="text-lg font-semibold text-white mb-2">Next Steps</h3>
-                      <ul className="list-disc list-inside space-y-1">
-                        {displaySummary.next_steps.map((step, index) => (
-                          <li key={index} className="text-white/80">
-                            {step}
+                      <h3 className="text-lg font-semibold text-white mb-3">Decisions Made</h3>
+                      <ul className="space-y-2">
+                        {displayedSummary.decisions.map((decision: string, index: number) => (
+                          <li key={index} className="flex items-start gap-2">
+                            <span className="text-green-400 mt-1">✓</span>
+                            <span className="text-white/80">{decision}</span>
+                          </li>
+                        ))}
+                      </ul>
+                    </div>
+                  )}
+                  {displayedSummary.next_steps && displayedSummary.next_steps.length > 0 && (
+                    <div>
+                      <h3 className="text-lg font-semibold text-white mb-3">Next Steps</h3>
+                      <ul className="space-y-2">
+                        {displayedSummary.next_steps.map((step: string, index: number) => (
+                          <li key={index} className="flex items-start gap-2">
+                            <span className="text-blue-400 mt-1">→</span>
+                            <span className="text-white/80">{step}</span>
                           </li>
                         ))}
                       </ul>
@@ -306,25 +294,26 @@ export default function MeetingDetailPage() {
                   )}
                 </>
               ) : (
-                <p className="text-white/40 italic">No summary available yet.</p>
+                <p className="text-white/40 italic">
+                  {meeting.transcript
+                    ? "Summary will be generated after transcript is complete."
+                    : "Summary requires a transcript. Please wait for transcription to complete."}
+                </p>
               )}
             </div>
           )}
 
           {activeTab === "actions" && (
             <div className="space-y-4">
-              {meeting.action_items && meeting.action_items.length > 0 ? (
-                meeting.action_items.map((item) => (
+              {displayedActionItems && displayedActionItems.length > 0 ? (
+                displayedActionItems.map((item: any) => (
                   <div
                     key={item.id}
-                    className={cn(
-                      "p-4 rounded-lg bg-white/[0.02] border",
-                      item.completed ? "border-green-500/20" : "border-white/10"
-                    )}
+                    className="p-4 rounded-lg bg-white/[0.02] border border-white/10 hover:bg-white/[0.04] transition-colors"
                   >
-                    <div className="flex items-start justify-between">
+                    <div className="flex items-start justify-between gap-4">
                       <div className="flex-1">
-                        <p className={cn("text-white", item.completed && "line-through opacity-60")}>{item.task}</p>
+                        <p className="text-white/90">{item.task}</p>
                         <div className="flex items-center gap-4 mt-2 text-sm text-white/60">
                           {item.assignee && (
                             <span className="flex items-center gap-1">
@@ -340,36 +329,36 @@ export default function MeetingDetailPage() {
                           )}
                         </div>
                       </div>
-                      <span
+                      <div
                         className={cn(
-                          "px-2 py-1 text-xs rounded-full",
+                          "px-2 py-1 rounded text-xs font-medium",
                           item.priority === "high" && "bg-red-500/20 text-red-400",
                           item.priority === "medium" && "bg-yellow-500/20 text-yellow-400",
                           item.priority === "low" && "bg-green-500/20 text-green-400"
                         )}
                       >
                         {item.priority}
-                      </span>
+                      </div>
                     </div>
                   </div>
                 ))
               ) : (
-                <p className="text-white/40 italic">No action items identified.</p>
+                <p className="text-white/40 italic">
+                  {meeting.summary
+                    ? "No action items identified in this meeting."
+                    : "Action items will be extracted after summary is generated."}
+                </p>
               )}
             </div>
           )}
 
           {activeTab === "insights" && (
-            <div>
+            <div className="space-y-6">
               {!hasInsights && !isLoadingInsights && meeting.transcript && (
-                <div className="text-center py-12">
+                <div className="text-center py-8">
                   <BarChart3 className="w-12 h-12 text-white/20 mx-auto mb-4" />
-                  <p className="text-white/60 mb-4">No insights generated yet</p>
-                  <Button
-                    onClick={() => generateInsights()}
-                    disabled={isGenerating}
-                    className="bg-purple-500 hover:bg-purple-600"
-                  >
+                  <p className="text-white/50 mb-4">Advanced meeting insights are available</p>
+                  <Button onClick={() => generateInsights()} disabled={isGenerating} variant="default">
                     {isGenerating ? (
                       <>
                         <Loader2 className="w-4 h-4 mr-2 animate-spin" />
@@ -391,7 +380,7 @@ export default function MeetingDetailPage() {
               {hasInsights && insights && (
                 <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
                   <EngagementScore score={insights.engagementScore} dynamics={insights.dynamics} />
-                  <SpeakerMetricsChart metrics={insights.speakerMetrics} />
+                  <SpeakerMetricsChart metrics={transformSpeakerMetrics(insights.speakerMetrics)} />
                   <SentimentTimeline sentiment={insights.sentiment} />
                   <ConversationDynamics dynamics={insights.dynamics} />
                 </div>
