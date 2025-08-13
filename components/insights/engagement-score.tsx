@@ -47,43 +47,45 @@ export function EngagementScore({ score, dynamics }: EngagementScoreProps) {
         <div className="flex items-center justify-center mb-6">
           <div className="relative w-40 h-40">
             <svg className="w-full h-full transform -rotate-90">
-              <circle cx="80" cy="80" r="40" stroke="rgba(255,255,255,0.1)" strokeWidth="8" fill="none" />
-              <motion.circle
-                cx="80"
-                cy="80"
+              <circle
+                cx="50%"
+                cy="50%"
                 r="40"
-                stroke="url(#scoreGradient)"
+                stroke="currentColor"
                 strokeWidth="8"
                 fill="none"
-                strokeLinecap="round"
+                className="text-white/10"
+              />
+              <motion.circle
+                cx="50%"
+                cy="50%"
+                r="40"
+                stroke="currentColor"
+                strokeWidth="8"
+                fill="none"
                 strokeDasharray={circumference}
+                strokeDashoffset={strokeDashoffset}
+                className={cn("transition-colors duration-500", getScoreColor(score))}
                 initial={{ strokeDashoffset: circumference }}
                 animate={{ strokeDashoffset }}
                 transition={{ duration: 1, ease: "easeOut" }}
               />
-              <defs>
-                <linearGradient id="scoreGradient">
-                  <stop offset="0%" stopColor="#10b981" />
-                  <stop offset="50%" stopColor="#a855f7" />
-                  <stop offset="100%" stopColor="#3b82f6" />
-                </linearGradient>
-              </defs>
             </svg>
-            <div className="absolute inset-0 flex flex-col items-center justify-center">
-              <motion.div
+            <div className="absolute inset-0 flex items-center justify-center flex-col">
+              <motion.p
+                className={cn("text-4xl font-bold", getScoreColor(score))}
                 initial={{ scale: 0 }}
                 animate={{ scale: 1 }}
-                transition={{ delay: 0.5, type: "spring" }}
-                className={cn("text-4xl font-bold", getScoreColor(score))}
+                transition={{ delay: 0.5, type: "spring", stiffness: 200, damping: 10 }}
               >
                 {score}
-              </motion.div>
+              </motion.p>
               <p className="text-white/60 text-sm">{getScoreLabel(score)}</p>
             </div>
           </div>
         </div>
 
-        <div className="grid grid-cols-2 gap-4">
+        <div className="grid grid-cols-2 gap-4 mb-6">
           <div className="bg-white/[0.02] rounded-lg p-4">
             <div className="flex items-center gap-2 mb-2">
               <Users className="w-4 h-4 text-blue-400" />

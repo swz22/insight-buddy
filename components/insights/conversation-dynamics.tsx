@@ -53,92 +53,81 @@ export function ConversationDynamics({ dynamics }: ConversationDynamicsProps) {
               <p className="text-2xl font-bold text-white">{Math.round(dynamics.averageTurnDuration)}s</p>
               <p className="text-sm text-white/40">duration</p>
             </div>
-            <p className="text-xs text-white/40 mt-2">Time per speaking turn</p>
+            <p className="text-xs text-white/40 mt-2">
+              {dynamics.averageTurnDuration > 60
+                ? "Long, thoughtful exchanges"
+                : dynamics.averageTurnDuration > 30
+                ? "Balanced conversation"
+                : "Quick back-and-forth"}
+            </p>
           </div>
         </div>
 
-        {/* Dominance Analysis */}
-        <div className="bg-white/[0.02] rounded-lg p-4">
-          <div className="flex items-center justify-between mb-3">
-            <p className="text-white/80 font-medium">Speaker Dominance</p>
-            <TrendingUp className="w-4 h-4 text-purple-400" />
+        {/* Speaker Balance */}
+        <div className="space-y-3">
+          <p className="text-sm text-white/60">Conversation Leaders</p>
+          <div className="flex items-center justify-between p-3 bg-white/[0.02] rounded-lg">
+            <div className="flex items-center gap-2">
+              <TrendingUp className="w-4 h-4 text-green-400" />
+              <span className="text-white text-sm">Most Active</span>
+            </div>
+            <span className="text-white font-medium">{dynamics.mostDominantSpeaker}</span>
           </div>
-          <div className="space-y-3">
-            <div className="flex items-center justify-between">
-              <span className="text-white/60 text-sm">Most Active</span>
-              <span className="text-white font-medium">{dynamics.mostDominantSpeaker}</span>
+          <div className="flex items-center justify-between p-3 bg-white/[0.02] rounded-lg">
+            <div className="flex items-center gap-2">
+              <AlertCircle className="w-4 h-4 text-yellow-400" />
+              <span className="text-white text-sm">Least Active</span>
             </div>
-            <div className="flex items-center justify-between">
-              <span className="text-white/60 text-sm">Least Active</span>
-              <span className="text-white font-medium">{dynamics.leastActiveSpeaker}</span>
-            </div>
-            <div className="mt-2 p-2 rounded bg-white/[0.02]">
-              <div className="flex items-center gap-2">
-                <div
-                  className={cn(
-                    "w-2 h-2 rounded-full",
-                    dynamics.speakerBalance > 0.7
-                      ? "bg-green-400"
-                      : dynamics.speakerBalance > 0.4
-                      ? "bg-yellow-400"
-                      : "bg-red-400"
-                  )}
-                />
-                <p className="text-xs text-white/60">
-                  {dynamics.speakerBalance > 0.7
-                    ? "Well-balanced participation"
-                    : dynamics.speakerBalance > 0.4
-                    ? "Moderate imbalance in participation"
-                    : "Significant imbalance - consider encouraging quieter participants"}
-                </p>
-              </div>
-            </div>
+            <span className="text-white font-medium">{dynamics.leastActiveSpeaker}</span>
           </div>
         </div>
 
         {/* Recent Interruptions */}
         {dynamics.interruptionEvents.length > 0 && (
           <div className="space-y-3">
-            <div className="flex items-center justify-between">
-              <p className="text-white/80 font-medium">Recent Interruptions</p>
-              <span className="text-xs text-white/40">{dynamics.totalInterruptions} total</span>
-            </div>
+            <p className="text-sm text-white/60">Recent Interruptions</p>
             <div className="space-y-2 max-h-48 overflow-y-auto custom-scrollbar">
               {dynamics.interruptionEvents.slice(0, 5).map((event, index) => (
                 <motion.div
                   key={index}
-                  initial={{ opacity: 0, y: 10 }}
-                  animate={{ opacity: 1, y: 0 }}
-                  transition={{ delay: index * 0.05 }}
-                  className="flex items-center gap-3 p-3 rounded-lg bg-white/[0.02]"
+                  initial={{ opacity: 0, x: -20 }}
+                  animate={{ opacity: 1, x: 0 }}
+                  transition={{ delay: index * 0.1 }}
+                  className="flex items-center gap-3 p-3 bg-white/[0.02] rounded-lg"
                 >
-                  <AlertCircle className="w-4 h-4 text-orange-400 flex-shrink-0" />
-                  <div className="flex-1 min-w-0">
-                    <div className="flex items-center gap-2 text-sm">
-                      <span className="text-white font-medium">{event.interrupter}</span>
-                      <ArrowRight className="w-3 h-3 text-white/40" />
-                      <span className="text-white/60">{event.interrupted}</span>
-                    </div>
-                    <p className="text-xs text-white/40 truncate mt-1">&ldquo;{event.context}&rdquo;</p>
+                  <ArrowRight className="w-4 h-4 text-white/40 flex-shrink-0" />
+                  <div className="flex-1">
+                    <p className="text-sm text-white">
+                      <span className="font-medium">{event.interrupter}</span>
+                      <span className="text-white/60"> interrupted </span>
+                      <span className="font-medium">{event.interrupted}</span>
+                    </p>
+                    <p className="text-xs text-white/40 mt-1 truncate">{event.context}</p>
                   </div>
-                  <span className="text-xs text-white/40 whitespace-nowrap">{formatDuration(event.duration)}</span>
+                  <span className="text-xs text-white/40">{formatDuration(event.duration)}</span>
                 </motion.div>
               ))}
             </div>
           </div>
         )}
 
-        {/* Insights */}
-        <div className="bg-gradient-to-br from-purple-500/10 to-blue-500/10 rounded-lg p-4 border border-purple-500/20">
-          <p className="text-white/80 text-sm leading-relaxed">
-            This meeting shows{" "}
-            {dynamics.speakerBalance > 0.7 ? "excellent" : dynamics.speakerBalance > 0.4 ? "moderate" : "poor"} balance
-            in participation with{" "}
-            {dynamics.interruptionRate < 2 ? "minimal" : dynamics.interruptionRate < 5 ? "some" : "frequent"}{" "}
-            interruptions.
-            {dynamics.averageTurnDuration > 30
-              ? " Speakers are taking extended turns, which may indicate thorough discussion or monologuing."
-              : " Quick exchanges suggest an active, dynamic conversation."}
+        {/* Summary */}
+        <div className="p-4 bg-gradient-to-r from-purple-500/10 to-blue-500/10 rounded-lg border border-white/10">
+          <p className="text-sm text-white/80">
+            This meeting had a{" "}
+            <span className="font-semibold">
+              {dynamics.speakerBalance > 0.7
+                ? "well-balanced"
+                : dynamics.speakerBalance > 0.4
+                ? "moderately balanced"
+                : "imbalanced"}
+            </span>{" "}
+            conversation with{" "}
+            <span className="font-semibold">
+              {dynamics.interruptionRate < 2 ? "minimal" : dynamics.interruptionRate < 5 ? "moderate" : "frequent"}
+            </span>{" "}
+            interruptions. The average speaking turn lasted{" "}
+            <span className="font-semibold">{Math.round(dynamics.averageTurnDuration)} seconds</span>.
           </p>
         </div>
       </CardContent>

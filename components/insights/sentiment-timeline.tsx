@@ -53,128 +53,70 @@ export function SentimentTimeline({ sentiment }: SentimentTimelineProps) {
         </CardTitle>
         <CardDescription className="text-white/60">Emotional tone throughout the meeting</CardDescription>
       </CardHeader>
-      <CardContent className="space-y-6">
-        {/* Overall Sentiment */}
-        <div className="flex items-center justify-between p-4 rounded-lg bg-white/[0.02]">
-          <div className="flex items-center gap-3">
-            <div className={cn("p-3 rounded-lg", getSentimentColor(sentiment.overall.score))}>
+      <CardContent>
+        <div className="space-y-6">
+          <div className="flex items-center justify-between p-4 bg-white/[0.02] rounded-lg">
+            <div>
+              <p className="text-sm text-white/60">Overall Sentiment</p>
+              <p className="text-2xl font-bold text-white">{sentiment.overall.label.replace("_", " ")}</p>
+            </div>
+            <div
+              className={cn(
+                "w-16 h-16 rounded-full flex items-center justify-center",
+                getSentimentColor(sentiment.overall.score)
+              )}
+            >
               {getSentimentIcon(sentiment.overall.label)}
             </div>
-            <div>
-              <p className="text-white font-medium">Overall Sentiment</p>
-              <p className="text-white/60 text-sm capitalize">{sentiment.overall.label.replace("_", " ")}</p>
+          </div>
+
+          <div className="space-y-2">
+            <p className="text-sm text-white/60 mb-3">Sentiment Timeline</p>
+            <div className="relative h-32 bg-white/[0.02] rounded-lg p-4">
+              <svg className="w-full h-full" viewBox={`0 0 ${normalizedTimeline.length * 20} 100`}>
+                <motion.path
+                  d={`M ${normalizedTimeline
+                    .map((point, i) => `${i * 20} ${100 - point.normalizedScore * 100}`)
+                    .join(" L ")}`}
+                  fill="none"
+                  stroke="url(#sentiment-gradient)"
+                  strokeWidth="2"
+                  initial={{ pathLength: 0 }}
+                  animate={{ pathLength: 1 }}
+                  transition={{ duration: 1.5, ease: "easeInOut" }}
+                />
+                <defs>
+                  <linearGradient id="sentiment-gradient" x1="0%" y1="0%" x2="100%" y2="0%">
+                    <stop offset="0%" stopColor="#ef4444" />
+                    <stop offset="25%" stopColor="#f59e0b" />
+                    <stop offset="50%" stopColor="#fbbf24" />
+                    <stop offset="75%" stopColor="#84cc16" />
+                    <stop offset="100%" stopColor="#22c55e" />
+                  </linearGradient>
+                </defs>
+              </svg>
+              <div className="absolute inset-x-4 bottom-2 flex justify-between text-xs text-white/40">
+                <span>Start</span>
+                <span>End</span>
+              </div>
             </div>
           </div>
-          <div className="text-right">
-            <p className="text-2xl font-bold text-white">{(sentiment.overall.score * 100).toFixed(0)}</p>
-            <p className="text-xs text-white/40">Score</p>
-          </div>
-        </div>
 
-        {/* Timeline Visualization */}
-        <div className="space-y-2">
-          <p className="text-sm text-white/60 mb-3">Sentiment Over Time</p>
-          <div className="relative h-32 bg-white/[0.02] rounded-lg p-4">
-            <svg className="w-full h-full" viewBox="0 0 100 100" preserveAspectRatio="none">
-              {/* Grid lines */}
-              <line x1="0" y1="50" x2="100" y2="50" stroke="rgba(255,255,255,0.1)" strokeWidth="0.5" />
-              <line x1="0" y1="25" x2="100" y2="25" stroke="rgba(255,255,255,0.05)" strokeWidth="0.5" />
-              <line x1="0" y1="75" x2="100" y2="75" stroke="rgba(255,255,255,0.05)" strokeWidth="0.5" />
-
-              {/* Sentiment line */}
-              <polyline
-                fill="none"
-                stroke="url(#sentimentGradient)"
-                strokeWidth="2"
-                points={normalizedTimeline
-                  .map((point, index) => {
-                    const x = (index / (normalizedTimeline.length - 1)) * 100;
-                    const y = (1 - point.normalizedScore) * 100;
-                    return `${x},${y}`;
-                  })
-                  .join(" ")}
-              />
-
-              {/* Gradient definition */}
-              <defs>
-                <linearGradient id="sentimentGradient" x1="0%" y1="0%" x2="100%" y2="0%">
-                  <stop offset="0%" stopColor="#10b981" />
-                  <stop offset="50%" stopColor="#a855f7" />
-                  <stop offset="100%" stopColor="#3b82f6" />
-                </linearGradient>
-              </defs>
-            </svg>
-
-            <div className="absolute bottom-0 left-0 right-0 flex justify-between text-xs text-white/40 px-4">
-              <span>Start</span>
-              <span>End</span>
-            </div>
-          </div>
-        </div>
-
-        {/* Speaker Sentiments */}
-        <div className="space-y-2">
-          <p className="text-sm text-white/60 mb-3">By Speaker</p>
-          {Object.entries(sentiment.bySpeaker).map(([speaker, score]) => (
-            <div key={speaker} className="flex items-center justify-between p-3 rounded-lg bg-white/[0.02]">
-              <span className="text-white">{speaker}</span>
-              <div className="flex items-center gap-2">
+          <div className="space-y-3">
+            <p className="text-sm text-white/60">Speaker Sentiments</p>
+            {Object.entries(sentiment.bySpeaker).map(([speaker, score]) => (
+              <div key={speaker} className="flex items-center justify-between">
+                <div className="flex items-center gap-2">
+                  <MessageCircle className="w-4 h-4 text-white/40" />
+                  <span className="text-white">{speaker}</span>
+                </div>
                 <div className={cn("px-2 py-1 rounded-full text-xs", getSentimentColor(score.score))}>
                   {score.label.replace("_", " ")}
                 </div>
               </div>
-            </div>
-          ))}
+            ))}
+          </div>
         </div>
-
-        {/* Key Moments */}
-        {sentiment.topPositiveSegments.length > 0 && (
-          <div className="space-y-2">
-            <p className="text-sm text-white/60 mb-3 flex items-center gap-2">
-              <TrendingUp className="w-4 h-4 text-green-400" />
-              Most Positive Moments
-            </p>
-            {sentiment.topPositiveSegments.slice(0, 3).map((segment, index) => (
-              <motion.div
-                key={index}
-                initial={{ opacity: 0, x: -20 }}
-                animate={{ opacity: 1, x: 0 }}
-                transition={{ delay: index * 0.1 }}
-                className="p-3 rounded-lg bg-green-500/10 border border-green-500/20"
-              >
-                <div className="flex items-start justify-between gap-2">
-                  <p className="text-white/80 text-sm line-clamp-2">{segment.text}</p>
-                  <span className="text-xs text-green-400 whitespace-nowrap">{formatTimestamp(segment.startTime)}</span>
-                </div>
-                <p className="text-xs text-white/40 mt-1">{segment.speaker}</p>
-              </motion.div>
-            ))}
-          </div>
-        )}
-
-        {sentiment.topNegativeSegments.length > 0 && (
-          <div className="space-y-2">
-            <p className="text-sm text-white/60 mb-3 flex items-center gap-2">
-              <TrendingDown className="w-4 h-4 text-red-400" />
-              Areas of Concern
-            </p>
-            {sentiment.topNegativeSegments.slice(0, 2).map((segment, index) => (
-              <motion.div
-                key={index}
-                initial={{ opacity: 0, x: -20 }}
-                animate={{ opacity: 1, x: 0 }}
-                transition={{ delay: index * 0.1 }}
-                className="p-3 rounded-lg bg-red-500/10 border border-red-500/20"
-              >
-                <div className="flex items-start justify-between gap-2">
-                  <p className="text-white/80 text-sm line-clamp-2">{segment.text}</p>
-                  <span className="text-xs text-red-400 whitespace-nowrap">{formatTimestamp(segment.startTime)}</span>
-                </div>
-                <p className="text-xs text-white/40 mt-1">{segment.speaker}</p>
-              </motion.div>
-            ))}
-          </div>
-        )}
       </CardContent>
     </Card>
   );

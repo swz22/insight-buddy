@@ -77,7 +77,7 @@ export default function MeetingDetailPage() {
   const { selectedLanguage, setSelectedLanguage, translate, isTranslating, currentTranslation, availableLanguages } =
     useTranslation({
       meetingId,
-      enabled: !!meeting,
+      enabled: !!meeting && !!meeting.transcript,
     });
 
   const {
@@ -129,7 +129,7 @@ export default function MeetingDetailPage() {
 
   const displayedTranscript = currentTranslation?.transcript || meeting.transcript;
   const displayedSummary = currentTranslation?.summary || meeting.summary;
-  const displayedActionItems = meeting.action_items; // Action items are not translated
+  const displayedActionItems = meeting.action_items;
 
   return (
     <div className="space-y-6 animate-fade-in">
@@ -142,57 +142,60 @@ export default function MeetingDetailPage() {
           Back to meetings
         </Link>
         <Button
-          variant="outline"
           onClick={() => setShowShareDialog(true)}
-          className="gap-2 bg-white/5 border-white/10 hover:bg-white/10"
+          variant="outline"
+          className="hover:bg-white/5 transition-colors"
         >
-          <Share2 className="w-4 h-4" />
+          <Share2 className="w-4 h-4 mr-2" />
           Share
         </Button>
       </div>
 
-      <div className="space-y-4">
-        <div>
-          <h1 className="text-3xl font-bold text-white font-display">{meeting.title}</h1>
-          {meeting.description && <p className="text-white/60 mt-2">{meeting.description}</p>}
-        </div>
-
-        <div className="flex flex-wrap gap-4 text-sm text-white/60">
-          <div className="flex items-center gap-2">
-            <Calendar className="w-4 h-4" />
-            {formatDate(recordedDate)}
+      <Card className="shadow-xl">
+        <CardHeader>
+          <CardTitle className="text-3xl font-display gradient-text">{meeting.title}</CardTitle>
+          {meeting.description && <CardDescription className="text-white/60">{meeting.description}</CardDescription>}
+        </CardHeader>
+        <CardContent>
+          <div className="flex flex-wrap gap-4 text-sm text-white/60">
+            <div className="flex items-center gap-2">
+              <Calendar className="w-4 h-4" />
+              <span>{formatDate(recordedDate)}</span>
+            </div>
+            {meeting.duration && (
+              <div className="flex items-center gap-2">
+                <Clock className="w-4 h-4" />
+                <span>{formatDuration(meeting.duration)}</span>
+              </div>
+            )}
+            {meeting.participants.length > 0 && (
+              <div className="flex items-center gap-2">
+                <Users className="w-4 h-4" />
+                <span>{meeting.participants.join(", ")}</span>
+              </div>
+            )}
           </div>
-          {meeting.duration && (
-            <div className="flex items-center gap-2">
-              <Clock className="w-4 h-4" />
-              {formatDuration(meeting.duration)}
-            </div>
-          )}
-          {meeting.participants && meeting.participants.length > 0 && (
-            <div className="flex items-center gap-2">
-              <Users className="w-4 h-4" />
-              {meeting.participants.join(", ")}
-            </div>
-          )}
-        </div>
+        </CardContent>
+      </Card>
 
-        {meeting.audio_url && (
-          <Card className="bg-white/[0.02] backdrop-blur-sm border-white/10">
-            <CardContent className="p-6">
-              <AudioPlayer url={meeting.audio_url} />
-            </CardContent>
-          </Card>
-        )}
-      </div>
+      {meeting.audio_url && (
+        <Card className="shadow-xl">
+          <CardHeader>
+            <CardTitle className="text-xl font-display">Recording</CardTitle>
+          </CardHeader>
+          <CardContent>
+            <AudioPlayer audioUrl={meeting.audio_url} />
+          </CardContent>
+        </Card>
+      )}
 
-      <Card className="bg-white/[0.02] backdrop-blur-sm border-white/10">
+      <Card className="shadow-xl">
         <CardHeader>
           <div className="flex items-center justify-between">
-            <div className="flex items-center gap-4">
+            <div className="flex gap-2">
               {tabs.map((tab) => (
                 <button
                   key={tab.id}
-                  type="button"
                   onClick={() => setActiveTab(tab.id)}
                   className={cn(
                     "flex items-center gap-2 px-4 py-2 rounded-lg transition-all",

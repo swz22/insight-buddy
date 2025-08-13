@@ -1,4 +1,4 @@
-import { useEffect, useRef } from "react";
+import { useEffect, useState, useRef } from "react";
 import { useQueryClient } from "@tanstack/react-query";
 import { Database } from "@/types/supabase";
 
@@ -13,52 +13,76 @@ interface UseTranscriptionStatusOptions {
 export function useTranscriptionStatus({
   meeting,
   enabled = true,
-  pollingInterval = 5000, // 5 seconds
+  pollingInterval = 5000,
 }: UseTranscriptionStatusOptions) {
   const queryClient = useQueryClient();
-  const intervalRef = useRef<NodeJS.Timeout | null>(null);
+  const [isTranscribing, setIsTranscribing] = useState(false);
+  const pollingIntervalRef = useRef<NodeJS.Timeout | null>(null);
 
   useEffect(() => {
-    if (!enabled || !meeting || !meeting.transcript_id || meeting.transcript) {
+    if (!enabled || !meeting) {
+      setIsTranscribing(false);
       return;
     }
 
-    const checkTranscriptionStatus = async () => {
-      try {
-        const response = await fetch(`/api/meetings/${meeting.id}/transcription-status`);
-        if (response.ok) {
-          const data = await response.json();
-          if (data.status === "completed") {
-            // Invalidate the meeting query to refetch with new data
-            queryClient.invalidateQueries({ queryKey: ["meetings", meeting.id] });
+    const hasTranscriptId = !!meeting.transcript_id;
+    const hasTranscript = !!meeting.transcript;
+    const needsPolling = hasTranscriptId && !hasTranscript;
 
-            // Clear the interval
-            if (intervalRef.current) {
-              clearInterval(intervalRef.current);
-              intervalRef.current = null;
+    setIsTranscribing(needsPolling);
+
+    if (needsPolling) {
+      const checkStatus = async () => {
+        try {
+          const response = await fetch(`/api/meetings/${meeting.id}/check-transcript`, {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ transcriptId: meeting.transcript_id }),
+          });
+
+          if (!response.ok) {
+            console.error("Failed to check transcript status");
+            return;
+          }
+
+          const result = await response.json();
+
+          if (result.status === "completed" && result.hasTranscript) {
+            setIsTranscribing(false);
+            queryClient.invalidateQueries({ queryKey: ["meeting", meeting.id] });
+
+            if (pollingIntervalRef.current) {
+              clearInterval(pollingIntervalRef.current);
+              pollingIntervalRef.current = null;
+            }
+          } else if (result.status === "error") {
+            setIsTranscribing(false);
+
+            if (pollingIntervalRef.current) {
+              clearInterval(pollingIntervalRef.current);
+              pollingIntervalRef.current = null;
             }
           }
+        } catch (error) {
+          console.error("Error checking transcript status:", error);
         }
-      } catch (error) {
-        console.error("Error checking transcription status:", error);
-      }
-    };
+      };
 
-    // Check immediately
-    checkTranscriptionStatus();
-
-    // Then set up polling
-    intervalRef.current = setInterval(checkTranscriptionStatus, pollingInterval);
+      checkStatus();
+      pollingIntervalRef.current = setInterval(checkStatus, pollingInterval);
+    }
 
     return () => {
-      if (intervalRef.current) {
-        clearInterval(intervalRef.current);
-        intervalRef.current = null;
+      if (pollingIntervalRef.current) {
+        clearInterval(pollingIntervalRef.current);
+        pollingIntervalRef.current = null;
       }
     };
   }, [meeting, enabled, pollingInterval, queryClient]);
 
   return {
-    isTranscribing: !!(meeting?.transcript_id && !meeting.transcript),
+    isTranscribing,
+    hasTranscript: !!meeting?.transcript,
+    transcriptId: meeting?.transcript_id,
   };
 }

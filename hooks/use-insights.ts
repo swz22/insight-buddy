@@ -1,6 +1,7 @@
+import { useState } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
-import { MeetingInsights } from "@/types/meeting-insights";
 import { useToast } from "@/hooks/use-toast";
+import { MeetingInsights } from "@/types/meeting-insights";
 
 interface UseInsightsOptions {
   meetingId: string;
@@ -10,24 +11,32 @@ interface UseInsightsOptions {
 export function useInsights({ meetingId, enabled = true }: UseInsightsOptions) {
   const queryClient = useQueryClient();
   const { success: toastSuccess, error: toastError } = useToast();
+  const [isGenerating, setIsGenerating] = useState(false);
 
   const {
     data: insights,
     isLoading,
     error,
+    refetch,
   } = useQuery<MeetingInsights | null>({
     queryKey: ["insights", meetingId],
     queryFn: async () => {
       const response = await fetch(`/api/meetings/${meetingId}/insights`);
       if (!response.ok) {
+        if (response.status === 404) {
+          return null;
+        }
         throw new Error("Failed to fetch insights");
       }
-      return response.json();
+      const data = await response.json();
+      return data || null;
     },
-    enabled,
+    enabled: enabled && !!meetingId,
+    staleTime: 5 * 60 * 1000,
+    refetchOnWindowFocus: false,
   });
 
-  const generateInsights = useMutation({
+  const generateInsightsMutation = useMutation({
     mutationFn: async () => {
       const response = await fetch(`/api/meetings/${meetingId}/insights`, {
         method: "POST",
@@ -41,20 +50,32 @@ export function useInsights({ meetingId, enabled = true }: UseInsightsOptions) {
       return response.json();
     },
     onSuccess: (data) => {
-      queryClient.setQueryData(["insights", meetingId], data);
-      toastSuccess("Meeting insights generated successfully!");
+      queryClient.setQueryData<MeetingInsights>(["insights", meetingId], data);
+      toastSuccess("Insights generated successfully!");
     },
     onError: (error) => {
       toastError(error.message || "Failed to generate insights");
     },
   });
 
+  const generateInsights = async () => {
+    if (isGenerating) return;
+
+    setIsGenerating(true);
+    try {
+      await generateInsightsMutation.mutateAsync();
+    } finally {
+      setIsGenerating(false);
+    }
+  };
+
   return {
     insights,
     isLoading,
     error,
-    isGenerating: generateInsights.isPending,
-    generateInsights: generateInsights.mutate,
+    isGenerating,
+    generateInsights,
     hasInsights: !!insights,
+    refetch,
   };
 }
