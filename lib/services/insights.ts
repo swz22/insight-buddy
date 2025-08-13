@@ -26,8 +26,47 @@ interface SentimentScore {
 }
 
 interface SentimentData {
-  overall: SentimentScore;
-  timeline: { time: number; sentiment: SentimentScore }[];
+  overall: {
+    score: number;
+    magnitude: number;
+    label: "very_positive" | "positive" | "neutral" | "negative" | "very_negative";
+  };
+  timeline: Array<{
+    timestamp: number;
+    score: number;
+    text: string;
+    speaker: string;
+  }>;
+  bySpeaker: Record<
+    string,
+    {
+      score: number;
+      magnitude: number;
+      label: "very_positive" | "positive" | "neutral" | "negative" | "very_negative";
+    }
+  >;
+  topPositiveSegments: Array<{
+    text: string;
+    speaker: string;
+    startTime: number;
+    endTime: number;
+    sentiment?: {
+      score: number;
+      magnitude: number;
+      label: "very_positive" | "positive" | "neutral" | "negative" | "very_negative";
+    };
+  }>;
+  topNegativeSegments: Array<{
+    text: string;
+    speaker: string;
+    startTime: number;
+    endTime: number;
+    sentiment?: {
+      score: number;
+      magnitude: number;
+      label: "very_positive" | "positive" | "neutral" | "negative" | "very_negative";
+    };
+  }>;
 }
 
 export interface MeetingInsights {
@@ -139,23 +178,81 @@ export class InsightsService {
   }
 
   private async analyzeSentiment(text: string, utterances: any[]): Promise<SentimentData> {
-    const overall = await this.getSentimentScore(text);
+    const overall = await this.getSentimentScoreWithLabel(text);
 
-    const timeline: { time: number; sentiment: SentimentScore }[] = [];
+    const timeline: SentimentData["timeline"] = [];
     const segments = this.createTextSegments(utterances, 5);
 
     for (const segment of segments) {
-      const sentiment = await this.getSentimentScore(segment.text);
-      timeline.push({ time: segment.time, sentiment });
+      const sentimentResult = await this.getRawSentimentScore(segment.text);
+      const score = this.convertToScore(sentimentResult);
+      timeline.push({
+        timestamp: segment.time * 1000, // Convert to milliseconds
+        score,
+        text: segment.text.slice(0, 100),
+        speaker: segment.speaker || "Unknown",
+      });
     }
 
-    return { overall, timeline };
+    // Calculate by speaker sentiment
+    const bySpeaker: SentimentData["bySpeaker"] = {};
+    const speakerTexts = new Map<string, string[]>();
+
+    utterances.forEach((utterance) => {
+      const speaker = utterance.speaker || "Unknown";
+      if (!speakerTexts.has(speaker)) {
+        speakerTexts.set(speaker, []);
+      }
+      speakerTexts.get(speaker)!.push(utterance.text || "");
+    });
+
+    for (const [speaker, texts] of speakerTexts) {
+      const speakerText = texts.join(" ");
+      bySpeaker[speaker] = await this.getSentimentScoreWithLabel(speakerText);
+    }
+
+    // Create segments for positive/negative segments
+    const allSegments = utterances.map((u, i) => ({
+      text: u.text || "",
+      speaker: u.speaker || "Unknown",
+      startTime: u.start / 1000,
+      endTime: u.end / 1000,
+      sentiment: undefined as any,
+    }));
+
+    // Get sentiment for each segment
+    for (const segment of allSegments) {
+      const sentimentResult = await this.getRawSentimentScore(segment.text);
+      const score = this.convertToScore(sentimentResult);
+      segment.sentiment = {
+        score,
+        magnitude: Math.abs(score),
+        label: this.getLabel(score),
+      };
+    }
+
+    // Sort and get top segments
+    const sortedSegments = [...allSegments].sort((a, b) => (b.sentiment?.score || 0) - (a.sentiment?.score || 0));
+
+    const topPositiveSegments = sortedSegments.slice(0, 3);
+    const topNegativeSegments = sortedSegments.slice(-3).reverse();
+
+    return {
+      overall,
+      timeline,
+      bySpeaker,
+      topPositiveSegments,
+      topNegativeSegments,
+    };
   }
 
-  private createTextSegments(utterances: any[], numSegments: number): { time: number; text: string }[] {
+  private createTextSegments(
+    utterances: any[],
+    numSegments: number
+  ): { time: number; text: string; speaker?: string }[] {
     if (utterances.length === 0) return [];
 
-    const segments: { time: number; text: string }[] = [];
+    const segments: { time: number; text: string; speaker?: string }[] = [];
     const utterancesPerSegment = Math.ceil(utterances.length / numSegments);
 
     for (let i = 0; i < numSegments; i++) {
@@ -167,6 +264,7 @@ export class InsightsService {
         segments.push({
           time: segmentUtterances[0].start / 1000,
           text: segmentUtterances.map((u) => u.text).join(" "),
+          speaker: segmentUtterances[0].speaker,
         });
       }
     }
@@ -174,7 +272,7 @@ export class InsightsService {
     return segments;
   }
 
-  private async getSentimentScore(text: string): Promise<SentimentScore> {
+  private async getRawSentimentScore(text: string): Promise<SentimentScore> {
     try {
       const result = await withRetry(async () => {
         const controller = new AbortController();
@@ -220,6 +318,34 @@ export class InsightsService {
     }
   }
 
+  private async getSentimentScoreWithLabel(text: string): Promise<{
+    score: number;
+    magnitude: number;
+    label: "very_positive" | "positive" | "neutral" | "negative" | "very_negative";
+  }> {
+    const sentimentScore = await this.getRawSentimentScore(text);
+    const score = this.convertToScore(sentimentScore);
+    const magnitude = Math.abs(score);
+    const label = this.getLabel(score);
+
+    return { score, magnitude, label };
+  }
+
+  private convertToScore(sentiment: SentimentScore): number {
+    // Convert percentage-based sentiment to -1 to 1 scale
+    const positiveWeight = sentiment.positive / 100;
+    const negativeWeight = sentiment.negative / 100;
+    return positiveWeight - negativeWeight;
+  }
+
+  private getLabel(score: number): "very_positive" | "positive" | "neutral" | "negative" | "very_negative" {
+    if (score >= 0.6) return "very_positive";
+    if (score >= 0.2) return "positive";
+    if (score >= -0.2) return "neutral";
+    if (score >= -0.6) return "negative";
+    return "very_negative";
+  }
+
   private calculateEngagementScore(
     speakerMetrics: SpeakerMetric[],
     dynamics: ConversationDynamics,
@@ -236,7 +362,7 @@ export class InsightsService {
     score -= dynamics.interruptions * 2;
     score -= dynamics.silences.count;
 
-    const sentimentBonus = (sentiment.overall.positive - sentiment.overall.negative) * 0.15;
+    const sentimentBonus = sentiment.overall.score * 15;
     score += sentimentBonus;
 
     return Math.max(0, Math.min(100, Math.round(score)));
