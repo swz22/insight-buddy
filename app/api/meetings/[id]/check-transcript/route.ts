@@ -51,7 +51,7 @@ export async function GET(request: Request, { params: paramsPromise }: RoutePara
 
     // Check transcript status with AssemblyAI
     const assemblyAI = new AssemblyAIService();
-    const transcript = await assemblyAI.getTranscript(transcriptId);
+    const transcript = await assemblyAI.getTranscription(transcriptId);
 
     if (transcript.status === "completed" && transcript.text) {
       const speakers = assemblyAI.extractSpeakers(transcript);
@@ -76,6 +76,9 @@ export async function GET(request: Request, { params: paramsPromise }: RoutePara
 
       // Trigger AI summary generation
       if (process.env.HUGGINGFACE_API_KEY) {
+        fetch(`${process.env.NEXT_PUBLIC_APP_URL}/api/meetings/${params.id}/summarize`, {
+          method: "POST",
+        }).catch((err) => console.error("Failed to trigger summary:", err));
       }
 
       return apiSuccess({
