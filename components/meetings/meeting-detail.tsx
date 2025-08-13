@@ -16,6 +16,7 @@ import {
   Bot,
   Loader2,
   Share2,
+  BarChart3,
 } from "lucide-react";
 import Link from "next/link";
 import { Button } from "@/components/ui/button";
@@ -24,6 +25,7 @@ import { Database } from "@/types/supabase";
 import { EditMeetingDialog } from "./edit-meeting-dialog";
 import { ShareDialog } from "./share-dialog";
 import { AudioPlayer } from "@/components/audio/audio-player";
+import { MeetingInsights } from "./meeting-insights";
 import { cn } from "@/lib/utils";
 import { useToast } from "@/hooks/use-toast";
 import { useRouter } from "next/navigation";
@@ -38,7 +40,7 @@ export function MeetingDetail({ meeting: initialMeeting }: MeetingDetailProps) {
   const router = useRouter();
   const toast = useToast();
   const [meeting, setMeeting] = useState(initialMeeting);
-  const [activeTab, setActiveTab] = useState<"transcript" | "summary" | "actions">("transcript");
+  const [activeTab, setActiveTab] = useState<"transcript" | "summary" | "actions" | "insights">("transcript");
   const [isEditDialogOpen, setIsEditDialogOpen] = useState(false);
   const [isShareDialogOpen, setIsShareDialogOpen] = useState(false);
   const [isTranscribing, setIsTranscribing] = useState(false);
@@ -65,61 +67,46 @@ export function MeetingDetail({ meeting: initialMeeting }: MeetingDetailProps) {
   };
 
   const startPolling = (transcriptId: string) => {
-    console.log("Starting transcript polling for ID:", transcriptId);
-
-    if (pollIntervalRef.current) {
-      clearInterval(pollIntervalRef.current);
-    }
-
-    pollIntervalRef.current = setInterval(async () => {
+    const checkTranscript = async () => {
       try {
-        const checkResponse = await fetch(`/api/meetings/${meeting.id}/check-transcript?transcriptId=${transcriptId}`);
-        const checkResult = await checkResponse.json();
+        const response = await fetch(`/api/meetings/${meeting.id}/check-transcript`, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ transcriptId }),
+        });
 
-        console.log("Poll result:", checkResult.status);
+        if (!response.ok) {
+          throw new Error("Failed to check transcript status");
+        }
 
-        if (checkResult.hasTranscript || checkResult.status === "completed") {
-          const meetingResponse = await fetch(`/api/meetings/${meeting.id}`);
-          const updatedMeeting = await meetingResponse.json();
+        const result = await response.json();
 
-          if (updatedMeeting?.transcript) {
-            setMeeting(updatedMeeting);
-            if (pollIntervalRef.current) {
-              clearInterval(pollIntervalRef.current);
-              pollIntervalRef.current = null;
-            }
-            setIsTranscribing(false);
-            toast.success("Transcription complete!");
+        if (result.status === "completed" && result.transcript) {
+          setMeeting((prev) => ({ ...prev, transcript: result.transcript, transcript_id: null }));
+          setIsTranscribing(false);
+          toast.success("Transcript ready!");
 
-            if (!updatedMeeting.summary) {
-              setTimeout(() => {
-                handleSummarize(updatedMeeting);
-              }, 100);
-            }
-          }
-        } else if (checkResult.status === "error") {
           if (pollIntervalRef.current) {
             clearInterval(pollIntervalRef.current);
-            pollIntervalRef.current = null;
           }
+
+          if (process.env.NEXT_PUBLIC_HUGGINGFACE_API_KEY || process.env.HUGGINGFACE_API_KEY) {
+            await handleSummarize({ ...meeting, transcript: result.transcript });
+          }
+        } else if (result.status === "error") {
           setIsTranscribing(false);
-          toast.error("Transcription failed: " + (checkResult.error || "Unknown error"));
+          toast.error("Transcription failed. Please try again.");
+          if (pollIntervalRef.current) {
+            clearInterval(pollIntervalRef.current);
+          }
         }
       } catch (error) {
-        console.error("Poll error:", error);
+        console.error("Polling error:", error);
       }
-    }, 5000);
+    };
 
-    setTimeout(() => {
-      if (pollIntervalRef.current) {
-        clearInterval(pollIntervalRef.current);
-        pollIntervalRef.current = null;
-        if (isTranscribing) {
-          setIsTranscribing(false);
-          toast.error("Transcription timed out. Please try again.");
-        }
-      }
-    }, 600000);
+    checkTranscript();
+    pollIntervalRef.current = setInterval(checkTranscript, 5000);
   };
 
   const handleTranscribe = async () => {
@@ -140,7 +127,7 @@ export function MeetingDetail({ meeting: initialMeeting }: MeetingDetailProps) {
       }
 
       const result = await response.json();
-      toast.success("Transcription started! This may take a few minutes.");
+      toast.info("Transcription started. This may take a few minutes.");
       setMeeting((prev) => ({ ...prev, transcript_id: result.transcriptId }));
       startPolling(result.transcriptId);
     } catch (error) {
@@ -190,6 +177,7 @@ export function MeetingDetail({ meeting: initialMeeting }: MeetingDetailProps) {
     { id: "transcript" as const, label: "Transcript", icon: FileText },
     { id: "summary" as const, label: "Summary", icon: Lightbulb },
     { id: "actions" as const, label: "Action Items", icon: ListChecks },
+    { id: "insights" as const, label: "Insights", icon: BarChart3 },
   ];
 
   return (
@@ -519,6 +507,8 @@ export function MeetingDetail({ meeting: initialMeeting }: MeetingDetailProps) {
               )}
             </div>
           )}
+
+          {activeTab === "insights" && <MeetingInsights meeting={meeting} />}
         </CardContent>
       </Card>
 
