@@ -119,7 +119,7 @@ export function ConversationDynamics({ dynamics }: ConversationDynamicsProps) {
                       <ArrowRight className="w-3 h-3 text-white/40" />
                       <span className="text-white/60">{event.interrupted}</span>
                     </div>
-                    <p className="text-xs text-white/40 truncate mt-1">"{event.context}"</p>
+                    <p className="text-xs text-white/40 truncate mt-1">&ldquo;{event.context}&rdquo;</p>
                   </div>
                   <span className="text-xs text-white/40 whitespace-nowrap">{formatDuration(event.duration)}</span>
                 </motion.div>
