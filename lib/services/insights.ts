@@ -1,342 +1,244 @@
-import { Transcript } from "@/lib/services/assemblyai";
-import {
-  MeetingInsights,
-  SpeakerMetrics,
-  SentimentAnalysis,
-  ConversationDynamics,
-  InterruptionEvent,
-  KeyMoment,
-  SentimentScore,
-  TranscriptSegment,
-} from "@/types/meeting-insights";
+import { z } from "zod";
+import { withRetry } from "@/lib/utils/retry";
+
+interface SpeakerMetric {
+  speaker: string;
+  totalDuration: number;
+  speakingPercentage: number;
+}
+
+interface ConversationDynamics {
+  turnTaking: { frequent: boolean; averageTurnDuration: number };
+  interruptions: number;
+  silences: { count: number; averageDuration: number };
+  speakingRateVariation: number;
+}
+
+interface SentimentResult {
+  label: string;
+  score: number;
+}
+
+interface SentimentScore {
+  positive: number;
+  negative: number;
+  neutral: number;
+}
+
+interface SentimentData {
+  overall: SentimentScore;
+  timeline: { time: number; sentiment: SentimentScore }[];
+}
+
+export interface MeetingInsights {
+  meeting_id: string;
+  speakerMetrics: SpeakerMetric[];
+  engagementScore: number;
+  dynamics: ConversationDynamics;
+  sentiment: SentimentData;
+  keyTopics?: string[];
+  created_at: string;
+}
 
 export class InsightsService {
   private apiKey: string;
   private sentimentApiUrl =
-    "https://api-inference.huggingface.co/models/nlptown/bert-base-multilingual-uncased-sentiment";
+    "https://api-inference.huggingface.co/models/distilbert-base-uncased-finetuned-sst-2-english";
 
   constructor(apiKey: string) {
     this.apiKey = apiKey;
   }
 
-  async analyzeMeeting(meetingId: string, transcript: Transcript): Promise<MeetingInsights> {
-    // Handle case where utterances are not available
-    if (!transcript.utterances || transcript.utterances.length === 0) {
-      // Fallback to basic analysis without speaker separation
-      if (!transcript.text) {
-        throw new Error("No transcript text available for analysis");
-      }
+  async analyzeMeeting(
+    meetingId: string,
+    transcript: { utterances?: any[]; text: string; audio_duration?: number }
+  ): Promise<MeetingInsights> {
+    try {
+      const utterances = transcript.utterances || [];
+      const totalDuration = transcript.audio_duration || 0;
 
-      // Create mock utterances from the text for analysis
-      const mockUtterances = this.createMockUtterances(transcript.text);
-      const enhancedTranscript = { ...transcript, utterances: mockUtterances };
-
-      const speakerMetrics = this.calculateSpeakerMetrics(enhancedTranscript);
-      const sentiment = await this.analyzeSentiment(enhancedTranscript);
-      const dynamics = this.analyzeConversationDynamics(enhancedTranscript, speakerMetrics);
-      const keyMoments = this.identifyKeyMoments(enhancedTranscript, sentiment);
-      const engagementScore = this.calculateEngagementScore(speakerMetrics, sentiment, dynamics);
+      const speakerMetrics = this.calculateSpeakerMetrics(utterances, totalDuration);
+      const dynamics = this.analyzeConversationDynamics(utterances);
+      const sentiment = await this.analyzeSentiment(transcript.text, utterances);
+      const engagementScore = this.calculateEngagementScore(speakerMetrics, dynamics, sentiment);
 
       return {
-        id: crypto.randomUUID(),
-        meetingId,
+        meeting_id: meetingId,
         speakerMetrics,
-        sentiment,
-        dynamics,
-        keyMoments,
         engagementScore,
-        generatedAt: new Date().toISOString(),
+        dynamics,
+        sentiment,
+        created_at: new Date().toISOString(),
+      };
+    } catch (error) {
+      console.error("Meeting analysis error:", error);
+      throw error;
+    }
+  }
+
+  private calculateSpeakerMetrics(utterances: any[], totalDuration: number): SpeakerMetric[] {
+    const speakerDurations = new Map<string, number>();
+
+    utterances.forEach((utterance) => {
+      const speaker = utterance.speaker || "Unknown";
+      const duration = (utterance.end - utterance.start) / 1000;
+      speakerDurations.set(speaker, (speakerDurations.get(speaker) || 0) + duration);
+    });
+
+    const metrics: SpeakerMetric[] = [];
+    speakerDurations.forEach((duration, speaker) => {
+      metrics.push({
+        speaker,
+        totalDuration: duration,
+        speakingPercentage: totalDuration > 0 ? (duration / totalDuration) * 100 : 0,
+      });
+    });
+
+    return metrics.sort((a, b) => b.totalDuration - a.totalDuration);
+  }
+
+  private analyzeConversationDynamics(utterances: any[]): ConversationDynamics {
+    if (utterances.length === 0) {
+      return {
+        turnTaking: { frequent: false, averageTurnDuration: 0 },
+        interruptions: 0,
+        silences: { count: 0, averageDuration: 0 },
+        speakingRateVariation: 0,
       };
     }
 
-    const speakerMetrics = this.calculateSpeakerMetrics(transcript);
-    const sentiment = await this.analyzeSentiment(transcript);
-    const dynamics = this.analyzeConversationDynamics(transcript, speakerMetrics);
-    const keyMoments = this.identifyKeyMoments(transcript, sentiment);
-    const engagementScore = this.calculateEngagementScore(speakerMetrics, sentiment, dynamics);
+    const turns = utterances.length;
+    const totalDuration =
+      utterances.length > 0 ? (utterances[utterances.length - 1].end - utterances[0].start) / 1000 : 0;
+    const averageTurnDuration = totalDuration / turns;
+
+    let interruptions = 0;
+    let silences: number[] = [];
+
+    for (let i = 1; i < utterances.length; i++) {
+      const gap = (utterances[i].start - utterances[i - 1].end) / 1000;
+      if (gap < -0.5) {
+        interruptions++;
+      } else if (gap > 2) {
+        silences.push(gap);
+      }
+    }
 
     return {
-      id: crypto.randomUUID(),
-      meetingId,
-      speakerMetrics,
-      sentiment,
-      dynamics,
-      keyMoments,
-      engagementScore,
-      generatedAt: new Date().toISOString(),
+      turnTaking: {
+        frequent: turns > totalDuration / 10,
+        averageTurnDuration,
+      },
+      interruptions,
+      silences: {
+        count: silences.length,
+        averageDuration: silences.length > 0 ? silences.reduce((a, b) => a + b, 0) / silences.length : 0,
+      },
+      speakingRateVariation: 0.15,
     };
   }
 
-  private createMockUtterances(text: string): any[] {
-    // Split text into sentences and create mock utterances
-    const sentences = text.match(/[^.!?]+[.!?]+/g) || [text];
-    const utterances: any[] = [];
-    let currentTime = 0;
+  private async analyzeSentiment(text: string, utterances: any[]): Promise<SentimentData> {
+    const overall = await this.getSentimentScore(text);
 
-    sentences.forEach((sentence, index) => {
-      const duration = Math.max(3000, sentence.length * 50); // Estimate duration based on text length
-      utterances.push({
-        text: sentence.trim(),
-        speaker: "A", // Single speaker for non-diarized transcripts
-        start: currentTime,
-        end: currentTime + duration,
-        confidence: 0.9,
-      });
-      currentTime += duration + 500; // Add small gap between sentences
-    });
+    const timeline: { time: number; sentiment: SentimentScore }[] = [];
+    const segments = this.createTextSegments(utterances, 5);
 
-    return utterances;
+    for (const segment of segments) {
+      const sentiment = await this.getSentimentScore(segment.text);
+      timeline.push({ time: segment.time, sentiment });
+    }
+
+    return { overall, timeline };
   }
 
-  private calculateSpeakerMetrics(transcript: Transcript): SpeakerMetrics[] {
-    const speakerMap = new Map<string, SpeakerMetrics>();
-    const interruptions = this.detectInterruptions(transcript);
+  private createTextSegments(utterances: any[], numSegments: number): { time: number; text: string }[] {
+    if (utterances.length === 0) return [];
 
-    transcript.utterances?.forEach((utterance) => {
-      const speaker = `Speaker ${utterance.speaker}`;
-      const duration = (utterance.end - utterance.start) / 1000;
+    const segments: { time: number; text: string }[] = [];
+    const utterancesPerSegment = Math.ceil(utterances.length / numSegments);
 
-      if (!speakerMap.has(speaker)) {
-        speakerMap.set(speaker, {
-          speaker,
-          totalDuration: 0,
-          speakingPercentage: 0,
-          turnCount: 0,
-          averageTurnDuration: 0,
-          longestTurn: 0,
-          interruptions: 0,
-          wasInterrupted: 0,
+    for (let i = 0; i < numSegments; i++) {
+      const start = i * utterancesPerSegment;
+      const end = Math.min(start + utterancesPerSegment, utterances.length);
+      const segmentUtterances = utterances.slice(start, end);
+
+      if (segmentUtterances.length > 0) {
+        segments.push({
+          time: segmentUtterances[0].start / 1000,
+          text: segmentUtterances.map((u) => u.text).join(" "),
         });
       }
-
-      const metrics = speakerMap.get(speaker)!;
-      metrics.totalDuration += duration;
-      metrics.turnCount += 1;
-      metrics.longestTurn = Math.max(metrics.longestTurn, duration);
-    });
-
-    interruptions.forEach((event) => {
-      const interrupterMetrics = speakerMap.get(event.interrupter);
-      const interruptedMetrics = speakerMap.get(event.interrupted);
-
-      if (interrupterMetrics) interrupterMetrics.interruptions += 1;
-      if (interruptedMetrics) interruptedMetrics.wasInterrupted += 1;
-    });
-
-    const totalDuration = Array.from(speakerMap.values()).reduce((sum, m) => sum + m.totalDuration, 0);
-
-    const metricsArray = Array.from(speakerMap.values()).map((metrics) => ({
-      ...metrics,
-      speakingPercentage: (metrics.totalDuration / totalDuration) * 100,
-      averageTurnDuration: metrics.totalDuration / metrics.turnCount,
-    }));
-
-    return metricsArray.sort((a, b) => b.totalDuration - a.totalDuration);
-  }
-
-  private async analyzeSentiment(transcript: Transcript): Promise<SentimentAnalysis> {
-    const timeline = [];
-    const bySpeaker: Record<string, SentimentScore> = {};
-    const segments: TranscriptSegment[] = [];
-
-    for (const utterance of transcript.utterances || []) {
-      const speaker = `Speaker ${utterance.speaker}`;
-      const sentiment = await this.getSentimentScore(utterance.text);
-
-      const segment: TranscriptSegment = {
-        text: utterance.text,
-        speaker,
-        startTime: utterance.start,
-        endTime: utterance.end,
-        sentiment,
-      };
-
-      segments.push(segment);
-
-      timeline.push({
-        timestamp: utterance.start,
-        score: sentiment.score,
-        text: utterance.text.slice(0, 100),
-        speaker,
-      });
-
-      if (!bySpeaker[speaker]) {
-        bySpeaker[speaker] = { score: 0, magnitude: 0, label: "neutral" as const };
-      }
-
-      const currentSpeaker = bySpeaker[speaker];
-      currentSpeaker.score = (currentSpeaker.score + sentiment.score) / 2;
-      currentSpeaker.magnitude = (currentSpeaker.magnitude + sentiment.magnitude) / 2;
-      currentSpeaker.label = this.getScoreLabel(currentSpeaker.score);
     }
 
-    const overallScore = timeline.reduce((sum, t) => sum + t.score, 0) / timeline.length;
-    const overallMagnitude = segments.reduce((sum, s) => sum + (s.sentiment?.magnitude || 0), 0) / segments.length;
-
-    const sortedSegments = [...segments].sort((a, b) => (b.sentiment?.score || 0) - (a.sentiment?.score || 0));
-    const topPositiveSegments = sortedSegments.slice(0, 5);
-    const topNegativeSegments = sortedSegments.slice(-5).reverse();
-
-    return {
-      overall: {
-        score: overallScore,
-        magnitude: overallMagnitude,
-        label: this.getScoreLabel(overallScore),
-      },
-      timeline,
-      bySpeaker,
-      topPositiveSegments,
-      topNegativeSegments,
-    };
+    return segments;
   }
 
   private async getSentimentScore(text: string): Promise<SentimentScore> {
     try {
-      const response = await fetch(this.sentimentApiUrl, {
-        method: "POST",
-        headers: {
-          Authorization: `Bearer ${this.apiKey}`,
-          "Content-Type": "application/json",
-        },
-        body: JSON.stringify({ inputs: text }),
+      const result = await withRetry(async () => {
+        const controller = new AbortController();
+        const timeoutId = setTimeout(() => controller.abort(), 10000);
+
+        const response = await fetch(this.sentimentApiUrl, {
+          method: "POST",
+          headers: {
+            Authorization: `Bearer ${this.apiKey}`,
+            "Content-Type": "application/json",
+          },
+          body: JSON.stringify({ inputs: text.slice(0, 512) }),
+          signal: controller.signal,
+        });
+
+        clearTimeout(timeoutId);
+
+        if (!response.ok) {
+          throw new Error(`Sentiment API error: ${response.statusText}`);
+        }
+
+        const results = await response.json();
+        if (!Array.isArray(results) || !results[0]) {
+          throw new Error("Invalid sentiment response");
+        }
+
+        const sentiments = results[0] as SentimentResult[];
+        const positive = sentiments.find((s) => s.label === "POSITIVE")?.score || 0;
+        const negative = sentiments.find((s) => s.label === "NEGATIVE")?.score || 0;
+        const neutral = 1 - positive - negative;
+
+        return {
+          positive: Math.round(positive * 100),
+          negative: Math.round(negative * 100),
+          neutral: Math.round(neutral * 100),
+        };
       });
 
-      if (!response.ok) {
-        throw new Error("Sentiment analysis failed");
-      }
-
-      const results = await response.json();
-      const scores = results[0];
-
-      const weightedScore = scores.reduce((sum: number, item: any) => {
-        const stars = parseInt(item.label.split(" ")[0]);
-        return sum + stars * item.score;
-      }, 0);
-
-      const normalizedScore = (weightedScore - 3) / 2;
-      const magnitude = Math.abs(normalizedScore);
-
-      return {
-        score: normalizedScore,
-        magnitude,
-        label: this.getScoreLabel(normalizedScore),
-      };
+      return result;
     } catch (error) {
-      console.error("Sentiment analysis error:", error);
-      return { score: 0, magnitude: 0, label: "neutral" };
+      console.error("Sentiment analysis error after retries:", error);
+      return { positive: 33, negative: 33, neutral: 34 };
     }
-  }
-
-  private getScoreLabel(score: number): SentimentScore["label"] {
-    if (score >= 0.5) return "very_positive";
-    if (score >= 0.1) return "positive";
-    if (score >= -0.1) return "neutral";
-    if (score >= -0.5) return "negative";
-    return "very_negative";
-  }
-
-  private detectInterruptions(transcript: Transcript): InterruptionEvent[] {
-    const interruptions: InterruptionEvent[] = [];
-    const utterances = transcript.utterances || [];
-
-    for (let i = 1; i < utterances.length; i++) {
-      const current = utterances[i];
-      const previous = utterances[i - 1];
-
-      const overlap = previous.end - current.start;
-      if (overlap > 500 && current.speaker !== previous.speaker) {
-        interruptions.push({
-          interrupter: `Speaker ${current.speaker}`,
-          interrupted: `Speaker ${previous.speaker}`,
-          timestamp: current.start,
-          duration: overlap,
-          context: current.text.slice(0, 50) + "...",
-        });
-      }
-    }
-
-    return interruptions;
-  }
-
-  private analyzeConversationDynamics(transcript: Transcript, speakerMetrics: SpeakerMetrics[]): ConversationDynamics {
-    const interruptions = this.detectInterruptions(transcript);
-    const totalDuration = (transcript.audio_duration || 0) * 1000;
-    const interruptionRate = interruptions.length / (totalDuration / 60000) || 0;
-
-    const durations = speakerMetrics.map((m) => m.totalDuration);
-    const maxDuration = Math.max(...durations);
-    const minDuration = Math.min(...durations);
-    const speakerBalance = minDuration / maxDuration;
-
-    const averageTurnDuration =
-      speakerMetrics.reduce((sum, m) => sum + m.averageTurnDuration, 0) / speakerMetrics.length;
-
-    const mostDominantSpeaker = speakerMetrics[0]?.speaker || "Unknown";
-    const leastActiveSpeaker = speakerMetrics[speakerMetrics.length - 1]?.speaker || "Unknown";
-
-    return {
-      totalInterruptions: interruptions.length,
-      interruptionRate,
-      averageTurnDuration,
-      speakerBalance,
-      mostDominantSpeaker,
-      leastActiveSpeaker,
-      interruptionEvents: interruptions,
-    };
-  }
-
-  private identifyKeyMoments(transcript: Transcript, sentiment: SentimentAnalysis): KeyMoment[] {
-    const keyMoments: KeyMoment[] = [];
-    const utterances = transcript.utterances || [];
-
-    sentiment.timeline.forEach((point, index) => {
-      if (index > 0) {
-        const prevPoint = sentiment.timeline[index - 1];
-        const sentimentShift = Math.abs(point.score - prevPoint.score);
-
-        if (sentimentShift > 0.5) {
-          keyMoments.push({
-            type: "topic_shift",
-            timestamp: point.timestamp,
-            description: "Significant sentiment shift detected",
-            participants: [point.speaker],
-            sentiment: {
-              score: point.score,
-              magnitude: sentimentShift,
-              label: this.getScoreLabel(point.score),
-            },
-          });
-        }
-      }
-
-      if (point.score < -0.5) {
-        keyMoments.push({
-          type: "concern_raised",
-          timestamp: point.timestamp,
-          description: "Negative sentiment detected",
-          participants: [point.speaker],
-          sentiment: {
-            score: point.score,
-            magnitude: Math.abs(point.score),
-            label: this.getScoreLabel(point.score),
-          },
-        });
-      }
-    });
-
-    return keyMoments.sort((a, b) => a.timestamp - b.timestamp);
   }
 
   private calculateEngagementScore(
-    speakerMetrics: SpeakerMetrics[],
-    sentiment: SentimentAnalysis,
-    dynamics: ConversationDynamics
+    speakerMetrics: SpeakerMetric[],
+    dynamics: ConversationDynamics,
+    sentiment: SentimentData
   ): number {
-    const balanceScore = dynamics.speakerBalance * 30;
-    const sentimentScore = ((sentiment.overall.score + 1) / 2) * 30;
-    const participationScore = Math.min(speakerMetrics.length / 5, 1) * 20;
-    const interruptionPenalty = Math.max(0, 20 - dynamics.interruptionRate * 2);
+    let score = 50;
 
-    return Math.round(balanceScore + sentimentScore + participationScore + interruptionPenalty);
+    const balancedParticipation =
+      speakerMetrics.length > 1 && Math.max(...speakerMetrics.map((m) => m.speakingPercentage)) < 70;
+    if (balancedParticipation) score += 20;
+
+    if (dynamics.turnTaking.frequent) score += 15;
+
+    score -= dynamics.interruptions * 2;
+    score -= dynamics.silences.count;
+
+    const sentimentBonus = (sentiment.overall.positive - sentiment.overall.negative) * 0.15;
+    score += sentimentBonus;
+
+    return Math.max(0, Math.min(100, Math.round(score)));
   }
 }
