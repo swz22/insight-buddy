@@ -79,6 +79,13 @@ export interface MeetingInsights {
   created_at: string;
 }
 
+interface ParsedUtterance {
+  speaker: string;
+  text: string;
+  start: number;
+  end: number;
+}
+
 export class InsightsService {
   private apiKey: string;
   private sentimentApiUrl =
@@ -93,8 +100,12 @@ export class InsightsService {
     transcript: { utterances?: any[]; text: string; audio_duration?: number }
   ): Promise<MeetingInsights> {
     try {
-      const utterances = transcript.utterances || [];
+      let utterances = transcript.utterances || [];
       const totalDuration = transcript.audio_duration || 0;
+
+      if (utterances.length === 0 && transcript.text) {
+        utterances = this.parseTranscriptToUtterances(transcript.text, totalDuration);
+      }
 
       const speakerMetrics = this.calculateSpeakerMetrics(utterances, totalDuration);
       const dynamics = this.analyzeConversationDynamics(utterances);
@@ -113,6 +124,68 @@ export class InsightsService {
       console.error("Meeting analysis error:", error);
       throw error;
     }
+  }
+
+  private parseTranscriptToUtterances(transcriptText: string, totalDuration: number): ParsedUtterance[] {
+    const utterances: ParsedUtterance[] = [];
+    const lines = transcriptText.split("\n").filter((line) => line.trim());
+
+    const timestampPattern = /^\[(\d{2}):(\d{2})\]\s*Speaker\s*([A-Z]):\s*(.*)$/;
+    const speakerOnlyPattern = /^Speaker\s*([A-Z]):\s*(.*)$/;
+
+    let currentTime = 0;
+    const averageUtteranceDuration = totalDuration > 0 && lines.length > 0 ? totalDuration / lines.length : 10;
+
+    lines.forEach((line, index) => {
+      const timestampMatch = line.match(timestampPattern);
+      const speakerMatch = line.match(speakerOnlyPattern);
+
+      if (timestampMatch) {
+        const minutes = parseInt(timestampMatch[1], 10);
+        const seconds = parseInt(timestampMatch[2], 10);
+        const speaker = `Speaker ${timestampMatch[3]}`;
+        const text = timestampMatch[4].trim();
+
+        currentTime = (minutes * 60 + seconds) * 1000;
+        const endTime = currentTime + averageUtteranceDuration * 1000;
+
+        utterances.push({
+          speaker,
+          text,
+          start: currentTime,
+          end: endTime,
+        });
+      } else if (speakerMatch) {
+        const speaker = `Speaker ${speakerMatch[1]}`;
+        const text = speakerMatch[2].trim();
+
+        const startTime = currentTime;
+        const endTime = startTime + averageUtteranceDuration * 1000;
+        currentTime = endTime;
+
+        utterances.push({
+          speaker,
+          text,
+          start: startTime,
+          end: endTime,
+        });
+      } else if (line.trim() && utterances.length > 0) {
+        utterances[utterances.length - 1].text += " " + line.trim();
+      }
+    });
+
+    if (utterances.length > 0 && totalDuration > 0) {
+      const totalUtteranceTime = utterances.reduce((sum, u) => sum + (u.end - u.start), 0) / 1000;
+      if (totalUtteranceTime > totalDuration) {
+        const scaleFactor = totalDuration / totalUtteranceTime;
+        utterances.forEach((u) => {
+          u.start = Math.floor(u.start * scaleFactor);
+          u.end = Math.floor(u.end * scaleFactor);
+        });
+      }
+    }
+
+    return utterances;
   }
 
   private calculateSpeakerMetrics(utterances: any[], totalDuration: number): SpeakerMetric[] {
@@ -187,14 +260,13 @@ export class InsightsService {
       const sentimentResult = await this.getRawSentimentScore(segment.text);
       const score = this.convertToScore(sentimentResult);
       timeline.push({
-        timestamp: segment.time * 1000, // Convert to milliseconds
+        timestamp: segment.time * 1000,
         score,
         text: segment.text.slice(0, 100),
         speaker: segment.speaker || "Unknown",
       });
     }
 
-    // Calculate by speaker sentiment
     const bySpeaker: SentimentData["bySpeaker"] = {};
     const speakerTexts = new Map<string, string[]>();
 
@@ -211,7 +283,6 @@ export class InsightsService {
       bySpeaker[speaker] = await this.getSentimentScoreWithLabel(speakerText);
     }
 
-    // Create segments for positive/negative segments
     const allSegments = utterances.map((u, i) => ({
       text: u.text || "",
       speaker: u.speaker || "Unknown",
@@ -220,7 +291,6 @@ export class InsightsService {
       sentiment: undefined as any,
     }));
 
-    // Get sentiment for each segment
     for (const segment of allSegments) {
       const sentimentResult = await this.getRawSentimentScore(segment.text);
       const score = this.convertToScore(sentimentResult);
@@ -231,7 +301,6 @@ export class InsightsService {
       };
     }
 
-    // Sort and get top segments
     const sortedSegments = [...allSegments].sort((a, b) => (b.sentiment?.score || 0) - (a.sentiment?.score || 0));
 
     const topPositiveSegments = sortedSegments.slice(0, 3);
@@ -253,97 +322,92 @@ export class InsightsService {
     if (utterances.length === 0) return [];
 
     const segments: { time: number; text: string; speaker?: string }[] = [];
-    const utterancesPerSegment = Math.ceil(utterances.length / numSegments);
+    const utterancesPerSegment = Math.max(1, Math.floor(utterances.length / numSegments));
 
     for (let i = 0; i < numSegments; i++) {
-      const start = i * utterancesPerSegment;
-      const end = Math.min(start + utterancesPerSegment, utterances.length);
-      const segmentUtterances = utterances.slice(start, end);
+      const startIdx = i * utterancesPerSegment;
+      const endIdx = Math.min(startIdx + utterancesPerSegment, utterances.length);
 
-      if (segmentUtterances.length > 0) {
-        segments.push({
-          time: segmentUtterances[0].start / 1000,
-          text: segmentUtterances.map((u) => u.text).join(" "),
-          speaker: segmentUtterances[0].speaker,
-        });
-      }
+      if (startIdx >= utterances.length) break;
+
+      const segmentUtterances = utterances.slice(startIdx, endIdx);
+      const segmentText = segmentUtterances.map((u) => u.text || "").join(" ");
+      const avgTime = segmentUtterances.reduce((sum, u) => sum + (u.start || 0), 0) / segmentUtterances.length / 1000;
+
+      segments.push({
+        time: avgTime,
+        text: segmentText,
+        speaker: segmentUtterances[0].speaker,
+      });
     }
 
     return segments;
   }
 
-  private async getRawSentimentScore(text: string): Promise<SentimentScore> {
+  private async getRawSentimentScore(text: string): Promise<SentimentResult[]> {
     try {
-      const result = await withRetry(async () => {
-        const controller = new AbortController();
-        const timeoutId = setTimeout(() => controller.abort(), 10000);
+      const response = await withRetry(
+        async () => {
+          const res = await fetch(this.sentimentApiUrl, {
+            method: "POST",
+            headers: {
+              Authorization: `Bearer ${this.apiKey}`,
+              "Content-Type": "application/json",
+            },
+            body: JSON.stringify({ inputs: text }),
+          });
 
-        const response = await fetch(this.sentimentApiUrl, {
-          method: "POST",
-          headers: {
-            Authorization: `Bearer ${this.apiKey}`,
-            "Content-Type": "application/json",
-          },
-          body: JSON.stringify({ inputs: text.slice(0, 512) }),
-          signal: controller.signal,
-        });
+          if (!res.ok) {
+            throw new Error(`HuggingFace API error: ${res.status}`);
+          }
 
-        clearTimeout(timeoutId);
+          return res.json();
+        },
+        { maxRetries: 3, initialDelay: 1000 }
+      );
 
-        if (!response.ok) {
-          throw new Error(`Sentiment API error: ${response.statusText}`);
-        }
-
-        const results = await response.json();
-        if (!Array.isArray(results) || !results[0]) {
-          throw new Error("Invalid sentiment response");
-        }
-
-        const sentiments = results[0] as SentimentResult[];
-        const positive = sentiments.find((s) => s.label === "POSITIVE")?.score || 0;
-        const negative = sentiments.find((s) => s.label === "NEGATIVE")?.score || 0;
-        const neutral = 1 - positive - negative;
-
-        return {
-          positive: Math.round(positive * 100),
-          negative: Math.round(negative * 100),
-          neutral: Math.round(neutral * 100),
-        };
-      });
-
-      return result;
+      return Array.isArray(response) ? response : [];
     } catch (error) {
-      console.error("Sentiment analysis error after retries:", error);
-      return { positive: 33, negative: 33, neutral: 34 };
+      console.error("Sentiment analysis error:", error);
+      return [];
     }
   }
 
-  private async getSentimentScoreWithLabel(text: string): Promise<{
-    score: number;
-    magnitude: number;
-    label: "very_positive" | "positive" | "neutral" | "negative" | "very_negative";
-  }> {
-    const sentimentScore = await this.getRawSentimentScore(text);
-    const score = this.convertToScore(sentimentScore);
+  private convertToScore(results: SentimentResult[]): number {
+    if (!results || results.length === 0) return 0;
+
+    const sentiment = results.reduce(
+      (acc, result) => {
+        if (result.label === "POSITIVE") {
+          acc.positive += result.score;
+        } else if (result.label === "NEGATIVE") {
+          acc.negative += result.score;
+        }
+        return acc;
+      },
+      { positive: 0, negative: 0 }
+    );
+
+    return sentiment.positive - sentiment.negative;
+  }
+
+  private getLabel(score: number): "very_positive" | "positive" | "neutral" | "negative" | "very_negative" {
+    if (score >= 0.5) return "very_positive";
+    if (score >= 0.1) return "positive";
+    if (score >= -0.1) return "neutral";
+    if (score >= -0.5) return "negative";
+    return "very_negative";
+  }
+
+  private async getSentimentScoreWithLabel(
+    text: string
+  ): Promise<{ score: number; magnitude: number; label: SentimentData["overall"]["label"] }> {
+    const results = await this.getRawSentimentScore(text);
+    const score = this.convertToScore(results);
     const magnitude = Math.abs(score);
     const label = this.getLabel(score);
 
     return { score, magnitude, label };
-  }
-
-  private convertToScore(sentiment: SentimentScore): number {
-    // Convert percentage-based sentiment to -1 to 1 scale
-    const positiveWeight = sentiment.positive / 100;
-    const negativeWeight = sentiment.negative / 100;
-    return positiveWeight - negativeWeight;
-  }
-
-  private getLabel(score: number): "very_positive" | "positive" | "neutral" | "negative" | "very_negative" {
-    if (score >= 0.6) return "very_positive";
-    if (score >= 0.2) return "positive";
-    if (score >= -0.2) return "neutral";
-    if (score >= -0.6) return "negative";
-    return "very_negative";
   }
 
   private calculateEngagementScore(
@@ -353,18 +417,20 @@ export class InsightsService {
   ): number {
     let score = 50;
 
-    const balancedParticipation =
-      speakerMetrics.length > 1 && Math.max(...speakerMetrics.map((m) => m.speakingPercentage)) < 70;
-    if (balancedParticipation) score += 20;
+    if (speakerMetrics.length > 1) {
+      const balance = 100 - Math.abs(50 - speakerMetrics[0].speakingPercentage);
+      score += balance * 0.2;
+    }
 
-    if (dynamics.turnTaking.frequent) score += 15;
+    if (dynamics.turnTaking.frequent) {
+      score += 10;
+    }
 
     score -= dynamics.interruptions * 2;
-    score -= dynamics.silences.count;
 
-    const sentimentBonus = sentiment.overall.score * 15;
+    const sentimentBonus = sentiment.overall.score * 20;
     score += sentimentBonus;
 
-    return Math.max(0, Math.min(100, Math.round(score)));
+    return Math.max(0, Math.min(100, score));
   }
 }
