@@ -57,14 +57,15 @@ export interface ConversationDynamics {
 }
 
 export interface MeetingInsights {
-  id: string;
-  meetingId: string;
+  id?: string;
+  meeting_id: string;
   speakerMetrics: SpeakerMetrics[];
   sentiment: SentimentAnalysis;
   dynamics: ConversationDynamics;
-  keyMoments: KeyMoment[];
+  keyMoments?: KeyMoment[];
   engagementScore: number;
-  generatedAt: string;
+  generatedAt?: string;
+  created_at: string;
 }
 
 export interface KeyMoment {
@@ -73,4 +74,60 @@ export interface KeyMoment {
   description: string;
   participants: string[];
   sentiment: SentimentScore;
+}
+
+export interface StoredMeetingInsights {
+  id: string;
+  meeting_id: string;
+  speaker_metrics: SpeakerMetrics[];
+  sentiment: SentimentAnalysis;
+  dynamics: ConversationDynamics;
+  key_moments?: KeyMoment[];
+  engagement_score: number;
+  generated_at: string;
+  created_at: string;
+  updated_at: string;
+}
+
+export function isSpeakerMetrics(obj: any): obj is SpeakerMetrics {
+  return (
+    obj &&
+    typeof obj === "object" &&
+    typeof obj.speaker === "string" &&
+    typeof obj.totalDuration === "number" &&
+    typeof obj.speakingPercentage === "number" &&
+    typeof obj.turnCount === "number" &&
+    typeof obj.averageTurnDuration === "number" &&
+    typeof obj.longestTurn === "number" &&
+    typeof obj.interruptions === "number" &&
+    typeof obj.wasInterrupted === "number"
+  );
+}
+
+export function isConversationDynamics(obj: any): obj is ConversationDynamics {
+  return (
+    obj &&
+    typeof obj === "object" &&
+    typeof obj.totalInterruptions === "number" &&
+    typeof obj.interruptionRate === "number" &&
+    typeof obj.averageTurnDuration === "number" &&
+    typeof obj.speakerBalance === "number" &&
+    typeof obj.mostDominantSpeaker === "string" &&
+    typeof obj.leastActiveSpeaker === "string" &&
+    Array.isArray(obj.interruptionEvents)
+  );
+}
+
+export function isMeetingInsights(obj: any): obj is MeetingInsights {
+  return (
+    obj &&
+    typeof obj === "object" &&
+    typeof obj.meeting_id === "string" &&
+    Array.isArray(obj.speakerMetrics) &&
+    obj.speakerMetrics.every(isSpeakerMetrics) &&
+    obj.sentiment &&
+    typeof obj.engagementScore === "number" &&
+    obj.dynamics &&
+    isConversationDynamics(obj.dynamics)
+  );
 }
