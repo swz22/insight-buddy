@@ -1,19 +1,37 @@
 "use client";
 
-import { ConversationDynamics as DynamicsType, InterruptionEvent } from "@/types/meeting-insights";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { cn } from "@/lib/utils";
-import { ArrowRight, Zap, AlertCircle, TrendingUp } from "lucide-react";
+import { ArrowRight, Zap, AlertCircle, TrendingUp, Users, Timer } from "lucide-react";
 import { motion } from "framer-motion";
 
+interface InterruptionEvent {
+  interrupter: string;
+  interrupted: string;
+  timestamp: number;
+  duration: number;
+  context: string;
+}
+
 interface ConversationDynamicsProps {
-  dynamics: DynamicsType;
+  dynamics: {
+    totalInterruptions: number;
+    interruptionRate: number;
+    averageTurnDuration: number;
+    speakerBalance: number;
+    mostDominantSpeaker: string;
+    leastActiveSpeaker: string;
+    interruptionEvents: InterruptionEvent[];
+  };
 }
 
 export function ConversationDynamics({ dynamics }: ConversationDynamicsProps) {
-  const formatDuration = (ms: number): string => {
-    const seconds = Math.floor(ms / 1000);
-    return `${seconds}s`;
+  const formatDuration = (seconds: number): string => {
+    if (seconds < 1) return `${Math.round(seconds * 1000)}ms`;
+    if (seconds < 60) return `${Math.round(seconds)}s`;
+    const minutes = Math.floor(seconds / 60);
+    const remainingSeconds = Math.round(seconds % 60);
+    return `${minutes}m ${remainingSeconds}s`;
   };
 
   const getInterruptionSeverity = (rate: number) => {
@@ -50,7 +68,7 @@ export function ConversationDynamics({ dynamics }: ConversationDynamicsProps) {
           <div className="bg-white/[0.02] rounded-lg p-4">
             <p className="text-white/60 text-sm mb-1">Average Turn</p>
             <div className="flex items-baseline gap-2">
-              <p className="text-2xl font-bold text-white">{Math.round(dynamics.averageTurnDuration)}s</p>
+              <p className="text-2xl font-bold text-white">{formatDuration(dynamics.averageTurnDuration)}</p>
               <p className="text-sm text-white/40">duration</p>
             </div>
             <p className="text-xs text-white/40 mt-2">
@@ -111,6 +129,36 @@ export function ConversationDynamics({ dynamics }: ConversationDynamicsProps) {
           </div>
         )}
 
+        {/* Speaker Balance Meter */}
+        <div className="space-y-2">
+          <div className="flex items-center justify-between">
+            <p className="text-sm text-white/60">Speaker Balance</p>
+            <p className="text-sm text-white">{Math.round(dynamics.speakerBalance * 100)}%</p>
+          </div>
+          <div className="h-2 bg-white/[0.05] rounded-full overflow-hidden">
+            <motion.div
+              initial={{ width: 0 }}
+              animate={{ width: `${dynamics.speakerBalance * 100}%` }}
+              transition={{ duration: 1, delay: 0.2 }}
+              className={cn(
+                "h-full",
+                dynamics.speakerBalance > 0.7
+                  ? "bg-gradient-to-r from-green-500 to-green-400"
+                  : dynamics.speakerBalance > 0.4
+                  ? "bg-gradient-to-r from-yellow-500 to-yellow-400"
+                  : "bg-gradient-to-r from-red-500 to-red-400"
+              )}
+            />
+          </div>
+          <p className="text-xs text-white/40">
+            {dynamics.speakerBalance > 0.7
+              ? "Well-balanced participation"
+              : dynamics.speakerBalance > 0.4
+              ? "Moderate imbalance in speaking time"
+              : "Significant imbalance - consider encouraging quieter participants"}
+          </p>
+        </div>
+
         {/* Summary */}
         <div className="p-4 bg-gradient-to-r from-purple-500/10 to-blue-500/10 rounded-lg border border-white/10">
           <p className="text-sm text-white/80">
@@ -127,7 +175,7 @@ export function ConversationDynamics({ dynamics }: ConversationDynamicsProps) {
               {dynamics.interruptionRate < 2 ? "minimal" : dynamics.interruptionRate < 5 ? "moderate" : "frequent"}
             </span>{" "}
             interruptions. The average speaking turn lasted{" "}
-            <span className="font-semibold">{Math.round(dynamics.averageTurnDuration)} seconds</span>.
+            <span className="font-semibold">{formatDuration(dynamics.averageTurnDuration)}</span>.
           </p>
         </div>
       </CardContent>
