@@ -11,12 +11,12 @@ export interface SpeakerMetric {
 }
 
 interface SpeakerMetricsChartProps {
-  metrics?: SpeakerMetric[];
+  data?: SpeakerMetric[];
 }
 
-export function SpeakerMetricsChart({ metrics = [] }: SpeakerMetricsChartProps) {
-  const totalDuration = metrics.reduce((sum, m) => sum + m.duration, 0);
-  const maxDuration = Math.max(...metrics.map((m) => m.duration), 1);
+export function SpeakerMetricsChart({ data = [] }: SpeakerMetricsChartProps) {
+  const totalDuration = data.reduce((sum, m) => sum + m.duration, 0);
+  const maxDuration = Math.max(...data.map((m) => m.duration), 1);
 
   const formatDuration = (seconds: number): string => {
     const minutes = Math.floor(seconds / 60);
@@ -24,7 +24,7 @@ export function SpeakerMetricsChart({ metrics = [] }: SpeakerMetricsChartProps) 
     return `${minutes}:${remainingSeconds.toString().padStart(2, "0")}`;
   };
 
-  if (!metrics || metrics.length === 0) {
+  if (!data || data.length === 0) {
     return (
       <div className="flex flex-col items-center justify-center h-64 text-white/40">
         <Users className="w-12 h-12 mb-2" />
@@ -38,7 +38,7 @@ export function SpeakerMetricsChart({ metrics = [] }: SpeakerMetricsChartProps) 
     <div className="space-y-4">
       <div className="text-sm text-white/60 mb-4">Total speaking time: {formatDuration(totalDuration)}</div>
 
-      {metrics.map((metric, index) => (
+      {data.map((metric, index) => (
         <div key={metric.speaker} className="space-y-2">
           <div className="flex justify-between items-center">
             <div className="flex items-center gap-2">
@@ -56,25 +56,24 @@ export function SpeakerMetricsChart({ metrics = [] }: SpeakerMetricsChartProps) 
               <span className="text-white font-medium">{metric.speaker}</span>
             </div>
             <div className="text-right">
-              <p className="text-white font-semibold">{metric.percentage}%</p>
-              <p className="text-xs text-white/50">{formatDuration(metric.duration)}</p>
+              <p className="text-white font-medium">{formatDuration(metric.duration)}</p>
+              <p className="text-xs text-white/60">
+                {metric.percentage}% • {metric.wordCount} words
+              </p>
             </div>
           </div>
-
-          <div className="relative h-3 bg-white/[0.05] rounded-full overflow-hidden">
+          <div className="h-2 bg-white/[0.05] rounded-full overflow-hidden">
             <div
               className={cn(
-                "absolute inset-y-0 left-0 rounded-full transition-all duration-500",
+                "h-full transition-all duration-1000 ease-out",
                 index === 0 && "bg-gradient-to-r from-purple-500 to-purple-400",
                 index === 1 && "bg-gradient-to-r from-cyan-500 to-cyan-400",
                 index === 2 && "bg-gradient-to-r from-green-500 to-green-400",
-                index > 2 && "bg-gradient-to-r from-white/20 to-white/10"
+                index > 2 && "bg-white/30"
               )}
               style={{ width: `${(metric.duration / maxDuration) * 100}%` }}
             />
           </div>
-
-          <p className="text-xs text-white/40">{metric.wordCount.toLocaleString()} words</p>
         </div>
       ))}
     </div>

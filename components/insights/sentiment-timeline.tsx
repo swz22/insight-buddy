@@ -12,33 +12,18 @@ interface TimelinePoint {
   speaker: string;
 }
 
-interface SentimentScore {
-  score: number;
-  magnitude: number;
-  label: string;
-}
-
-interface SentimentData {
-  overall: SentimentScore;
-  timeline: TimelinePoint[];
-  bySpeaker: Record<string, SentimentScore>;
-  topPositiveSegments?: any[];
-  topNegativeSegments?: any[];
-}
-
 interface SentimentTimelineProps {
-  sentiment: Partial<SentimentData> | any;
+  data: TimelinePoint[];
 }
 
-export function SentimentTimeline({ sentiment }: SentimentTimelineProps) {
-  // Safety checks
-  if (!sentiment || typeof sentiment !== "object") {
+export function SentimentTimeline({ data }: SentimentTimelineProps) {
+  if (!data || data.length === 0) {
     return (
       <Card className="bg-white/[0.02] backdrop-blur-sm border-white/10">
         <CardHeader>
           <CardTitle className="text-white flex items-center gap-2">
             <Heart className="w-5 h-5 text-pink-400" />
-            Sentiment Analysis
+            Sentiment Timeline
           </CardTitle>
         </CardHeader>
         <CardContent>
@@ -48,24 +33,7 @@ export function SentimentTimeline({ sentiment }: SentimentTimelineProps) {
     );
   }
 
-  const getSentimentIcon = (label: string) => {
-    if (!label) return <Minus className="w-4 h-4" />;
-
-    switch (label) {
-      case "very_positive":
-      case "positive":
-        return <TrendingUp className="w-4 h-4" />;
-      case "negative":
-      case "very_negative":
-        return <TrendingDown className="w-4 h-4" />;
-      default:
-        return <Minus className="w-4 h-4" />;
-    }
-  };
-
   const getSentimentColor = (score: number) => {
-    if (typeof score !== "number") return "text-white/60 bg-white/10";
-
     if (score >= 0.5) return "text-green-400 bg-green-500/20";
     if (score >= 0.1) return "text-emerald-400 bg-emerald-500/20";
     if (score >= -0.1) return "text-white/60 bg-white/10";
@@ -80,101 +48,97 @@ export function SentimentTimeline({ sentiment }: SentimentTimelineProps) {
     return `${minutes}:${secs.toString().padStart(2, "0")}`;
   };
 
-  // Handle the overall sentiment safely
-  const overall = sentiment.overall || {};
-  const overallLabel = overall.label || "neutral";
-  const overallScore = typeof overall.score === "number" ? overall.score : 0;
-  const displayLabel = overallLabel.replace(/_/g, " ");
-
-  // Handle timeline safely
-  const timeline = Array.isArray(sentiment.timeline) ? sentiment.timeline : [];
-  const normalizedTimeline = timeline.map((point: TimelinePoint) => ({
+  const normalizedTimeline = data.map((point) => ({
     ...point,
-    normalizedScore: typeof point.score === "number" ? (point.score + 1) / 2 : 0.5,
+    normalizedScore: (point.score + 1) / 2,
   }));
 
-  // Handle bySpeaker safely
-  const bySpeaker = sentiment.bySpeaker && typeof sentiment.bySpeaker === "object" ? sentiment.bySpeaker : {};
+  const minTime = Math.min(...data.map((p) => p.timestamp));
+  const maxTime = Math.max(...data.map((p) => p.timestamp));
+  const timeRange = maxTime - minTime || 1;
 
   return (
     <Card className="bg-white/[0.02] backdrop-blur-sm border-white/10">
       <CardHeader>
         <CardTitle className="text-white flex items-center gap-2">
           <Heart className="w-5 h-5 text-pink-400" />
-          Sentiment Analysis
+          Sentiment Timeline
         </CardTitle>
         <CardDescription className="text-white/60">Emotional tone throughout the meeting</CardDescription>
       </CardHeader>
-      <CardContent>
-        <div className="space-y-6">
-          <div className="flex items-center justify-between p-4 bg-white/[0.02] rounded-lg">
-            <div>
-              <p className="text-sm text-white/60">Overall Sentiment</p>
-              <p className="text-2xl font-bold text-white capitalize">{displayLabel}</p>
-            </div>
-            <div
-              className={cn("w-16 h-16 rounded-full flex items-center justify-center", getSentimentColor(overallScore))}
-            >
-              {getSentimentIcon(overallLabel)}
-            </div>
+      <CardContent className="space-y-6">
+        <div className="relative h-48 bg-white/[0.02] rounded-lg p-4">
+          <svg className="w-full h-full" viewBox="0 0 100 100" preserveAspectRatio="none">
+            <defs>
+              <linearGradient id="sentimentGradient" x1="0%" y1="0%" x2="0%" y2="100%">
+                <stop offset="0%" stopColor="#22c55e" stopOpacity="0.2" />
+                <stop offset="50%" stopColor="#fbbf24" stopOpacity="0.2" />
+                <stop offset="100%" stopColor="#ef4444" stopOpacity="0.2" />
+              </linearGradient>
+            </defs>
+
+            <rect x="0" y="0" width="100" height="100" fill="url(#sentimentGradient)" />
+
+            <polyline
+              fill="none"
+              stroke="url(#lineGradient)"
+              strokeWidth="2"
+              points={normalizedTimeline
+                .map((point, index) => {
+                  const x = ((point.timestamp - minTime) / timeRange) * 100;
+                  const y = (1 - point.normalizedScore) * 100;
+                  return `${x},${y}`;
+                })
+                .join(" ")}
+            />
+
+            {normalizedTimeline.map((point, index) => {
+              const x = ((point.timestamp - minTime) / timeRange) * 100;
+              const y = (1 - point.normalizedScore) * 100;
+
+              return (
+                <g key={index}>
+                  <circle cx={x} cy={y} r="3" fill="white" className="cursor-pointer hover:r-4 transition-all">
+                    <title>
+                      {formatTimestamp(point.timestamp)} - {point.speaker}: {point.text.slice(0, 50)}...
+                    </title>
+                  </circle>
+                </g>
+              );
+            })}
+
+            <defs>
+              <linearGradient id="lineGradient" x1="0%" y1="0%" x2="100%" y2="0%">
+                <stop offset="0%" stopColor="#ef4444" />
+                <stop offset="25%" stopColor="#f59e0b" />
+                <stop offset="50%" stopColor="#fbbf24" />
+                <stop offset="75%" stopColor="#84cc16" />
+                <stop offset="100%" stopColor="#22c55e" />
+              </linearGradient>
+            </defs>
+          </svg>
+          <div className="absolute inset-x-4 bottom-2 flex justify-between text-xs text-white/40">
+            <span>Start</span>
+            <span>End</span>
           </div>
+        </div>
 
-          {normalizedTimeline.length > 0 && (
-            <div className="space-y-2">
-              <p className="text-sm text-white/60 mb-3">Sentiment Timeline</p>
-              <div className="relative h-32 bg-white/[0.02] rounded-lg p-4">
-                <svg className="w-full h-full" viewBox={`0 0 ${Math.max(normalizedTimeline.length * 20, 100)} 100`}>
-                  <motion.path
-                    d={`M ${normalizedTimeline
-                      .map((point: any, i: number) => `${i * 20} ${100 - point.normalizedScore * 100}`)
-                      .join(" L ")}`}
-                    fill="none"
-                    stroke="url(#sentiment-gradient)"
-                    strokeWidth="2"
-                    initial={{ pathLength: 0 }}
-                    animate={{ pathLength: 1 }}
-                    transition={{ duration: 1.5, ease: "easeInOut" }}
-                  />
-                  <defs>
-                    <linearGradient id="sentiment-gradient" x1="0%" y1="0%" x2="100%" y2="0%">
-                      <stop offset="0%" stopColor="#ef4444" />
-                      <stop offset="25%" stopColor="#f59e0b" />
-                      <stop offset="50%" stopColor="#fbbf24" />
-                      <stop offset="75%" stopColor="#84cc16" />
-                      <stop offset="100%" stopColor="#22c55e" />
-                    </linearGradient>
-                  </defs>
-                </svg>
-                <div className="absolute inset-x-4 bottom-2 flex justify-between text-xs text-white/40">
-                  <span>Start</span>
-                  <span>End</span>
-                </div>
+        <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+          {data.slice(0, 4).map((point, index) => (
+            <motion.div
+              key={index}
+              initial={{ opacity: 0, y: 10 }}
+              animate={{ opacity: 1, y: 0 }}
+              transition={{ delay: index * 0.1 }}
+              className={cn("p-3 rounded-lg border border-white/10", getSentimentColor(point.score))}
+            >
+              <div className="flex items-center justify-between mb-1">
+                <span className="text-xs font-medium">{formatTimestamp(point.timestamp)}</span>
+                <span className="text-xs opacity-80">{point.speaker}</span>
               </div>
-            </div>
-          )}
-
-          {Object.keys(bySpeaker).length > 0 && (
-            <div className="space-y-3">
-              <p className="text-sm text-white/60">Speaker Sentiments</p>
-              {Object.entries(bySpeaker).map(([speaker, scoreData]) => {
-                const score = scoreData as any;
-                const label = score?.label || "neutral";
-                const scoreValue = typeof score?.score === "number" ? score.score : 0;
-
-                return (
-                  <div key={speaker} className="flex items-center justify-between">
-                    <div className="flex items-center gap-2">
-                      <MessageCircle className="w-4 h-4 text-white/40" />
-                      <span className="text-white">{speaker}</span>
-                    </div>
-                    <div className={cn("px-2 py-1 rounded-full text-xs capitalize", getSentimentColor(scoreValue))}>
-                      {label.replace(/_/g, " ")}
-                    </div>
-                  </div>
-                );
-              })}
-            </div>
-          )}
+              <p className="text-xs line-clamp-2">{point.text}</p>
+            </motion.div>
+          ))}
         </div>
       </CardContent>
     </Card>
