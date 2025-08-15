@@ -66,42 +66,45 @@ export class InsightsService {
     const utterances: ParsedUtterance[] = [];
     const lines = transcriptText.split("\n").filter((line) => line.trim());
 
-    // More flexible regex patterns to catch all speaker formats
-    const timestampPattern = /^\[(\d{2}):(\d{2})\]\s*Speaker\s*([A-Za-z]):\s*(.*)$/i;
-    const speakerOnlyPattern = /^Speaker\s*([A-Za-z]):\s*(.*)$/i;
-    const colonPattern = /^([A-Za-z]):\s*(.*)$/; // Just "A: text" format
+    const timestampPattern = /^\[(\d{2}):(\d{2})\]\s*Speaker\s*([A-Za-z])[:\s]+(.*)$/i;
+    const speakerOnlyPattern = /^Speaker\s*([A-Za-z])[:\s]+(.*)$/i;
+    const colonPattern = /^([A-Za-z]):\s*(.*)$/;
 
     let currentTime = 0;
     const averageUtteranceDuration = totalDuration > 0 && lines.length > 0 ? totalDuration / lines.length : 10;
+
+    const speakersFound = new Set<string>();
 
     lines.forEach((line, index) => {
       let speaker = "";
       let text = "";
       let hasTimestamp = false;
 
-      // Try timestamp pattern first
       const timestampMatch = line.match(timestampPattern);
       if (timestampMatch) {
         const minutes = parseInt(timestampMatch[1], 10);
         const seconds = parseInt(timestampMatch[2], 10);
-        speaker = `Speaker ${timestampMatch[3].toUpperCase()}`;
+        const speakerLetter = timestampMatch[3].toUpperCase();
+        speaker = `Speaker ${speakerLetter}`;
         text = timestampMatch[4].trim();
         currentTime = (minutes * 60 + seconds) * 1000;
         hasTimestamp = true;
+        speakersFound.add(speakerLetter);
       } else {
-        // Try speaker only pattern
         const speakerMatch = line.match(speakerOnlyPattern);
         if (speakerMatch) {
-          speaker = `Speaker ${speakerMatch[1].toUpperCase()}`;
+          const speakerLetter = speakerMatch[1].toUpperCase();
+          speaker = `Speaker ${speakerLetter}`;
           text = speakerMatch[2].trim();
+          speakersFound.add(speakerLetter);
         } else {
-          // Try simple colon pattern
           const colonMatch = line.match(colonPattern);
-          if (colonMatch) {
-            speaker = `Speaker ${colonMatch[1].toUpperCase()}`;
+          if (colonMatch && colonMatch[1].length === 1) {
+            const speakerLetter = colonMatch[1].toUpperCase();
+            speaker = `Speaker ${speakerLetter}`;
             text = colonMatch[2].trim();
+            speakersFound.add(speakerLetter);
           } else if (utterances.length > 0) {
-            // If no speaker detected, append to previous utterance
             utterances[utterances.length - 1].text += " " + line.trim();
             return;
           }
@@ -125,10 +128,9 @@ export class InsightsService {
       }
     });
 
-    // Scale utterances to fit total duration if needed
     if (utterances.length > 0 && totalDuration > 0) {
       const totalUtteranceTime = utterances.reduce((sum, u) => sum + (u.end - u.start), 0) / 1000;
-      if (totalUtteranceTime > totalDuration) {
+      if (totalUtteranceTime !== totalDuration) {
         const scaleFactor = totalDuration / totalUtteranceTime;
         utterances.forEach((u) => {
           u.start = Math.floor(u.start * scaleFactor);
@@ -136,6 +138,11 @@ export class InsightsService {
         });
       }
     }
+
+    console.log(
+      `Parsed ${utterances.length} utterances from ${speakersFound.size} speakers:`,
+      Array.from(speakersFound)
+    );
 
     return utterances;
   }
@@ -151,7 +158,6 @@ export class InsightsService {
       }
     >();
 
-    // Initialize stats for each speaker
     utterances.forEach((utterance) => {
       const speaker = utterance.speaker || "Unknown";
       if (!speakerStats.has(speaker)) {
@@ -169,12 +175,10 @@ export class InsightsService {
       stats.turns.push(duration);
     });
 
-    // Calculate interruptions
     for (let i = 1; i < utterances.length; i++) {
       const prev = utterances[i - 1];
       const curr = utterances[i];
 
-      // Check if current speaker interrupted previous speaker
       if (curr.start < prev.end) {
         const currSpeaker = curr.speaker || "Unknown";
         const prevSpeaker = prev.speaker || "Unknown";
@@ -186,20 +190,18 @@ export class InsightsService {
       }
     }
 
-    // Build metrics
     const metrics: SpeakerMetrics[] = [];
     speakerStats.forEach((stats, speaker) => {
       const avgTurnDuration = stats.turns.length > 0 ? stats.totalDuration / stats.turns.length : 0;
-
       const longestTurn = stats.turns.length > 0 ? Math.max(...stats.turns) : 0;
 
       metrics.push({
         speaker,
-        totalDuration: stats.totalDuration,
-        speakingPercentage: totalDuration > 0 ? (stats.totalDuration / totalDuration) * 100 : 0,
+        totalDuration: Math.round(stats.totalDuration),
+        speakingPercentage: totalDuration > 0 ? Math.round((stats.totalDuration / totalDuration) * 100) : 0,
         turnCount: stats.turns.length,
-        averageTurnDuration: avgTurnDuration,
-        longestTurn: longestTurn,
+        averageTurnDuration: Math.round(avgTurnDuration),
+        longestTurn: Math.round(longestTurn),
         interruptions: stats.interruptions,
         wasInterrupted: stats.wasInterrupted,
       });
@@ -225,7 +227,6 @@ export class InsightsService {
       };
     }
 
-    // Calculate interruption events
     const interruptionEvents: InterruptionEvent[] = [];
     let totalInterruptions = 0;
 
@@ -247,14 +248,12 @@ export class InsightsService {
       }
     }
 
-    // Calculate metrics
     const totalMinutes = totalDuration / 60;
     const interruptionRate = totalMinutes > 0 ? totalInterruptions / totalMinutes : 0;
 
     const totalTurns = utterances.length;
-    const averageTurnDuration = totalDuration / totalTurns;
+    const averageTurnDuration = totalTurns > 0 ? totalDuration / totalTurns : 0;
 
-    // Calculate speaker balance (Gini coefficient)
     const sortedPercentages = speakerMetrics.map((m) => m.speakingPercentage).sort((a, b) => a - b);
     let cumulativeSum = 0;
     let giniSum = 0;
@@ -269,14 +268,13 @@ export class InsightsService {
         ? 1 - (2 * giniSum) / (speakerMetrics.length * sortedPercentages.reduce((a, b) => a + b, 0))
         : 1;
 
-    // Get most and least active speakers
     const mostDominantSpeaker = speakerMetrics[0]?.speaker || "Unknown";
     const leastActiveSpeaker = speakerMetrics[speakerMetrics.length - 1]?.speaker || "Unknown";
 
     return {
       totalInterruptions,
-      interruptionRate,
-      averageTurnDuration,
+      interruptionRate: Math.round(interruptionRate * 10) / 10,
+      averageTurnDuration: Math.round(averageTurnDuration),
       speakerBalance: Math.max(0, Math.min(1, speakerBalance)),
       mostDominantSpeaker,
       leastActiveSpeaker,
@@ -288,7 +286,7 @@ export class InsightsService {
     const overall = await this.getSentimentScoreWithLabel(text);
 
     const timeline: SentimentAnalysis["timeline"] = [];
-    const segments = this.createTextSegments(utterances, 5);
+    const segments = this.createTextSegments(utterances, Math.min(10, utterances.length));
 
     for (const segment of segments) {
       const sentimentResult = await this.getRawSentimentScore(segment.text);
@@ -314,7 +312,9 @@ export class InsightsService {
 
     for (const [speaker, texts] of speakerTexts) {
       const speakerText = texts.join(" ");
-      bySpeaker[speaker] = await this.getSentimentScoreWithLabel(speakerText);
+      if (speakerText.trim()) {
+        bySpeaker[speaker] = await this.getSentimentScoreWithLabel(speakerText);
+      }
     }
 
     const allSegments = utterances.map((u, i) => ({
@@ -326,19 +326,21 @@ export class InsightsService {
     }));
 
     for (const segment of allSegments) {
-      const sentimentResult = await this.getRawSentimentScore(segment.text);
-      const score = this.convertToScore(sentimentResult);
-      segment.sentiment = {
-        score,
-        magnitude: Math.abs(score),
-        label: this.getLabel(score),
-      };
+      if (segment.text.trim()) {
+        const sentimentResult = await this.getRawSentimentScore(segment.text);
+        const score = this.convertToScore(sentimentResult);
+        segment.sentiment = {
+          score,
+          magnitude: Math.abs(score),
+          label: this.getLabel(score),
+        };
+      }
     }
 
     const sortedSegments = [...allSegments].sort((a, b) => (b.sentiment?.score || 0) - (a.sentiment?.score || 0));
 
-    const topPositiveSegments = sortedSegments.slice(0, 3);
-    const topNegativeSegments = sortedSegments.slice(-3).reverse();
+    const topPositiveSegments = sortedSegments.filter((s) => s.sentiment && s.sentiment.score > 0).slice(0, 3);
+    const topNegativeSegments = sortedSegments.filter((s) => s.sentiment && s.sentiment.score < 0).slice(0, 3);
 
     return {
       overall,
@@ -356,17 +358,17 @@ export class InsightsService {
     if (utterances.length === 0) return [];
 
     const segments: { time: number; text: string; speaker?: string }[] = [];
-    const segmentSize = Math.ceil(utterances.length / numSegments);
+    const segmentSize = Math.max(1, Math.floor(utterances.length / numSegments));
 
-    for (let i = 0; i < numSegments; i++) {
-      const start = i * segmentSize;
-      const end = Math.min(start + segmentSize, utterances.length);
-      const segmentUtterances = utterances.slice(start, end);
+    for (let i = 0; i < utterances.length; i += segmentSize) {
+      const end = Math.min(i + segmentSize, utterances.length);
+      const segmentUtterances = utterances.slice(i, end);
 
       if (segmentUtterances.length > 0) {
         const avgTime = segmentUtterances.reduce((sum, u) => sum + u.start, 0) / segmentUtterances.length / 1000;
         const text = segmentUtterances.map((u) => u.text || "").join(" ");
-        const speaker = segmentUtterances[0].speaker;
+        const speakers = [...new Set(segmentUtterances.map((u) => u.speaker))];
+        const speaker = speakers.length === 1 ? speakers[0] : "Multiple";
 
         segments.push({ time: avgTime, text, speaker });
       }
@@ -461,23 +463,19 @@ export class InsightsService {
   ): number {
     let score = 50;
 
-    // Speaker balance contributes up to 20 points
     score += dynamics.speakerBalance * 20;
 
-    // Turn-taking frequency contributes up to 10 points
     if (dynamics.averageTurnDuration > 10 && dynamics.averageTurnDuration < 60) {
       score += 10;
     } else if (dynamics.averageTurnDuration >= 5 && dynamics.averageTurnDuration <= 90) {
       score += 5;
     }
 
-    // Interruptions reduce score
     score -= Math.min(20, dynamics.interruptionRate * 4);
 
-    // Sentiment contributes up to 20 points
     const sentimentBonus = sentiment.overall.score * 20;
     score += sentimentBonus;
 
-    return Math.max(0, Math.min(100, score));
+    return Math.max(0, Math.min(100, Math.round(score)));
   }
 }
