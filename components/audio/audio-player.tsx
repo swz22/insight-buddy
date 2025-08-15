@@ -2,62 +2,62 @@
 
 import { useEffect, useRef, useState } from "react";
 import WaveSurfer from "wavesurfer.js";
-import { Play, Pause, SkipBack, SkipForward, Volume2 } from "lucide-react";
+import { Play, Pause, RotateCcw, Loader2 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
 
 interface AudioPlayerProps {
-  audioUrl?: string;
-  url?: string;
+  audioUrl: string;
   className?: string;
+  mini?: boolean;
 }
 
-export function AudioPlayer({ audioUrl, url: urlProp, className }: AudioPlayerProps) {
-  const url = audioUrl || urlProp;
+export function AudioPlayer({ audioUrl, className, mini = false }: AudioPlayerProps) {
   const containerRef = useRef<HTMLDivElement>(null);
   const wavesurferRef = useRef<WaveSurfer | null>(null);
   const [isPlaying, setIsPlaying] = useState(false);
   const [isLoading, setIsLoading] = useState(true);
   const [currentTime, setCurrentTime] = useState(0);
   const [duration, setDuration] = useState(0);
-  const [playbackRate, setPlaybackRate] = useState(1);
-  const [volume, setVolume] = useState(1);
   const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
-    if (!url) {
-      setError("No audio URL provided");
-      setIsLoading(false);
-      return;
-    }
+    if (!containerRef.current || !audioUrl) return;
 
-    let wavesurfer: WaveSurfer | null = null;
     let mounted = true;
+    let wavesurfer: WaveSurfer | null = null;
 
     const initWaveSurfer = async () => {
-      if (!containerRef.current || !mounted) return;
+      if (!mounted || !containerRef.current) return;
 
       try {
-        // Create WaveSurfer instance
+        const url = audioUrl.startsWith("http") ? audioUrl : `${window.location.origin}${audioUrl}`;
+
         wavesurfer = WaveSurfer.create({
           container: containerRef.current,
-          waveColor: "#94a3b8",
-          progressColor: "#a855f7",
-          cursorColor: "#06b6d4",
+          waveColor: "rgba(255, 255, 255, 0.3)",
+          progressColor: "rgba(147, 51, 234, 0.8)",
+          cursorColor: "rgba(147, 51, 234, 1)",
           barWidth: 2,
           barRadius: 3,
           cursorWidth: 2,
-          height: 80,
+          height: mini ? 40 : 80,
           barGap: 3,
           normalize: true,
           backend: "WebAudio",
+          interact: true,
+          dragToSeek: true,
+          hideScrollbar: true,
+          autoScroll: true,
+          autoCenter: true,
+          sampleRate: 8000,
         });
 
-        // Set up event listeners
         wavesurfer.on("ready", () => {
-          if (mounted && wavesurferRef.current) {
+          if (mounted) {
+            const dur = wavesurfer?.getDuration() || 0;
+            setDuration(dur);
             setIsLoading(false);
-            setDuration(wavesurferRef.current.getDuration());
             setError(null);
           }
         });
@@ -68,12 +68,19 @@ export function AudioPlayer({ audioUrl, url: urlProp, className }: AudioPlayerPr
           }
         });
 
-        wavesurfer.on("play", () => mounted && setIsPlaying(true));
-        wavesurfer.on("pause", () => mounted && setIsPlaying(false));
-        wavesurfer.on("finish", () => mounted && setIsPlaying(false));
+        wavesurfer.on("play", () => {
+          if (mounted) setIsPlaying(true);
+        });
+
+        wavesurfer.on("pause", () => {
+          if (mounted) setIsPlaying(false);
+        });
+
+        wavesurfer.on("finish", () => {
+          if (mounted) setIsPlaying(false);
+        });
 
         wavesurfer.on("error", (err: Error) => {
-          console.error("WaveSurfer error:", err);
           if (mounted) {
             setError(err.message || "Failed to load audio");
             setIsLoading(false);
@@ -88,7 +95,6 @@ export function AudioPlayer({ audioUrl, url: urlProp, className }: AudioPlayerPr
         // Load audio
         await wavesurfer.load(url);
       } catch (err) {
-        console.error("Failed to initialize audio player:", err);
         if (mounted) {
           setError("Failed to initialize audio player");
           setIsLoading(false);
@@ -135,11 +141,10 @@ export function AudioPlayer({ audioUrl, url: urlProp, className }: AudioPlayerPr
           wavesurfer.destroy();
         } catch (err) {
           // Ignore destroy errors
-          console.debug("WaveSurfer cleanup error:", err);
         }
       }
     };
-  }, [url]);
+  }, [audioUrl, mini]);
 
   const formatTime = (seconds: number) => {
     const mins = Math.floor(seconds / 60);
@@ -148,118 +153,58 @@ export function AudioPlayer({ audioUrl, url: urlProp, className }: AudioPlayerPr
   };
 
   const handlePlayPause = () => {
-    wavesurferRef.current?.playPause();
+    if (wavesurferRef.current) {
+      wavesurferRef.current.playPause();
+    }
   };
 
-  const handleSkip = (seconds: number) => {
-    wavesurferRef.current?.skip(seconds);
-  };
-
-  const handlePlaybackRateChange = () => {
-    const rates = [0.5, 0.75, 1, 1.25, 1.5, 2];
-    const currentIndex = rates.indexOf(playbackRate);
-    const nextIndex = (currentIndex + 1) % rates.length;
-    const newRate = rates[nextIndex];
-    setPlaybackRate(newRate);
-    wavesurferRef.current?.setPlaybackRate(newRate);
-  };
-
-  const handleVolumeChange = (e: React.ChangeEvent<HTMLInputElement>) => {
-    const newVolume = parseFloat(e.target.value);
-    setVolume(newVolume);
-    wavesurferRef.current?.setVolume(newVolume);
+  const handleRestart = () => {
+    if (wavesurferRef.current) {
+      wavesurferRef.current.seekTo(0);
+      wavesurferRef.current.play();
+    }
   };
 
   if (error) {
     return (
-      <div className={cn("bg-white/[0.03] backdrop-blur-sm rounded-lg p-4 border border-white/10", className)}>
-        <div className="text-center text-red-400">
-          <p>{error}</p>
-          <p className="text-sm text-white/50 mt-2">Please try refreshing the page</p>
-        </div>
+      <div className={cn("text-center py-4", className)}>
+        <p className="text-red-400 text-sm">{error}</p>
       </div>
     );
   }
 
   return (
-    <div className={cn("bg-black/40 backdrop-blur-sm rounded-lg p-4", className)}>
-      {/* Waveform Container */}
-      <div ref={containerRef} className="mb-4" />
+    <div className={cn("space-y-4", className)}>
+      <div ref={containerRef} className="w-full" />
 
-      {/* Controls */}
-      <div className="space-y-4">
-        {/* Playback Controls */}
-        <div className="flex items-center justify-center gap-3">
+      <div className="flex items-center justify-between">
+        <div className="flex items-center gap-2">
           <Button
-            size="sm"
-            variant="ghost"
-            onClick={() => handleSkip(-10)}
-            disabled={isLoading}
-            className="hover:bg-white/5 rounded-full w-10 h-10 p-0 transition-all"
-          >
-            <SkipBack className="w-4 h-4" />
-          </Button>
-
-          <Button
-            variant="glow"
+            size={mini ? "sm" : "default"}
+            variant="glass"
             onClick={handlePlayPause}
             disabled={isLoading}
-            className="hover:scale-105 rounded-full w-14 h-14 p-0 transition-transform"
+            className="min-w-[44px]"
           >
             {isLoading ? (
-              <div className="w-5 h-5 border-2 border-white/30 border-t-white rounded-full animate-spin" />
+              <Loader2 className={cn("animate-spin", mini ? "w-3 h-3" : "w-4 h-4")} />
             ) : isPlaying ? (
-              <Pause className="w-6 h-6" />
+              <Pause className={mini ? "w-3 h-3" : "w-4 h-4"} />
             ) : (
-              <Play className="w-6 h-6 ml-0.5" />
+              <Play className={mini ? "w-3 h-3" : "w-4 h-4"} />
             )}
           </Button>
 
-          <Button
-            size="sm"
-            variant="ghost"
-            onClick={() => handleSkip(10)}
-            disabled={isLoading}
-            className="hover:bg-white/5 rounded-full w-10 h-10 p-0 transition-all"
-          >
-            <SkipForward className="w-4 h-4" />
-          </Button>
+          {!mini && (
+            <Button size="sm" variant="ghost" onClick={handleRestart} disabled={isLoading}>
+              <RotateCcw className="w-4 h-4" />
+            </Button>
+          )}
         </div>
 
-        {/* Time Display and Speed Control */}
-        <div className="grid grid-cols-3 items-center px-4">
-          <Button
-            size="sm"
-            variant="ghost"
-            onClick={handlePlaybackRateChange}
-            disabled={isLoading}
-            className="hover:bg-white/5 text-xs justify-self-start transition-all"
-          >
-            {playbackRate}x
-          </Button>
-
-          <div className="text-sm text-white/60 text-center">
-            {formatTime(currentTime)} / {formatTime(duration)}
-          </div>
-
-          {/* Volume Control */}
-          <div className="flex items-center gap-2 justify-self-end">
-            <Volume2 className="w-4 h-4 text-white/60" />
-            <input
-              type="range"
-              min="0"
-              max="1"
-              step="0.1"
-              value={volume}
-              onChange={handleVolumeChange}
-              className="w-20 accent-purple-500 cursor-pointer"
-              disabled={isLoading}
-            />
-          </div>
+        <div className={cn("text-white/60 font-mono", mini ? "text-xs" : "text-sm")}>
+          {formatTime(currentTime)} / {formatTime(duration)}
         </div>
-
-        {/* Keyboard Shortcuts Help */}
-        <div className="text-xs text-white/40 text-center">Space: Play/Pause • ←/→: Skip 10s</div>
       </div>
     </div>
   );

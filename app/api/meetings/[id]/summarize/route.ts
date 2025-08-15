@@ -41,10 +41,9 @@ export async function POST(request: Request, { params: paramsPromise }: RoutePar
       return apiError("No transcript available for summarization", 400, "NO_TRANSCRIPT");
     }
 
-    const huggingfaceKey = process.env.HUGGINGFACE_API_KEY || process.env.NEXT_PUBLIC_HUGGINGFACE_API_KEY;
+    const huggingfaceKey = process.env.HUGGINGFACE_API_KEY;
 
     if (!huggingfaceKey) {
-      console.log("No Hugging Face API key found, using fallback summarization");
       return generateFallbackSummary(params.id, meeting, serviceSupabase);
     }
 

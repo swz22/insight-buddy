@@ -38,7 +38,6 @@ export async function withRetry<T>(fn: () => Promise<T>, options: RetryOptions =
         throw error;
       }
 
-      console.log(`Retry attempt ${attempt + 1}/${maxRetries} after ${delay}ms`);
       await new Promise((resolve) => setTimeout(resolve, delay));
 
       delay = Math.min(delay * backoffMultiplier, maxDelay);

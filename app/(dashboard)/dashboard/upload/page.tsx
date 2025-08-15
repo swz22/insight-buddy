@@ -41,7 +41,8 @@ export default function UploadPage() {
         setTranscriptionEnabled(config.transcriptionEnabled);
       })
       .catch(() => {
-        console.log("Could not fetch config");
+        // Silently fail if config endpoint is not available
+        setTranscriptionEnabled(false);
       });
   }, []);
 
@@ -151,117 +152,76 @@ export default function UploadPage() {
                 </label>
                 <Input
                   id="title"
-                  name="title"
                   type="text"
-                  required
-                  placeholder="e.g., Weekly Team Standup, Client Meeting, Project Review..."
                   value={formData.title}
                   onChange={(e) => setFormData({ ...formData, title: e.target.value })}
+                  placeholder="e.g., Weekly Team Standup"
+                  className="w-full"
                   disabled={isUploading}
-                  className={cn(
-                    "w-full h-12 text-base",
-                    "bg-white/5 border-white/10",
-                    "placeholder:text-white/40",
-                    "focus:bg-white/10 focus:border-white/20",
-                    "transition-all duration-200"
-                  )}
+                  required
                 />
-                <p className="mt-1.5 text-xs text-white/50">
-                  Give your meeting a descriptive title to find it easily later
-                </p>
               </div>
 
               <div>
                 <label htmlFor="description" className="block text-sm font-medium text-white/90 mb-2">
-                  Description <span className="text-white/40 font-normal">(optional)</span>
+                  Description
                 </label>
                 <textarea
                   id="description"
-                  name="description"
-                  rows={3}
-                  placeholder="Add any additional context, key topics discussed, or participants..."
                   value={formData.description}
                   onChange={(e) => setFormData({ ...formData, description: e.target.value })}
-                  disabled={isUploading}
+                  placeholder="Brief description of the meeting..."
                   className={cn(
-                    "w-full px-4 py-3 text-base rounded-xl",
-                    "bg-white/5 border border-white/10",
-                    "placeholder:text-white/40 text-white",
-                    "focus:bg-white/10 focus:border-white/20 focus:outline-none",
-                    "transition-all duration-200 resize-none"
+                    "w-full min-h-[100px] px-3 py-2 rounded-lg",
+                    "bg-white/[0.03] border border-white/10",
+                    "text-white placeholder:text-white/40",
+                    "focus:outline-none focus:border-purple-500/50 focus:ring-1 focus:ring-purple-500/50",
+                    "disabled:opacity-50 disabled:cursor-not-allowed",
+                    "transition-colors"
                   )}
+                  disabled={isUploading}
                 />
               </div>
 
               <div>
                 <label className="block text-sm font-medium text-white/90 mb-2">
-                  Recording File <span className="text-red-400">*</span>
+                  Audio/Video File <span className="text-red-400">*</span>
                 </label>
                 <FileUpload onFileSelect={setSelectedFile} disabled={isUploading} />
-                <p className="mt-2 text-xs text-white/50">
-                  Supported formats: MP3, WAV, M4A, MP4, WebM • Max size: 500MB
-                </p>
               </div>
             </div>
 
-            <div className="flex items-center justify-between pt-4">
-              <div className="flex items-center gap-2 text-sm text-white/60">
-                {transcriptionEnabled && (
+            <div className="flex gap-4 pt-4">
+              <Button type="submit" disabled={isUploading || !selectedFile} className="flex-1" variant="glow">
+                {isUploading ? (
                   <>
-                    <Sparkles className="w-4 h-4" />
-                    <span>AI transcription enabled</span>
+                    <Upload className="w-4 h-4 mr-2 animate-pulse" />
+                    Uploading...
+                  </>
+                ) : (
+                  <>
+                    <Sparkles className="w-4 h-4 mr-2" />
+                    Upload Meeting
                   </>
                 )}
-              </div>
+              </Button>
 
-              <div className="flex gap-3">
-                {isUploading && (
-                  <Button type="button" variant="outline" onClick={handleCancel} className="min-w-[100px]">
-                    Cancel
-                  </Button>
-                )}
-                <Button
-                  type="submit"
-                  disabled={isUploading || !selectedFile || !formData.title.trim()}
-                  className={cn(
-                    "min-w-[140px] relative overflow-hidden",
-                    "bg-gradient-to-r from-purple-600 to-cyan-600",
-                    "hover:from-purple-700 hover:to-cyan-700",
-                    "disabled:from-gray-600 disabled:to-gray-700",
-                    "transition-all duration-300"
-                  )}
-                >
-                  {isUploading ? (
-                    <>
-                      <div className="absolute inset-0 bg-white/10 animate-pulse" />
-                      <span className="relative">Uploading...</span>
-                    </>
-                  ) : (
-                    <>
-                      <Upload className="w-4 h-4 mr-2" />
-                      Upload Meeting
-                    </>
-                  )}
+              {isUploading && (
+                <Button type="button" variant="outline" onClick={handleCancel}>
+                  Cancel
                 </Button>
-              </div>
+              )}
             </div>
           </form>
         </Card>
 
-        {!transcriptionEnabled && (
-          <Card className="p-6 bg-yellow-500/5 border-yellow-500/20">
-            <div className="flex gap-3">
-              <Sparkles className="w-5 h-5 text-yellow-500 flex-shrink-0 mt-0.5" />
-              <div className="space-y-1">
-                <p className="text-sm font-medium text-yellow-200">AI features not configured</p>
-                <p className="text-sm text-yellow-200/70">
-                  Transcription and summarization features are currently disabled. Configure your AI API keys in the
-                  environment settings to enable these features.
-                </p>
-              </div>
-            </div>
-          </Card>
-        )}
+        <div className="text-center text-sm text-white/40">
+          {transcriptionEnabled ? (
+            <p>✨ AI transcription and analysis will begin automatically after upload</p>
+          ) : (
+            <p>📝 Configure AI services in settings to enable automatic transcription</p>
+          )}
+        </div>
       </div>
     </div>
   );

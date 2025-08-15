@@ -24,10 +24,8 @@ export function uploadFile(
 
     // Progress tracking
     xhr.upload.addEventListener("progress", (event) => {
-      console.log("Progress event:", event.loaded, event.total, event.lengthComputable);
       if (event.lengthComputable && onProgress) {
         const percentage = Math.round((event.loaded / event.total) * 100);
-        console.log("Upload progress:", percentage + "%");
         onProgress({
           loaded: event.loaded,
           total: event.total,
