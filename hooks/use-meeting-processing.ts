@@ -32,7 +32,6 @@ export function useMeetingProcessing({ meeting, enabled = true }: UseMeetingProc
     },
     onError: (error) => {
       if (error.message.includes("already in progress")) {
-        // Silently ignore if already transcribing
         return;
       }
       toastError(error.message || "Failed to start transcription");
@@ -63,16 +62,11 @@ export function useMeetingProcessing({ meeting, enabled = true }: UseMeetingProc
   useEffect(() => {
     if (!enabled || !meeting || hasTriggeredRef.current) return;
 
-    // Check if meeting needs processing
     const needsTranscription = meeting.audio_url && !meeting.transcript && !meeting.transcript_id;
-    const needsSummary = meeting.transcript && !meeting.summary;
 
     if (needsTranscription) {
       hasTriggeredRef.current = true;
       startTranscription.mutate(meeting.id);
-    } else if (needsSummary) {
-      hasTriggeredRef.current = true;
-      generateSummary.mutate(meeting.id);
     }
   }, [meeting, enabled]);
 

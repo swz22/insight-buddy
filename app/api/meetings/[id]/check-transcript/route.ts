@@ -36,12 +36,10 @@ export async function GET(request: Request, { params: paramsPromise }: RoutePara
       return apiError("Meeting not found", 404, "NOT_FOUND");
     }
 
-    // Check if transcript already exists
     if (meeting.transcript) {
       return apiSuccess({ status: "completed", hasTranscript: true });
     }
 
-    // Get transcript ID from URL params
     const url = new URL(request.url);
     const transcriptId = url.searchParams.get("transcriptId");
 
@@ -49,7 +47,6 @@ export async function GET(request: Request, { params: paramsPromise }: RoutePara
       return apiSuccess({ status: "no_transcript_id", hasTranscript: false });
     }
 
-    // Check transcript status with AssemblyAI
     const assemblyAI = new AssemblyAIService();
     const transcript = await assemblyAI.getTranscription(transcriptId);
 
@@ -57,7 +54,6 @@ export async function GET(request: Request, { params: paramsPromise }: RoutePara
       const speakers = assemblyAI.extractSpeakers(transcript);
       const formattedTranscript = assemblyAI.formatTranscriptText(transcript);
 
-      // Update the meeting with transcript data
       const { error: updateError } = await serviceSupabase
         .from("meetings")
         .update({
@@ -72,13 +68,6 @@ export async function GET(request: Request, { params: paramsPromise }: RoutePara
       if (updateError) {
         console.error("Failed to update meeting:", updateError);
         return apiError("Failed to update meeting", 500);
-      }
-
-      // Trigger AI summary generation
-      if (process.env.HUGGINGFACE_API_KEY) {
-        fetch(`${process.env.NEXT_PUBLIC_APP_URL}/api/meetings/${params.id}/summarize`, {
-          method: "POST",
-        }).catch((err) => console.error("Failed to trigger summary:", err));
       }
 
       return apiSuccess({

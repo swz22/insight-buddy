@@ -53,13 +53,6 @@ export async function POST(request: NextRequest) {
       return apiError("Failed to update meeting", 500);
     }
 
-    if (process.env.HUGGINGFACE_API_KEY) {
-      await fetch(`${process.env.NEXT_PUBLIC_APP_URL}/api/meetings/${meetingId}/summarize`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-      }).catch((err) => console.error("Failed to trigger summary:", err));
-    }
-
     return apiSuccess({
       received: true,
       status: "completed",
