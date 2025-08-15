@@ -17,20 +17,20 @@ interface VirtualMeetingsListProps {
 export function VirtualMeetingsList({ meetings, onView, onEdit, onDelete }: VirtualMeetingsListProps) {
   const parentRef = useRef<HTMLDivElement>(null);
 
-  const columnCount = 3; // Default to 3 columns, could be made responsive
+  const columnCount = 3;
   const rowCount = Math.ceil(meetings.length / columnCount);
 
   const rowVirtualizer = useVirtualizer({
     count: rowCount,
     getScrollElement: () => parentRef.current,
-    estimateSize: () => 320, // Estimated row height
+    estimateSize: () => 280,
     overscan: 2,
   });
 
   return (
     <div
       ref={parentRef}
-      className="h-[calc(100vh-16rem)] overflow-auto"
+      className="h-[calc(100vh-16rem)] overflow-auto pr-4"
       style={{
         contain: "strict",
       }}
@@ -59,7 +59,7 @@ export function VirtualMeetingsList({ meetings, onView, onEdit, onDelete }: Virt
                 transform: `translateY(${virtualRow.start}px)`,
               }}
             >
-              <div className="grid gap-6 md:grid-cols-2 lg:grid-cols-3 h-full">
+              <div className="grid gap-6 md:grid-cols-2 lg:grid-cols-3 h-full pr-4">
                 {rowMeetings.map((meeting) => (
                   <div key={meeting.id} className="stagger-animation">
                     <MeetingCard meeting={meeting} onView={onView} onEdit={onEdit} onDelete={onDelete} />

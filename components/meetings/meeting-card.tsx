@@ -48,7 +48,10 @@ export function MeetingCard({ meeting, onView, onEdit, onDelete }: MeetingCardPr
   const progress = duration > 0 ? (currentTime / duration) * 100 : 0;
 
   return (
-    <Card className="group cursor-pointer hover:-translate-y-1">
+    <Card
+      className="cursor-pointer transition-all duration-300 hover:border-white/20 hover:shadow-2xl group"
+      onClick={() => onView(meeting)}
+    >
       <CardHeader className="pb-4">
         <CardTitle className="text-lg text-white group-hover:text-transparent group-hover:bg-clip-text group-hover:bg-gradient-to-r group-hover:from-purple-400 group-hover:to-cyan-400 transition-all duration-300">
           {meeting.title}
@@ -92,9 +95,9 @@ export function MeetingCard({ meeting, onView, onEdit, onDelete }: MeetingCardPr
               {isPlaying ? <Pause className="w-4 h-4" /> : <Play className="w-4 h-4" />}
             </Button>
 
-            <div className="flex-1 h-1.5 bg-white/10 rounded-full relative overflow-hidden group/progress">
+            <div className="flex-1 h-2 bg-white/10 rounded-full relative overflow-hidden cursor-pointer group hover:h-3 transition-all">
               <div
-                className="absolute left-0 top-0 h-full bg-gradient-to-r from-purple-500 to-cyan-500 transition-all duration-200 group-hover/progress:shadow-[0_0_10px_rgba(168,85,247,0.5)]"
+                className="absolute left-0 top-0 h-full bg-gradient-to-r from-purple-500 to-cyan-500 transition-all duration-200"
                 style={{ width: `${progress}%` }}
               />
             </div>
@@ -110,42 +113,6 @@ export function MeetingCard({ meeting, onView, onEdit, onDelete }: MeetingCardPr
             />
           </div>
         )}
-
-        <div className="flex gap-2 pt-2">
-          <Button
-            size="sm"
-            variant="glow"
-            onClick={(e) => {
-              e.stopPropagation();
-              onView(meeting);
-            }}
-            className="flex-1 shadow-md"
-          >
-            View Details
-          </Button>
-          <Button
-            size="sm"
-            variant="glass"
-            onClick={(e) => {
-              e.stopPropagation();
-              onEdit(meeting);
-            }}
-            className="hover:bg-purple-500/10 hover:border-purple-400/50 hover:text-purple-300"
-          >
-            Edit
-          </Button>
-          <Button
-            size="sm"
-            variant="glass"
-            onClick={(e) => {
-              e.stopPropagation();
-              onDelete(meeting.id);
-            }}
-            className="hover:bg-red-500/10 hover:border-red-400/50 hover:text-red-300"
-          >
-            Delete
-          </Button>
-        </div>
       </CardContent>
     </Card>
   );
