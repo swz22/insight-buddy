@@ -65,7 +65,6 @@ export async function POST(request: Request, { params: paramsPromise }: RoutePar
         transcript = await assemblyAI.getTranscription(meeting.transcript_id);
       } catch (error) {
         console.error("Failed to get AssemblyAI transcript:", error);
-        // Fall back to stored transcript
         transcript = {
           id: meeting.transcript_id,
           status: "completed" as const,
@@ -75,7 +74,6 @@ export async function POST(request: Request, { params: paramsPromise }: RoutePar
         };
       }
     } else {
-      // Create mock transcript from stored text
       transcript = {
         id: "stored",
         status: "completed" as const,
@@ -85,7 +83,11 @@ export async function POST(request: Request, { params: paramsPromise }: RoutePar
       };
     }
 
-    const insights = await insightsService.analyzeMeeting(params.id, transcript);
+    const insights = await insightsService.analyzeMeeting(params.id, {
+      text: transcript.text || "",
+      utterances: transcript.utterances || [],
+      audio_duration: transcript.audio_duration,
+    });
 
     const { error: insertError } = await serviceSupabase.from("meeting_insights").insert({
       meeting_id: params.id,
