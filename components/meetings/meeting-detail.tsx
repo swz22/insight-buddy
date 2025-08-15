@@ -293,7 +293,7 @@ export function MeetingDetail({ meeting: initialMeeting }: MeetingDetailProps) {
             <CardTitle className="text-xl font-display">Recording</CardTitle>
           </CardHeader>
           <CardContent>
-            <AudioPlayer url={meeting.audio_url} />
+            <AudioPlayer audioUrl={meeting.audio_url} />
           </CardContent>
         </Card>
       )}
