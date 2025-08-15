@@ -78,6 +78,10 @@ export default function MeetingPage() {
   const [isGeneratingInsights, setIsGeneratingInsights] = useState(false);
   const [currentLanguage, setCurrentLanguage] = useState("en");
   const [isTranslating, setIsTranslating] = useState(false);
+  const [isRegeneratingTranscript, setIsRegeneratingTranscript] = useState(false);
+  const [isRegeneratingSummary, setIsRegeneratingSummary] = useState(false);
+  const [isRegeneratingActions, setIsRegeneratingActions] = useState(false);
+  const [isRegeneratingInsights, setIsRegeneratingInsights] = useState(false);
 
   const { selectedLanguage, translate, availableLanguages } = useTranslation({
     meetingId,
@@ -156,6 +160,110 @@ export default function MeetingPage() {
       toast.error("Failed to translate meeting");
     } finally {
       setIsTranslating(false);
+    }
+  };
+
+  const handleRegenerateTranscript = async () => {
+    if (!meeting.audio_url) {
+      toast.error("No audio file available");
+      return;
+    }
+
+    setIsRegeneratingTranscript(true);
+    try {
+      const response = await fetch(`/api/meetings/${meetingId}/transcribe`, {
+        method: "POST",
+      });
+
+      if (!response.ok) {
+        throw new Error("Failed to regenerate transcript");
+      }
+
+      toast.success("Transcript regeneration started!");
+      window.location.reload();
+    } catch (error) {
+      console.error("Transcript regeneration error:", error);
+      toast.error("Failed to regenerate transcript");
+    } finally {
+      setIsRegeneratingTranscript(false);
+    }
+  };
+
+  const handleRegenerateSummary = async () => {
+    if (!meeting.transcript) {
+      toast.error("Transcript required for summary generation");
+      return;
+    }
+
+    setIsRegeneratingSummary(true);
+    try {
+      const response = await fetch(`/api/meetings/${meetingId}/summarize`, {
+        method: "POST",
+      });
+
+      if (!response.ok) {
+        throw new Error("Failed to regenerate summary");
+      }
+
+      toast.success("Summary regenerated successfully!");
+      window.location.reload();
+    } catch (error) {
+      console.error("Summary regeneration error:", error);
+      toast.error("Failed to regenerate summary");
+    } finally {
+      setIsRegeneratingSummary(false);
+    }
+  };
+
+  const handleRegenerateActions = async () => {
+    if (!meeting.transcript) {
+      toast.error("Transcript required for action items generation");
+      return;
+    }
+
+    setIsRegeneratingActions(true);
+    try {
+      const response = await fetch(`/api/meetings/${meetingId}/summarize`, {
+        method: "POST",
+      });
+
+      if (!response.ok) {
+        throw new Error("Failed to regenerate action items");
+      }
+
+      toast.success("Action items regenerated successfully!");
+      window.location.reload();
+    } catch (error) {
+      console.error("Action items regeneration error:", error);
+      toast.error("Failed to regenerate action items");
+    } finally {
+      setIsRegeneratingActions(false);
+    }
+  };
+
+  const handleRegenerateInsights = async () => {
+    if (!meeting.transcript) {
+      toast.error("Transcript required for insights generation");
+      return;
+    }
+
+    setIsRegeneratingInsights(true);
+    try {
+      const response = await fetch(`/api/meetings/${meetingId}/insights`, {
+        method: "POST",
+      });
+
+      if (!response.ok) {
+        throw new Error("Failed to regenerate insights");
+      }
+
+      toast.success("Insights regenerated successfully!");
+      window.location.reload();
+    } catch (error) {
+      console.error("Insights regeneration error:", error);
+      toast.error("Failed to regenerate insights");
+    } finally {
+      setIsRegeneratingInsights(false);
     }
   };
 
@@ -310,19 +418,67 @@ export default function MeetingPage() {
         </CardHeader>
         <CardContent>
           {activeTab === "transcript" && (
-            <div className="prose prose-invert max-w-none">
-              {displayedContent.transcript ? (
-                <pre className="whitespace-pre-wrap font-sans text-sm text-white/80">{displayedContent.transcript}</pre>
-              ) : (
-                <p className="text-white/40 italic">
-                  {isTranscribing ? "Transcription in progress..." : "No transcript available"}
-                </p>
+            <div className="space-y-4">
+              {meeting.transcript && (
+                <div className="flex justify-end mb-4">
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    onClick={handleRegenerateTranscript}
+                    disabled={isRegeneratingTranscript || !meeting.audio_url}
+                  >
+                    {isRegeneratingTranscript ? (
+                      <>
+                        <Loader2 className="w-4 h-4 mr-2 animate-spin" />
+                        Regenerating...
+                      </>
+                    ) : (
+                      <>
+                        <Sparkles className="w-4 h-4 mr-2" />
+                        Regenerate Transcript
+                      </>
+                    )}
+                  </Button>
+                </div>
               )}
+              <div className="prose prose-invert max-w-none">
+                {displayedContent.transcript ? (
+                  <pre className="whitespace-pre-wrap font-sans text-sm text-white/80">
+                    {displayedContent.transcript}
+                  </pre>
+                ) : (
+                  <p className="text-white/40 italic">
+                    {isTranscribing ? "Transcription in progress..." : "No transcript available"}
+                  </p>
+                )}
+              </div>
             </div>
           )}
 
           {activeTab === "summary" && (
             <div className="space-y-6">
+              {displayedContent.summary && (
+                <div className="flex justify-end mb-4">
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    onClick={handleRegenerateSummary}
+                    disabled={isRegeneratingSummary || !meeting.transcript}
+                  >
+                    {isRegeneratingSummary ? (
+                      <>
+                        <Loader2 className="w-4 h-4 mr-2 animate-spin" />
+                        Regenerating...
+                      </>
+                    ) : (
+                      <>
+                        <Sparkles className="w-4 h-4 mr-2" />
+                        Regenerate Summary
+                      </>
+                    )}
+                  </Button>
+                </div>
+              )}
               {displayedContent.summary ? (
                 <>
                   <div>
@@ -377,6 +533,28 @@ export default function MeetingPage() {
 
           {activeTab === "actions" && (
             <div className="space-y-4">
+              {meeting.action_items && meeting.action_items.length > 0 && (
+                <div className="flex justify-end mb-4">
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    onClick={handleRegenerateActions}
+                    disabled={isRegeneratingActions || !meeting.transcript}
+                  >
+                    {isRegeneratingActions ? (
+                      <>
+                        <Loader2 className="w-4 h-4 mr-2 animate-spin" />
+                        Regenerating...
+                      </>
+                    ) : (
+                      <>
+                        <Sparkles className="w-4 h-4 mr-2" />
+                        Regenerate Actions
+                      </>
+                    )}
+                  </Button>
+                </div>
+              )}
               {meeting.action_items && meeting.action_items.length > 0 ? (
                 meeting.action_items.map((item: any) => (
                   <Card key={item.id} className="bg-white/[0.02] border-white/10">
@@ -410,6 +588,29 @@ export default function MeetingPage() {
 
           {activeTab === "insights" && (
             <div className="space-y-6">
+              {dbInsights && (
+                <div className="flex justify-end mb-4">
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    onClick={handleRegenerateInsights}
+                    disabled={isRegeneratingInsights || !meeting.transcript}
+                  >
+                    {isRegeneratingInsights ? (
+                      <>
+                        <Loader2 className="w-4 h-4 mr-2 animate-spin" />
+                        Regenerating...
+                      </>
+                    ) : (
+                      <>
+                        <Sparkles className="w-4 h-4 mr-2" />
+                        Regenerate Insights
+                      </>
+                    )}
+                  </Button>
+                </div>
+              )}
+
               {!dbInsights && !insightsLoading && meeting.transcript && (
                 <Card className="bg-blue-500/10 border-blue-500/20">
                   <CardContent className="p-6 flex items-center justify-between">
