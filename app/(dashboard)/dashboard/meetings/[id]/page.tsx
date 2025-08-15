@@ -28,6 +28,7 @@ import { useMeetingProcessing } from "@/hooks/use-meeting-processing";
 import { useTranscriptionStatus } from "@/hooks/use-transcription-status";
 import { SpeakerMetricsChart, type SpeakerMetric } from "@/components/insights/speaker-metrics-chart";
 import { SentimentTimeline } from "@/components/insights/sentiment-timeline";
+import { KeyMoments } from "@/components/insights/key-moments";
 import { cn } from "@/lib/utils";
 import { useToast } from "@/hooks/use-toast";
 import { format } from "date-fns";
@@ -69,6 +70,7 @@ export default function MeetingPage() {
   const { insights, isLoading: insightsLoading } = useInsights({ meetingId, enabled: !!meeting });
   const { isTranscribing } = useTranscriptionStatus({ meeting, enabled: !!meeting });
 
+  // Cast insights to the database format
   const dbInsights = insights as DatabaseInsights | null;
 
   const [activeTab, setActiveTab] = useState<"transcript" | "summary" | "actions" | "insights">("transcript");
@@ -532,23 +534,7 @@ export default function MeetingPage() {
 
                   {dbInsights.key_moments &&
                     Array.isArray(dbInsights.key_moments) &&
-                    dbInsights.key_moments.length > 0 && (
-                      <Card className="bg-white/[0.02] backdrop-blur-sm border-white/10">
-                        <CardHeader>
-                          <CardTitle className="text-white">Key Moments</CardTitle>
-                          <CardDescription className="text-white/60">Important points in the meeting</CardDescription>
-                        </CardHeader>
-                        <CardContent>
-                          <div className="space-y-2">
-                            {dbInsights.key_moments.map((moment: any, index: number) => (
-                              <div key={index} className="p-3 bg-white/[0.02] rounded-lg">
-                                <p className="text-sm text-white/80">{moment.description || moment}</p>
-                              </div>
-                            ))}
-                          </div>
-                        </CardContent>
-                      </Card>
-                    )}
+                    dbInsights.key_moments.length > 0 && <KeyMoments moments={dbInsights.key_moments} />}
                 </div>
               )}
 

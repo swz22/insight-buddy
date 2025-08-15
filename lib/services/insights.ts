@@ -496,24 +496,34 @@ export class InsightsService {
     dynamics: ConversationDynamics
   ): KeyMoment[] {
     const keyMoments: KeyMoment[] = [];
+    const processedDescriptions = new Set<string>();
+    const addUniqueKeyMoment = (moment: KeyMoment) => {
+      const descKey = moment.description.toLowerCase().slice(0, 30);
+      if (!processedDescriptions.has(descKey)) {
+        processedDescriptions.add(descKey);
+        keyMoments.push(moment);
+      }
+    };
 
-    if (sentiment.timeline.length > 1) {
-      for (let i = 1; i < sentiment.timeline.length; i++) {
+    if (sentiment.timeline.length > 2) {
+      for (let i = 2; i < sentiment.timeline.length; i++) {
         const prev = sentiment.timeline[i - 1];
         const curr = sentiment.timeline[i];
-        const shift = Math.abs(curr.score - prev.score);
+        const shift = curr.score - prev.score;
 
-        if (shift > 0.4) {
-          keyMoments.push({
+        if (Math.abs(shift) > 0.5) {
+          const shiftType = shift > 0 ? "positive" : "negative";
+          const fromMood = this.getLabel(prev.score);
+          const toMood = this.getLabel(curr.score);
+
+          addUniqueKeyMoment({
             type: "topic_shift",
             timestamp: curr.timestamp,
-            description: `Significant sentiment shift from ${this.getLabel(prev.score)} to ${this.getLabel(
-              curr.score
-            )}`,
+            description: `Mood shifted ${shiftType}ly from ${fromMood} to ${toMood}`,
             participants: [curr.speaker],
             sentiment: {
               score: curr.score,
-              magnitude: Math.abs(curr.score),
+              magnitude: Math.abs(shift),
               label: this.getLabel(curr.score),
             },
           });
@@ -521,48 +531,160 @@ export class InsightsService {
       }
     }
 
-    sentiment.topPositiveSegments.forEach((segment) => {
-      if (segment.sentiment && segment.sentiment.score > 0.6) {
-        keyMoments.push({
+    const engagementPhrases = [
+      "Strong agreement expressed",
+      "Enthusiastic response",
+      "Positive breakthrough moment",
+      "Team alignment achieved",
+      "Excitement about proposal",
+    ];
+
+    sentiment.topPositiveSegments.forEach((segment, index) => {
+      if (segment.sentiment && segment.sentiment.score > 0.5) {
+        const phrase = engagementPhrases[index % engagementPhrases.length];
+        addUniqueKeyMoment({
           type: "high_engagement",
           timestamp: segment.startTime * 1000,
-          description: `High positive engagement: "${segment.text.slice(0, 50)}..."`,
+          description: `${phrase}: "${segment.text.slice(0, 50)}..."`,
           participants: [segment.speaker],
           sentiment: segment.sentiment,
         });
       }
     });
 
-    sentiment.topNegativeSegments.forEach((segment) => {
-      if (segment.sentiment && segment.sentiment.score < -0.4) {
-        keyMoments.push({
+    const concernPhrases = [
+      "Issue identified",
+      "Risk highlighted",
+      "Challenge discussed",
+      "Problem area flagged",
+      "Concern expressed",
+    ];
+
+    sentiment.topNegativeSegments.forEach((segment, index) => {
+      if (segment.sentiment && segment.sentiment.score < -0.3) {
+        const phrase = concernPhrases[index % concernPhrases.length];
+        addUniqueKeyMoment({
           type: "concern_raised",
           timestamp: segment.startTime * 1000,
-          description: `Concern raised: "${segment.text.slice(0, 50)}..."`,
+          description: `${phrase}: "${segment.text.slice(0, 50)}..."`,
           participants: [segment.speaker],
           sentiment: segment.sentiment,
         });
       }
     });
 
-    const decisionKeywords = ["decided", "agreed", "will", "plan to", "commit", "approve"];
+    const decisionPatterns = [
+      { keywords: ["decided", "decision", "conclude"], prefix: "Decision made" },
+      { keywords: ["agreed", "agreement", "consensus"], prefix: "Agreement reached" },
+      { keywords: ["will", "going to", "plan to"], prefix: "Action planned" },
+      { keywords: ["approve", "approved", "authorization"], prefix: "Approval given" },
+      { keywords: ["commit", "committed", "promise"], prefix: "Commitment made" },
+    ];
+
     utterances.forEach((utterance) => {
       const lowerText = utterance.text.toLowerCase();
-      if (decisionKeywords.some((keyword) => lowerText.includes(keyword))) {
-        keyMoments.push({
-          type: "decision_point",
-          timestamp: utterance.start,
-          description: `Potential decision: "${utterance.text.slice(0, 60)}..."`,
-          participants: [utterance.speaker],
+
+      for (const pattern of decisionPatterns) {
+        if (pattern.keywords.some((keyword) => lowerText.includes(keyword))) {
+          const excerpt = utterance.text.split(/[.!?]/)[0].trim();
+          if (excerpt.length > 20) {
+            addUniqueKeyMoment({
+              type: "decision_point",
+              timestamp: utterance.start,
+              description: `${pattern.prefix}: "${excerpt.slice(0, 60)}..."`,
+              participants: [utterance.speaker],
+              sentiment: {
+                score: 0.3,
+                magnitude: 0.7,
+                label: "positive",
+              },
+            });
+            break;
+          }
+        }
+      }
+    });
+
+    const actionPatterns = [
+      { keywords: ["need to", "needs to", "have to"], prefix: "Task identified" },
+      { keywords: ["follow up", "follow-up", "check on"], prefix: "Follow-up needed" },
+      { keywords: ["deadline", "by tomorrow", "by next"], prefix: "Time-sensitive task" },
+      { keywords: ["assign", "responsible", "owner"], prefix: "Assignment made" },
+    ];
+
+    utterances.forEach((utterance) => {
+      const lowerText = utterance.text.toLowerCase();
+
+      for (const pattern of actionPatterns) {
+        if (pattern.keywords.some((keyword) => lowerText.includes(keyword))) {
+          const excerpt = utterance.text.split(/[.!?]/)[0].trim();
+          if (excerpt.length > 20 && !keyMoments.some((km) => km.timestamp === utterance.start)) {
+            addUniqueKeyMoment({
+              type: "action_item",
+              timestamp: utterance.start,
+              description: `${pattern.prefix}: "${excerpt.slice(0, 60)}..."`,
+              participants: [utterance.speaker],
+              sentiment: {
+                score: 0,
+                magnitude: 0.5,
+                label: "neutral",
+              },
+            });
+            break;
+          }
+        }
+      }
+    });
+
+    if (dynamics.interruptionEvents.length > 2) {
+      const interruptionClusters: InterruptionEvent[][] = [];
+      let currentCluster: InterruptionEvent[] = [];
+
+      dynamics.interruptionEvents.forEach((event, index) => {
+        if (currentCluster.length === 0) {
+          currentCluster.push(event);
+        } else {
+          const lastEvent = currentCluster[currentCluster.length - 1];
+          if (event.timestamp - lastEvent.timestamp < 30000) {
+            currentCluster.push(event);
+          } else {
+            if (currentCluster.length > 2) {
+              interruptionClusters.push([...currentCluster]);
+            }
+            currentCluster = [event];
+          }
+        }
+      });
+
+      if (currentCluster.length > 2) {
+        interruptionClusters.push(currentCluster);
+      }
+
+      interruptionClusters.slice(0, 2).forEach((cluster, index) => {
+        const participants = [...new Set(cluster.flatMap((e) => [e.interrupter, e.interrupted]))];
+        addUniqueKeyMoment({
+          type: "high_engagement",
+          timestamp: cluster[0].timestamp,
+          description: `Heated discussion with ${cluster.length} interruptions`,
+          participants: participants.slice(0, 3),
           sentiment: {
-            score: 0,
-            magnitude: 0,
+            score: -0.1,
+            magnitude: 0.8,
             label: "neutral",
           },
         });
-      }
-    });
+      });
+    }
 
-    return keyMoments.sort((a, b) => a.timestamp - b.timestamp).slice(0, 10);
+    const sortedMoments = keyMoments
+      .sort((a, b) => a.timestamp - b.timestamp)
+      .filter((moment, index, array) => {
+        if (index === 0) return true;
+        const prevMoment = array[index - 1];
+        const timeDiff = Math.abs(moment.timestamp - prevMoment.timestamp);
+        return !(moment.type === prevMoment.type && timeDiff < 10000);
+      });
+
+    return sortedMoments.slice(0, 15);
   }
 }
