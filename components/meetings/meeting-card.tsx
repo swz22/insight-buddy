@@ -101,7 +101,7 @@ export function MeetingCard({ meeting, onView, onEdit, onDelete, onShare }: Meet
         document.removeEventListener("mouseup", handleProgressMouseUp);
       };
     }
-  }, [isDragging]);
+  }, [isDragging, duration]);
 
   const handleEdit = (e: React.MouseEvent) => {
     e.stopPropagation();
