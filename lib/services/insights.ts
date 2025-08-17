@@ -76,14 +76,14 @@ export class InsightsService {
         const seconds = parseInt(timestampMatch[2]);
         currentTime = minutes * 60 + seconds;
         utterances.push({
-          speaker: timestampMatch[3],
+          speaker: `Speaker ${timestampMatch[3]}`,
           text: timestampMatch[4],
           start: currentTime,
           end: currentTime + avgSecondsPerLine,
         });
       } else if (simpleMatch) {
         utterances.push({
-          speaker: simpleMatch[1],
+          speaker: `Speaker ${simpleMatch[1]}`,
           text: simpleMatch[2],
           start: currentTime,
           end: currentTime + avgSecondsPerLine,
@@ -257,7 +257,7 @@ Labels: very_negative (-1 to -0.6), negative (-0.6 to -0.2), neutral (-0.2 to 0.
     systemPrompt: string
   ): Promise<{ segments: { text: string; score: number; label: string }[]; overall_score: number }> {
     const userPrompt = `Analyze the sentiment of these conversation segments:\n\n${utterances
-      .map((u, i) => `${i + 1}. Speaker ${u.speaker}: "${u.text}"`)
+      .map((u, i) => `${i + 1}. ${u.speaker}: "${u.text}"`)
       .join("\n")}`;
 
     const response = await this.callOpenAI<any>({
@@ -334,7 +334,7 @@ Response must be valid JSON array:
   {
     "type": "decision_point",
     "description": "Team decided to...",
-    "speaker": "A",
+    "speaker": "Speaker A",
     "importance": 0.8
   }
 ]
@@ -348,7 +348,7 @@ Types: high_engagement, topic_shift, decision_point, action_item, concern_raised
       for (let i = 0; i < chunks.length; i++) {
         const chunk = chunks[i];
         const userPrompt = `Identify key moments in this conversation:\n\n${chunk
-          .map((u, idx) => `Speaker ${u.speaker}: "${u.text}"`)
+          .map((u, idx) => `${u.speaker}: "${u.text}"`)
           .join("\n")}`;
 
         const response = await this.callOpenAI<any[]>({
@@ -490,7 +490,7 @@ Types: high_engagement, topic_shift, decision_point, action_item, concern_raised
   private estimateDuration(text: string): number {
     // Estimate ~150 words per minute speaking rate
     const words = text.split(/\s+/).length;
-    return (words / 150) * 60; // Return seconds
+    return (words / 150) * 60;
   }
 
   private delay(ms: number): Promise<void> {
