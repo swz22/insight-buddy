@@ -12,9 +12,10 @@ interface VirtualMeetingsListProps {
   onView: (meeting: Meeting) => void;
   onEdit: (meeting: Meeting) => void;
   onDelete: (id: string) => void;
+  onShare?: (meeting: Meeting) => void;
 }
 
-export function VirtualMeetingsList({ meetings, onView, onEdit, onDelete }: VirtualMeetingsListProps) {
+export function VirtualMeetingsList({ meetings, onView, onEdit, onDelete, onShare }: VirtualMeetingsListProps) {
   const parentRef = useRef<HTMLDivElement>(null);
 
   const columnCount = 3;
@@ -62,7 +63,13 @@ export function VirtualMeetingsList({ meetings, onView, onEdit, onDelete }: Virt
               <div className="grid gap-6 md:grid-cols-2 lg:grid-cols-3 h-full pr-4">
                 {rowMeetings.map((meeting) => (
                   <div key={meeting.id} className="stagger-animation">
-                    <MeetingCard meeting={meeting} onView={onView} onEdit={onEdit} onDelete={onDelete} />
+                    <MeetingCard
+                      meeting={meeting}
+                      onView={onView}
+                      onEdit={onEdit}
+                      onDelete={onDelete}
+                      onShare={onShare}
+                    />
                   </div>
                 ))}
                 {Array(columnCount - rowMeetings.length)

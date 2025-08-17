@@ -59,6 +59,10 @@ export function MeetingsList({ userEmail }: MeetingsListProps) {
     router.push(`/dashboard/meetings/${meeting.id}?share=true`);
   };
 
+  const handleShare = (meeting: Meeting) => {
+    router.push(`/dashboard/meetings/${meeting.id}?share=true`);
+  };
+
   const handleUpdateSuccess = (updatedMeeting: Meeting) => {
     queryClient.invalidateQueries({ queryKey: ["meetings"] });
     setEditingMeeting(null);
@@ -138,6 +142,7 @@ export function MeetingsList({ userEmail }: MeetingsListProps) {
           onView={handleView}
           onEdit={handleEdit}
           onDelete={handleDelete}
+          onShare={handleShare}
         />
       )}
 
