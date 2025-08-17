@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect, useRef } from "react";
+import { useState, useEffect } from "react";
 import { format } from "date-fns";
 import {
   ArrowLeft,
@@ -45,60 +45,16 @@ export function MeetingDetail({ meeting: initialMeeting }: MeetingDetailProps) {
   const [isShareDialogOpen, setIsShareDialogOpen] = useState(false);
   const [isTranscribing, setIsTranscribing] = useState(false);
   const [isSummarizing, setIsSummarizing] = useState(false);
-  const pollIntervalRef = useRef<NodeJS.Timeout | null>(null);
 
   useEffect(() => {
-    if (meeting.transcript_id && !meeting.transcript) {
-      setIsTranscribing(true);
-      startPolling(meeting.transcript_id);
-    }
-    return () => {
-      if (pollIntervalRef.current) {
-        clearInterval(pollIntervalRef.current);
-      }
-    };
-  }, []);
+    setMeeting(initialMeeting);
+  }, [initialMeeting]);
 
   const formatDuration = (seconds: number | null) => {
     if (!seconds) return "N/A";
     const minutes = Math.floor(seconds / 60);
     const remainingSeconds = seconds % 60;
     return `${minutes}:${remainingSeconds.toString().padStart(2, "0")}`;
-  };
-
-  const startPolling = (transcriptId: string) => {
-    const checkTranscript = async () => {
-      try {
-        const response = await fetch(`/api/meetings/${meeting.id}/transcription-status`);
-
-        if (!response.ok) {
-          throw new Error("Failed to check transcript status");
-        }
-
-        const result = await response.json();
-
-        if (result.status === "completed" && result.hasTranscript) {
-          setIsTranscribing(false);
-          toast.success("Transcript ready!");
-          window.location.reload();
-
-          if (pollIntervalRef.current) {
-            clearInterval(pollIntervalRef.current);
-          }
-        } else if (result.status === "error") {
-          setIsTranscribing(false);
-          toast.error("Transcription failed. Please try again.");
-          if (pollIntervalRef.current) {
-            clearInterval(pollIntervalRef.current);
-          }
-        }
-      } catch (error) {
-        console.error("Polling error:", error);
-      }
-    };
-
-    checkTranscript();
-    pollIntervalRef.current = setInterval(checkTranscript, 5000);
   };
 
   const handleTranscribe = async () => {
@@ -121,7 +77,7 @@ export function MeetingDetail({ meeting: initialMeeting }: MeetingDetailProps) {
       const result = await response.json();
       toast.info("Transcription started. This may take a few minutes.");
       setMeeting((prev) => ({ ...prev, transcript_id: result.transcriptId }));
-      startPolling(result.transcriptId);
+      setIsTranscribing(true);
     } catch (error) {
       console.error("Transcription error:", error);
       toast.error(error instanceof Error ? error.message : "Failed to start transcription");
@@ -242,93 +198,95 @@ export function MeetingDetail({ meeting: initialMeeting }: MeetingDetailProps) {
         </div>
       </div>
 
-      <Card className="shadow-2xl">
+      {/* Meeting Header */}
+      <Card className="bg-white/[0.02] backdrop-blur-sm border-white/10">
         <CardHeader>
-          <CardTitle className="text-3xl font-display gradient-text">{meeting.title}</CardTitle>
-          {meeting.description && (
-            <CardDescription className="text-white/70 text-base mt-2">{meeting.description}</CardDescription>
-          )}
+          <CardTitle className="text-2xl font-display">{meeting.title}</CardTitle>
+          {meeting.description && <CardDescription className="text-white/60">{meeting.description}</CardDescription>}
         </CardHeader>
         <CardContent>
-          <div className="flex flex-wrap gap-6 text-sm">
-            {meeting.recorded_at && (
-              <div className="flex items-center gap-2 text-white/60">
-                <Calendar className="w-4 h-4" />
-                <span>{format(new Date(meeting.recorded_at), "PPP 'at' p")}</span>
+          <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
+            <div className="flex items-center gap-3">
+              <Calendar className="w-5 h-5 text-purple-400" />
+              <div>
+                <p className="text-sm text-white/60">Recorded</p>
+                <p className="font-medium">
+                  {meeting.recorded_at ? format(new Date(meeting.recorded_at), "PPP") : "N/A"}
+                </p>
               </div>
-            )}
-            {meeting.duration && (
-              <div className="flex items-center gap-2 text-white/60">
-                <Clock className="w-4 h-4" />
-                <span>{formatDuration(meeting.duration)}</span>
+            </div>
+            <div className="flex items-center gap-3">
+              <Clock className="w-5 h-5 text-cyan-400" />
+              <div>
+                <p className="text-sm text-white/60">Duration</p>
+                <p className="font-medium">{formatDuration(meeting.duration)}</p>
               </div>
-            )}
-            {meeting.participants && meeting.participants.length > 0 && (
-              <div className="flex items-center gap-2 text-white/60">
-                <Users className="w-4 h-4" />
-                <span>{meeting.participants.join(", ")}</span>
+            </div>
+            <div className="flex items-center gap-3">
+              <Users className="w-5 h-5 text-blue-400" />
+              <div>
+                <p className="text-sm text-white/60">Participants</p>
+                <p className="font-medium">{meeting.participants?.length || 0}</p>
               </div>
-            )}
+            </div>
           </div>
         </CardContent>
       </Card>
 
+      {/* Audio Player */}
       {meeting.audio_url && (
-        <Card className="shadow-xl">
-          <CardHeader>
-            <CardTitle className="text-xl font-display">Recording</CardTitle>
-          </CardHeader>
-          <CardContent>
+        <Card className="bg-white/[0.02] backdrop-blur-sm border-white/10">
+          <CardContent className="p-6">
             <AudioPlayer audioUrl={meeting.audio_url} />
           </CardContent>
         </Card>
       )}
 
-      <Card className="shadow-xl">
-        <CardHeader className="pb-0">
-          <div className="flex gap-1 p-1 bg-white/[0.03] rounded-lg backdrop-blur-sm">
+      {/* Content Tabs */}
+      <Card className="bg-white/[0.02] backdrop-blur-sm border-white/10">
+        <CardHeader>
+          <div className="flex gap-2 flex-wrap">
             {tabs.map((tab) => {
               const Icon = tab.icon;
               return (
-                <button
+                <Button
                   key={tab.id}
+                  variant={activeTab === tab.id ? "glow" : "glass"}
+                  size="sm"
                   onClick={() => setActiveTab(tab.id)}
-                  className={cn(
-                    "flex items-center gap-2 px-4 py-2.5 rounded-md transition-all duration-200 flex-1",
-                    activeTab === tab.id
-                      ? "bg-gradient-to-r from-purple-500 to-cyan-500 text-white shadow-lg"
-                      : "text-white/60 hover:text-white/90 hover:bg-white/[0.05]"
-                  )}
+                  className={cn("transition-all", activeTab === tab.id ? "shadow-lg" : "hover:border-white/30")}
                 >
-                  <Icon className="w-4 h-4" />
-                  <span className="text-sm font-medium">{tab.label}</span>
-                </button>
+                  <Icon className="w-4 h-4 mr-2" />
+                  {tab.label}
+                </Button>
               );
             })}
           </div>
         </CardHeader>
-        <CardContent className="pt-6">
+        <CardContent>
           {activeTab === "transcript" && (
-            <div className="prose prose-invert max-w-none">
-              {meeting.transcript ? (
-                <div className="whitespace-pre-wrap text-white/80 leading-relaxed">{meeting.transcript}</div>
+            <div className="space-y-4">
+              {isTranscribing ? (
+                <div className="text-center py-12">
+                  <Loader2 className="w-8 h-8 animate-spin mx-auto mb-4 text-purple-400" />
+                  <p className="text-white/60">Transcription in progress...</p>
+                  <p className="text-sm text-white/40 mt-2">This may take a few minutes</p>
+                </div>
+              ) : meeting.transcript ? (
+                <div className="prose prose-invert max-w-none">
+                  <div className="bg-white/[0.02] rounded-lg p-6 whitespace-pre-wrap text-white/80 leading-relaxed">
+                    {meeting.transcript}
+                  </div>
+                </div>
               ) : (
                 <div className="text-center py-12">
                   <FileText className="w-12 h-12 text-white/20 mx-auto mb-4" />
-                  <p className="text-white/50 italic mb-4">
-                    Transcript will be available after AI processing is complete.
-                  </p>
-                  {meeting.audio_url && !isTranscribing && !meeting.transcript_id && (
-                    <Button variant="glow" onClick={handleTranscribe} className="shadow-lg">
+                  <p className="text-white/50 italic">No transcript available yet.</p>
+                  {meeting.audio_url && (
+                    <Button variant="glow" onClick={handleTranscribe} className="mt-4 shadow-lg">
                       <Bot className="w-4 h-4 mr-2" />
                       Generate Transcript
                     </Button>
-                  )}
-                  {isTranscribing && (
-                    <div className="flex items-center justify-center gap-2 text-white/60">
-                      <Loader2 className="w-5 h-5 animate-spin" />
-                      <span>Processing audio... This may take a few minutes.</span>
-                    </div>
                   )}
                 </div>
               )}
@@ -336,28 +294,22 @@ export function MeetingDetail({ meeting: initialMeeting }: MeetingDetailProps) {
           )}
 
           {activeTab === "summary" && (
-            <div className="space-y-6">
+            <div className="space-y-4">
               {meeting.summary ? (
-                <>
-                  <div className="space-y-3">
-                    <h3 className="font-semibold text-white/90 flex items-center gap-2">
-                      <div className="w-1 h-4 bg-gradient-to-b from-purple-500 to-cyan-500 rounded-full" />
-                      Overview
-                    </h3>
-                    <p className="text-white/70 leading-relaxed pl-6">{meeting.summary.overview}</p>
+                <div className="space-y-6">
+                  <div>
+                    <h4 className="text-sm font-semibold text-white/60 uppercase tracking-wider mb-3">Overview</h4>
+                    <p className="text-white/80 leading-relaxed">{meeting.summary.overview}</p>
                   </div>
 
                   {meeting.summary.key_points && meeting.summary.key_points.length > 0 && (
-                    <div className="space-y-3">
-                      <h3 className="font-semibold text-white/90 flex items-center gap-2">
-                        <div className="w-1 h-4 bg-gradient-to-b from-purple-500 to-cyan-500 rounded-full" />
-                        Key Points
-                      </h3>
-                      <ul className="space-y-2 pl-6">
-                        {meeting.summary.key_points.map((point, index) => (
-                          <li key={index} className="text-white/70 flex items-start gap-2">
+                    <div>
+                      <h4 className="text-sm font-semibold text-white/60 uppercase tracking-wider mb-3">Key Points</h4>
+                      <ul className="space-y-2">
+                        {meeting.summary.key_points.map((point: string, index: number) => (
+                          <li key={index} className="flex items-start gap-2">
                             <span className="text-cyan-400 mt-1">•</span>
-                            <span className="leading-relaxed">{point}</span>
+                            <span className="text-white/80">{point}</span>
                           </li>
                         ))}
                       </ul>
@@ -365,16 +317,13 @@ export function MeetingDetail({ meeting: initialMeeting }: MeetingDetailProps) {
                   )}
 
                   {meeting.summary.decisions && meeting.summary.decisions.length > 0 && (
-                    <div className="space-y-3">
-                      <h3 className="font-semibold text-white/90 flex items-center gap-2">
-                        <div className="w-1 h-4 bg-gradient-to-b from-purple-500 to-cyan-500 rounded-full" />
-                        Decisions Made
-                      </h3>
-                      <ul className="space-y-2 pl-6">
-                        {meeting.summary.decisions.map((decision, index) => (
-                          <li key={index} className="text-white/70 flex items-start gap-2">
-                            <span className="text-green-400 mt-1">✓</span>
-                            <span className="leading-relaxed">{decision}</span>
+                    <div>
+                      <h4 className="text-sm font-semibold text-white/60 uppercase tracking-wider mb-3">Decisions</h4>
+                      <ul className="space-y-2">
+                        {meeting.summary.decisions.map((decision: string, index: number) => (
+                          <li key={index} className="flex items-start gap-2">
+                            <span className="text-purple-400 mt-1">✓</span>
+                            <span className="text-white/80">{decision}</span>
                           </li>
                         ))}
                       </ul>
@@ -382,54 +331,42 @@ export function MeetingDetail({ meeting: initialMeeting }: MeetingDetailProps) {
                   )}
 
                   {meeting.summary.next_steps && meeting.summary.next_steps.length > 0 && (
-                    <div className="space-y-3">
-                      <h3 className="font-semibold text-white/90 flex items-center gap-2">
-                        <div className="w-1 h-4 bg-gradient-to-b from-purple-500 to-cyan-500 rounded-full" />
-                        Next Steps
-                      </h3>
-                      <ul className="space-y-2 pl-6">
-                        {meeting.summary.next_steps.map((step, index) => (
-                          <li key={index} className="text-white/70 flex items-start gap-2">
-                            <span className="text-purple-400 mt-1">→</span>
-                            <span className="leading-relaxed">{step}</span>
+                    <div>
+                      <h4 className="text-sm font-semibold text-white/60 uppercase tracking-wider mb-3">Next Steps</h4>
+                      <ul className="space-y-2">
+                        {meeting.summary.next_steps.map((step: string, index: number) => (
+                          <li key={index} className="flex items-start gap-2">
+                            <span className="text-blue-400 mt-1">→</span>
+                            <span className="text-white/80">{step}</span>
                           </li>
                         ))}
                       </ul>
                     </div>
                   )}
-                </>
+                </div>
               ) : (
                 <div className="text-center py-12">
                   <Lightbulb className="w-12 h-12 text-white/20 mx-auto mb-4" />
-                  <p className="text-white/50 italic mb-4">
-                    Summary will be available after AI processing is complete.
-                  </p>
-                  {meeting.transcript && !isSummarizing && (
-                    <Button variant="glow" onClick={() => handleSummarize()} className="shadow-lg">
+                  <p className="text-white/50 italic">AI summary will be generated after transcription is complete.</p>
+                  {meeting.transcript && (
+                    <Button variant="glow" onClick={() => handleSummarize()} className="mt-4 shadow-lg">
                       <Bot className="w-4 h-4 mr-2" />
                       Generate Summary
                     </Button>
                   )}
-                  {isSummarizing && (
-                    <div className="flex items-center justify-center gap-2 text-white/60">
-                      <Loader2 className="w-5 h-5 animate-spin" />
-                      <span>Generating AI summary...</span>
-                    </div>
-                  )}
-                  {!meeting.transcript && <p className="text-white/40 text-sm mt-2">Transcript required first</p>}
                 </div>
               )}
             </div>
           )}
 
           {activeTab === "actions" && (
-            <div className="space-y-3">
+            <div className="space-y-4">
               {meeting.action_items && meeting.action_items.length > 0 ? (
-                meeting.action_items.map((item) => (
+                meeting.action_items.map((item, index) => (
                   <div
-                    key={item.id}
+                    key={item.id || index}
                     className={cn(
-                      "p-4 rounded-lg border transition-all duration-200",
+                      "p-4 rounded-lg border transition-all",
                       item.completed
                         ? "bg-white/[0.02] border-white/10 opacity-60"
                         : "bg-white/[0.03] border-white/20 hover:border-white/30"
