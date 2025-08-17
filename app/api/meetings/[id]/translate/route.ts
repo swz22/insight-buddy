@@ -1,9 +1,7 @@
 import { createClient } from "@/lib/supabase/server";
 import { createServiceRoleClient } from "@/lib/supabase/service";
 import { apiError, apiSuccess } from "@/lib/api/response";
-import { TranslationService } from "@/lib/services/translation";
 import { z } from "zod";
-import { validateRequest } from "@/lib/validations/utils";
 
 export const dynamic = "force-dynamic";
 
@@ -13,9 +11,9 @@ interface RouteParams {
   }>;
 }
 
-const translateRequestSchema = z.object({
+const translateSchema = z.object({
   targetLanguage: z.string().min(2).max(5),
-  forceRetranslate: z.boolean().optional().default(false),
+  forceRetranslate: z.boolean().optional(),
 });
 
 export async function POST(request: Request, { params: paramsPromise }: RouteParams) {
@@ -32,9 +30,10 @@ export async function POST(request: Request, { params: paramsPromise }: RoutePar
     }
 
     const body = await request.json();
-    const validation = validateRequest(translateRequestSchema, body);
+    const validation = translateSchema.safeParse(body);
+
     if (!validation.success) {
-      return validation.error;
+      return apiError("Invalid request", 400, "VALIDATION_ERROR", validation.error.issues[0].message);
     }
 
     const { targetLanguage, forceRetranslate } = validation.data;
@@ -64,51 +63,11 @@ export async function POST(request: Request, { params: paramsPromise }: RoutePar
       });
     }
 
-    if (!process.env.HUGGINGFACE_API_KEY) {
+    if (!process.env.OPENAI_API_KEY) {
       return apiError("Translation service not configured", 503, "SERVICE_UNAVAILABLE");
     }
 
-    const translationService = new TranslationService(process.env.HUGGINGFACE_API_KEY);
-
-    const sourceLanguage = meeting.language || "en";
-
-    const translation = await translationService.translateMeetingContent(
-      {
-        title: meeting.title,
-        description: meeting.description,
-        transcript: meeting.transcript,
-        summary: meeting.summary,
-      },
-      targetLanguage,
-      sourceLanguage
-    );
-
-    const updatedTranslations = {
-      ...(meeting.translations || {}),
-      [targetLanguage]: translation,
-    };
-
-    const { error: updateError } = await serviceSupabase
-      .from("meetings")
-      .update({
-        translations: updatedTranslations,
-        updated_at: new Date().toISOString(),
-      })
-      .eq("id", params.id);
-
-    if (updateError) {
-      console.error("Failed to save translation:", updateError);
-      return apiSuccess({
-        translation,
-        cached: false,
-        warning: "Translation completed but not saved",
-      });
-    }
-
-    return apiSuccess({
-      translation,
-      cached: false,
-    });
+    return apiError("Translation temporarily unavailable", 503, "SERVICE_UNAVAILABLE");
   } catch (error) {
     console.error("Translation error:", error);
     return apiError(
