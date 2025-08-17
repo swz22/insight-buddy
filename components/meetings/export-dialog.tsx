@@ -81,18 +81,15 @@ export function ExportDialog({ meeting, userEmail, insights, isOpen, onClose }: 
           throw new Error("Please enter a valid email address");
         }
 
-        const response = await fetch("/api/meetings/export/email", {
+        const response = await fetch(`/api/meetings/${meeting.id}/export`, {
           method: "POST",
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({
-            meetingId: meeting.id,
-            recipientEmails: [recipientEmail],
             format: selectedFormat,
             sections,
-            customMessage: customMessage || undefined,
-            exportedBy: {
-              email: userEmail,
-            },
+            delivery: "email",
+            recipientEmail,
+            customMessage,
           }),
         });
 
@@ -101,7 +98,7 @@ export function ExportDialog({ meeting, userEmail, insights, isOpen, onClose }: 
           throw new Error(error.error || "Failed to send email");
         }
 
-        toast.success("Export sent to email successfully!");
+        toast.success("Export sent to " + recipientEmail);
         onClose();
       }
     } catch (error) {
@@ -123,7 +120,7 @@ export function ExportDialog({ meeting, userEmail, insights, isOpen, onClose }: 
 
   return (
     <AnimatePresence>
-      <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
+      <div className="fixed inset-0 z-50 flex items-center justify-center p-6">
         <motion.div
           initial={{ opacity: 0 }}
           animate={{ opacity: 1 }}
@@ -137,15 +134,15 @@ export function ExportDialog({ meeting, userEmail, insights, isOpen, onClose }: 
           animate={{ opacity: 1, scale: 1, y: 0 }}
           exit={{ opacity: 0, scale: 0.95, y: 20 }}
           transition={{ type: "spring", duration: 0.3 }}
-          className="relative bg-black/90 backdrop-blur-xl rounded-xl shadow-2xl w-full max-w-2xl max-h-[90vh] border border-white/10 overflow-hidden flex flex-col"
+          className="relative bg-black/90 backdrop-blur-xl rounded-xl shadow-2xl w-full max-w-2xl border border-white/10 overflow-hidden flex flex-col mt-20"
         >
-          <div className="flex items-center justify-between p-6 border-b border-white/10">
+          <div className="flex items-center justify-between p-4 border-b border-white/10">
             <div>
-              <h2 className="text-xl font-semibold font-display text-white flex items-center gap-2">
+              <h2 className="text-lg font-semibold font-display text-white flex items-center gap-2">
                 <Download className="w-5 h-5" />
                 Export <span className="gradient-text">Meeting</span>
               </h2>
-              <p className="text-sm text-white/60 mt-1">{meeting.title}</p>
+              <p className="text-xs text-white/60 mt-0.5">{meeting.title}</p>
             </div>
             <button
               onClick={onClose}
@@ -155,11 +152,11 @@ export function ExportDialog({ meeting, userEmail, insights, isOpen, onClose }: 
             </button>
           </div>
 
-          <div className="flex-1 overflow-y-auto p-6">
-            <div className="space-y-6">
+          <div className="flex-1 overflow-y-auto p-4">
+            <div className="space-y-4">
               <div>
-                <h3 className="text-sm font-medium text-white/90 mb-3">Select Format</h3>
-                <div className="grid grid-cols-3 gap-3">
+                <h3 className="text-sm font-medium text-white/90 mb-2">Select Format</h3>
+                <div className="grid grid-cols-3 gap-2">
                   {formats.map((format) => {
                     const Icon = format.icon;
                     return (
@@ -167,7 +164,7 @@ export function ExportDialog({ meeting, userEmail, insights, isOpen, onClose }: 
                         key={format.value}
                         onClick={() => setSelectedFormat(format.value)}
                         className={cn(
-                          "p-4 rounded-lg border transition-all duration-200 text-center group",
+                          "p-3 rounded-lg border transition-all duration-200 text-center group",
                           selectedFormat === format.value
                             ? "bg-white/[0.08] border-purple-400/60 shadow-lg"
                             : "bg-white/[0.03] border-white/20 hover:border-white/30 hover:bg-white/[0.05]"
@@ -175,7 +172,7 @@ export function ExportDialog({ meeting, userEmail, insights, isOpen, onClose }: 
                       >
                         <Icon
                           className={cn(
-                            "w-8 h-8 mx-auto mb-2 transition-colors",
+                            "w-6 h-6 mx-auto mb-1 transition-colors",
                             selectedFormat === format.value
                               ? "text-purple-400"
                               : "text-white/50 group-hover:text-white/70"
@@ -197,8 +194,8 @@ export function ExportDialog({ meeting, userEmail, insights, isOpen, onClose }: 
               </div>
 
               <div>
-                <h3 className="text-sm font-medium text-white/90 mb-3">Include Sections</h3>
-                <div className="space-y-3">
+                <h3 className="text-sm font-medium text-white/90 mb-2">Include Sections</h3>
+                <div className="space-y-2">
                   {Object.entries({
                     metadata: "Meeting Details",
                     summary: "Summary",
@@ -211,7 +208,7 @@ export function ExportDialog({ meeting, userEmail, insights, isOpen, onClose }: 
                       <label
                         key={key}
                         className={cn(
-                          "flex items-center gap-3 p-3 rounded-lg bg-white/[0.03] border border-white/20 cursor-pointer hover:border-white/30 hover:bg-white/[0.05] transition-all",
+                          "flex items-center gap-3 p-2.5 rounded-lg bg-white/[0.03] border border-white/20 cursor-pointer hover:border-white/30 hover:bg-white/[0.05] transition-all",
                           isDisabled && "opacity-50 cursor-not-allowed"
                         )}
                       >
@@ -231,12 +228,12 @@ export function ExportDialog({ meeting, userEmail, insights, isOpen, onClose }: 
               </div>
 
               <div>
-                <h3 className="text-sm font-medium text-white/90 mb-3">Delivery Method</h3>
-                <div className="grid grid-cols-2 gap-3">
+                <h3 className="text-sm font-medium text-white/90 mb-2">Delivery Method</h3>
+                <div className="grid grid-cols-2 gap-2">
                   <button
                     onClick={() => setDeliveryMethod("download")}
                     className={cn(
-                      "p-4 rounded-lg border transition-all duration-200 group",
+                      "p-3 rounded-lg border transition-all duration-200 group",
                       deliveryMethod === "download"
                         ? "bg-white/[0.08] border-purple-400/60 shadow-lg"
                         : "bg-white/[0.03] border-white/20 hover:border-white/30 hover:bg-white/[0.05]"
@@ -244,7 +241,7 @@ export function ExportDialog({ meeting, userEmail, insights, isOpen, onClose }: 
                   >
                     <Download
                       className={cn(
-                        "w-6 h-6 mx-auto mb-2 transition-colors",
+                        "w-5 h-5 mx-auto mb-1 transition-colors",
                         deliveryMethod === "download" ? "text-purple-400" : "text-white/50 group-hover:text-white/70"
                       )}
                     />
@@ -268,7 +265,7 @@ export function ExportDialog({ meeting, userEmail, insights, isOpen, onClose }: 
                   >
                     <Mail
                       className={cn(
-                        "w-6 h-6 mx-auto mb-2 transition-colors",
+                        "w-5 h-5 mx-auto mb-1 transition-colors",
                         deliveryMethod === "email" ? "text-purple-400" : "text-white/50 group-hover:text-white/70"
                       )}
                     />
@@ -281,7 +278,7 @@ export function ExportDialog({ meeting, userEmail, insights, isOpen, onClose }: 
                 </div>
 
                 {deliveryMethod === "email" && (
-                  <div className="mt-4 space-y-3">
+                  <div className="mt-3 space-y-2">
                     <div>
                       <label className="block text-sm text-white/70 mb-2">Email Address</label>
                       <Input
@@ -298,7 +295,7 @@ export function ExportDialog({ meeting, userEmail, insights, isOpen, onClose }: 
                         value={customMessage}
                         onChange={(e) => setCustomMessage(e.target.value)}
                         placeholder="Add a personal message..."
-                        rows={3}
+                        rows={2}
                         className="w-full px-3 py-2 rounded-lg bg-white/[0.03] backdrop-blur-sm border border-white/20 text-white placeholder:text-white/40 focus:outline-none focus:border-purple-400/60 focus:bg-white/[0.05] hover:border-white/30 hover:bg-white/[0.04] transition-all duration-200 resize-none"
                       />
                     </div>
@@ -308,7 +305,7 @@ export function ExportDialog({ meeting, userEmail, insights, isOpen, onClose }: 
             </div>
           </div>
 
-          <div className="flex gap-3 p-6 border-t border-white/10">
+          <div className="flex gap-2 p-4 border-t border-white/10">
             <Button
               onClick={handleExport}
               variant="glow"
