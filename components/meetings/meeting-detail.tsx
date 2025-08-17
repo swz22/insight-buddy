@@ -69,11 +69,7 @@ export function MeetingDetail({ meeting: initialMeeting }: MeetingDetailProps) {
   const startPolling = (transcriptId: string) => {
     const checkTranscript = async () => {
       try {
-        const response = await fetch(`/api/meetings/${meeting.id}/check-transcript`, {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ transcriptId }),
-        });
+        const response = await fetch(`/api/meetings/${meeting.id}/transcription-status`);
 
         if (!response.ok) {
           throw new Error("Failed to check transcript status");
@@ -81,17 +77,13 @@ export function MeetingDetail({ meeting: initialMeeting }: MeetingDetailProps) {
 
         const result = await response.json();
 
-        if (result.status === "completed" && result.transcript) {
-          setMeeting((prev) => ({ ...prev, transcript: result.transcript, transcript_id: null }));
+        if (result.status === "completed" && result.hasTranscript) {
           setIsTranscribing(false);
           toast.success("Transcript ready!");
+          window.location.reload();
 
           if (pollIntervalRef.current) {
             clearInterval(pollIntervalRef.current);
-          }
-
-          if (process.env.NEXT_PUBLIC_HUGGINGFACE_API_KEY || process.env.HUGGINGFACE_API_KEY) {
-            await handleSummarize({ ...meeting, transcript: result.transcript });
           }
         } else if (result.status === "error") {
           setIsTranscribing(false);
@@ -157,14 +149,8 @@ export function MeetingDetail({ meeting: initialMeeting }: MeetingDetailProps) {
       }
 
       const result = await response.json();
-
-      // Refresh meeting data
-      const meetingResponse = await fetch(`/api/meetings/${meetingToUse.id}`);
-      const updatedMeeting = await meetingResponse.json();
-      if (updatedMeeting) {
-        setMeeting(updatedMeeting);
-        toast.success(result.fallback ? "Basic summary generated" : "AI summary generated!");
-      }
+      toast.success("AI summary generated!");
+      window.location.reload();
     } catch (error) {
       console.error("Summarization error:", error);
       toast.error(error instanceof Error ? error.message : "Failed to generate summary");
@@ -342,17 +328,6 @@ export function MeetingDetail({ meeting: initialMeeting }: MeetingDetailProps) {
                     <div className="flex items-center justify-center gap-2 text-white/60">
                       <Loader2 className="w-5 h-5 animate-spin" />
                       <span>Processing audio... This may take a few minutes.</span>
-                      {meeting.transcript_id && (
-                        <span className="text-xs text-white/40">(ID: {meeting.transcript_id.substring(0, 8)}...)</span>
-                      )}
-                    </div>
-                  )}
-                  {!isTranscribing && meeting.transcript_id && (
-                    <div className="text-center">
-                      <p className="text-sm text-white/50 mb-4">Transcription in progress. Please wait...</p>
-                      <Button variant="outline" size="sm" onClick={() => window.location.reload()} className="mr-2">
-                        Refresh Page
-                      </Button>
                     </div>
                   )}
                 </div>
@@ -372,7 +347,7 @@ export function MeetingDetail({ meeting: initialMeeting }: MeetingDetailProps) {
                     <p className="text-white/70 leading-relaxed pl-6">{meeting.summary.overview}</p>
                   </div>
 
-                  {meeting.summary.key_points.length > 0 && (
+                  {meeting.summary.key_points && meeting.summary.key_points.length > 0 && (
                     <div className="space-y-3">
                       <h3 className="font-semibold text-white/90 flex items-center gap-2">
                         <div className="w-1 h-4 bg-gradient-to-b from-purple-500 to-cyan-500 rounded-full" />
@@ -381,7 +356,7 @@ export function MeetingDetail({ meeting: initialMeeting }: MeetingDetailProps) {
                       <ul className="space-y-2 pl-6">
                         {meeting.summary.key_points.map((point, index) => (
                           <li key={index} className="text-white/70 flex items-start gap-2">
-                            <span className="text-purple-400 mt-1">•</span>
+                            <span className="text-cyan-400 mt-1">•</span>
                             <span className="leading-relaxed">{point}</span>
                           </li>
                         ))}
@@ -389,7 +364,7 @@ export function MeetingDetail({ meeting: initialMeeting }: MeetingDetailProps) {
                     </div>
                   )}
 
-                  {meeting.summary.decisions.length > 0 && (
+                  {meeting.summary.decisions && meeting.summary.decisions.length > 0 && (
                     <div className="space-y-3">
                       <h3 className="font-semibold text-white/90 flex items-center gap-2">
                         <div className="w-1 h-4 bg-gradient-to-b from-purple-500 to-cyan-500 rounded-full" />
@@ -398,7 +373,7 @@ export function MeetingDetail({ meeting: initialMeeting }: MeetingDetailProps) {
                       <ul className="space-y-2 pl-6">
                         {meeting.summary.decisions.map((decision, index) => (
                           <li key={index} className="text-white/70 flex items-start gap-2">
-                            <span className="text-cyan-400 mt-1">•</span>
+                            <span className="text-green-400 mt-1">✓</span>
                             <span className="leading-relaxed">{decision}</span>
                           </li>
                         ))}
@@ -406,7 +381,7 @@ export function MeetingDetail({ meeting: initialMeeting }: MeetingDetailProps) {
                     </div>
                   )}
 
-                  {meeting.summary.next_steps.length > 0 && (
+                  {meeting.summary.next_steps && meeting.summary.next_steps.length > 0 && (
                     <div className="space-y-3">
                       <h3 className="font-semibold text-white/90 flex items-center gap-2">
                         <div className="w-1 h-4 bg-gradient-to-b from-purple-500 to-cyan-500 rounded-full" />
@@ -415,7 +390,7 @@ export function MeetingDetail({ meeting: initialMeeting }: MeetingDetailProps) {
                       <ul className="space-y-2 pl-6">
                         {meeting.summary.next_steps.map((step, index) => (
                           <li key={index} className="text-white/70 flex items-start gap-2">
-                            <span className="text-green-400 mt-1">→</span>
+                            <span className="text-purple-400 mt-1">→</span>
                             <span className="leading-relaxed">{step}</span>
                           </li>
                         ))}

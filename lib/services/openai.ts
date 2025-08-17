@@ -22,16 +22,31 @@ export class OpenAIService {
   }
 
   async generateSummary(transcript: string, participants: string[] = []): Promise<MeetingSummary> {
-    const systemPrompt = `You are an expert meeting analyst. Analyze the provided meeting transcript and generate a structured summary.
-Focus on extracting actionable insights, key decisions, and next steps.
-Be concise but comprehensive. Extract actual content from the meeting, not generic observations.`;
+    const systemPrompt = `You are an expert meeting analyst specializing in extracting actionable insights from transcripts.
 
-    const userPrompt = `Meeting Participants: ${participants.join(", ") || "Unknown"}
+Your analysis should:
+- Focus on concrete outcomes, decisions, and action items
+- Capture the essence of discussions without being too verbose
+- Identify key themes and important points raised
+- Highlight any unresolved issues or open questions
+- Be specific and avoid generic statements
+
+Important guidelines:
+- The overview should capture the meeting's purpose and main outcome in 2-3 sentences
+- Key points should be specific topics discussed, not obvious statements
+- Decisions should be concrete agreements or conclusions reached
+- Next steps should be actionable items that emerged from the discussion`;
+
+    const userPrompt = `Analyze this meeting transcript and provide a structured summary.
+
+Meeting Context:
+- Participants: ${participants.length > 0 ? participants.join(", ") : "Not specified"}
+- Total Speakers: ${this.countSpeakers(transcript)}
 
 Transcript:
 ${transcript}
 
-Generate a structured summary following the exact JSON schema provided.`;
+Focus on extracting specific, actionable content from what was actually discussed.`;
 
     try {
       const response = await this.callOpenAI<MeetingSummary>({
@@ -92,32 +107,37 @@ Generate a structured summary following the exact JSON schema provided.`;
     participants: string[] = []
   ): Promise<ActionItem[]> {
     const systemPrompt = `You are an expert at extracting actionable tasks from meeting transcripts.
-Extract specific, clear action items with assignees when mentioned.
-Prioritize tasks based on urgency and importance discussed in the meeting.
-If a due date is mentioned or implied, include it in ISO format.`;
 
-    const userPrompt = `Meeting Participants: ${participants.join(", ") || "Unknown"}
+Your task extraction should:
+- Identify specific, measurable tasks that need to be completed
+- Assign tasks to specific people when they volunteer or are assigned in the meeting
+- Determine priority based on urgency expressed in the discussion
+- Extract any mentioned deadlines or timeframes
+- Include relevant context to make the task clear
 
-Meeting Summary:
-${summary.overview}
+Priority guidelines:
+- High: Urgent tasks, blockers, or items with near-term deadlines
+- Medium: Important tasks with standard timelines
+- Low: Nice-to-have items or long-term considerations
 
-Key Decisions:
-${summary.decisions.join("\n")}
+If no explicit assignee is mentioned, leave it null rather than guessing.`;
 
-Next Steps:
-${summary.next_steps.join("\n")}
+    const userPrompt = `Extract action items from this meeting transcript.
 
-Transcript:
+Meeting Context:
+- Participants: ${participants.length > 0 ? participants.join(", ") : "Not specified"}
+- Meeting Summary: ${summary.overview}
+
+Key Decisions Made:
+${summary.decisions.map((d, i) => `${i + 1}. ${d}`).join("\n")}
+
+Identified Next Steps:
+${summary.next_steps.map((s, i) => `${i + 1}. ${s}`).join("\n")}
+
+Full Transcript:
 ${transcript}
 
-Extract all action items from this meeting. For each action item, identify:
-1. The specific task
-2. Who it's assigned to (if mentioned)
-3. Priority level based on context
-4. Due date if mentioned (in ISO format)
-5. Any additional context
-
-Return as a JSON array of action items.`;
+Extract specific action items with clear ownership and timelines where mentioned.`;
 
     try {
       const response = await this.callOpenAI<{ action_items: ActionItem[] }>({
@@ -176,8 +196,8 @@ Return as a JSON array of action items.`;
       });
 
       const result = actionItemsResponseSchema.parse(response);
-      return result.action_items.map((item) => ({
-        id: crypto.randomUUID(),
+      return result.action_items.map((item, index) => ({
+        id: `${Date.now()}_${index}`,
         task: item.task,
         assignee: item.assignee,
         due_date: item.due_date,
@@ -244,5 +264,17 @@ Return as a JSON array of action items.`;
 
   private delay(ms: number): Promise<void> {
     return new Promise((resolve) => setTimeout(resolve, ms));
+  }
+
+  private countSpeakers(transcript: string): number {
+    const speakerPattern = /Speaker\s+([A-Z])/g;
+    const speakers = new Set<string>();
+    let match;
+
+    while ((match = speakerPattern.exec(transcript)) !== null) {
+      speakers.add(match[1]);
+    }
+
+    return speakers.size || 1;
   }
 }
