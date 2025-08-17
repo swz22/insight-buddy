@@ -17,6 +17,7 @@ import {
   Bot,
   Download,
   Edit2,
+  FileDown,
 } from "lucide-react";
 import Link from "next/link";
 import { Button } from "@/components/ui/button";
@@ -25,6 +26,7 @@ import { useMeeting } from "@/hooks/use-meetings";
 import { AudioPlayer } from "@/components/audio/audio-player";
 import { ShareDialog } from "@/components/meetings/share-dialog";
 import { EditMeetingDialog } from "@/components/meetings/edit-meeting-dialog";
+import { ExportDialog } from "@/components/meetings/export-dialog";
 import { LanguageSelector } from "@/components/ui/language-selector";
 import { useTranslation } from "@/hooks/use-translation";
 import { useInsights } from "@/hooks/use-insights";
@@ -38,6 +40,7 @@ import { cn } from "@/lib/utils";
 import { useToast } from "@/hooks/use-toast";
 import { format } from "date-fns";
 import type { SpeakerMetrics } from "@/types/meeting-insights";
+import { useAuth } from "@/hooks/use-auth";
 
 interface DatabaseInsights {
   id: string;
@@ -68,6 +71,7 @@ export default function MeetingPage() {
   const params = useParams();
   const router = useRouter();
   const toast = useToast();
+  const { user } = useAuth();
   const meetingId = params.id as string;
 
   const {
@@ -81,13 +85,12 @@ export default function MeetingPage() {
   const { isTranscribing } = useTranscriptionStatus({
     meeting,
     enabled: !!meeting && !meeting.transcript && !!meeting.transcript_id,
-    pollingInterval: 30000, // Increase to 30s as backup only
+    pollingInterval: 30000,
     onTranscriptionComplete: () => {
       refetchMeeting();
     },
   });
 
-  // Use Realtime subscriptions for instant updates
   useMeetingRealtime({
     meetingId,
     enabled: !!meeting,
@@ -101,30 +104,17 @@ export default function MeetingPage() {
   const [activeTab, setActiveTab] = useState<"transcript" | "summary" | "actions" | "insights">("transcript");
   const [showShareDialog, setShowShareDialog] = useState(false);
   const [showEditDialog, setShowEditDialog] = useState(false);
+  const [showExportDialog, setShowExportDialog] = useState(false);
   const [isGeneratingInsights, setIsGeneratingInsights] = useState(false);
-  const [currentLanguage, setCurrentLanguage] = useState("en");
-  const [isTranslating, setIsTranslating] = useState(false);
   const [isRegeneratingTranscript, setIsRegeneratingTranscript] = useState(false);
   const [isRegeneratingSummary, setIsRegeneratingSummary] = useState(false);
   const [isRegeneratingActions, setIsRegeneratingActions] = useState(false);
   const [isRegeneratingInsights, setIsRegeneratingInsights] = useState(false);
 
-  const { selectedLanguage, translate, availableLanguages } = useTranslation({
+  const { selectedLanguage, translate, availableLanguages, isTranslating } = useTranslation({
     meetingId,
     enabled: !!meeting && !!meeting.transcript,
   });
-
-  useEffect(() => {
-    if (meeting?.language) {
-      setCurrentLanguage(meeting.language);
-    }
-  }, [meeting]);
-
-  useEffect(() => {
-    if (selectedLanguage) {
-      setCurrentLanguage(selectedLanguage);
-    }
-  }, [selectedLanguage]);
 
   if (meetingLoading) {
     return (
@@ -176,22 +166,18 @@ export default function MeetingPage() {
   };
 
   const handleTranslate = async (targetLanguage: string) => {
-    setIsTranslating(true);
     try {
       await translate(targetLanguage);
-      setCurrentLanguage(targetLanguage);
-      toast.success(`Meeting translated to ${targetLanguage}`);
+      toast.success("Translation completed!");
     } catch (error) {
       console.error("Translation error:", error);
       toast.error("Failed to translate meeting");
-    } finally {
-      setIsTranslating(false);
     }
   };
 
   const handleRegenerateTranscript = async () => {
     if (!meeting.audio_url) {
-      toast.error("No audio file available");
+      toast.error("Audio file required for transcription");
       return;
     }
 
@@ -199,6 +185,8 @@ export default function MeetingPage() {
     try {
       const response = await fetch(`/api/meetings/${meetingId}/transcribe`, {
         method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ regenerate: true }),
       });
 
       if (!response.ok) {
@@ -228,10 +216,10 @@ export default function MeetingPage() {
       });
 
       if (!response.ok) {
-        throw new Error("Failed to generate summary");
+        throw new Error("Failed to regenerate summary");
       }
 
-      toast.success("Summary generated successfully!");
+      toast.success("Summary regenerated successfully!");
       window.location.reload();
     } catch (error) {
       console.error("Summary regeneration error:", error);
@@ -242,14 +230,14 @@ export default function MeetingPage() {
   };
 
   const handleRegenerateActions = async () => {
-    if (!meeting.transcript) {
-      toast.error("Transcript required for action items generation");
+    if (!meeting.summary) {
+      toast.error("Summary required for action items generation");
       return;
     }
 
     setIsRegeneratingActions(true);
     try {
-      const response = await fetch(`/api/meetings/${meetingId}/summarize`, {
+      const response = await fetch(`/api/meetings/${meetingId}/action-items`, {
         method: "POST",
       });
 
@@ -316,7 +304,7 @@ export default function MeetingPage() {
     }));
   };
 
-  const displayedContent = meeting.translations?.[currentLanguage] || {
+  const displayedContent = meeting.translations?.[selectedLanguage] || {
     title: meeting.title,
     description: meeting.description,
     transcript: meeting.transcript,
@@ -358,11 +346,20 @@ export default function MeetingPage() {
               <Edit2 className="w-4 h-4 mr-2" />
               Edit
             </Button>
+            <Button
+              variant="glass"
+              size="sm"
+              onClick={() => setShowExportDialog(true)}
+              className="hover:border-green-400/60"
+            >
+              <FileDown className="w-4 h-4 mr-2" />
+              Export
+            </Button>
             {meeting.audio_url && (
               <Button variant="glass" size="sm" asChild className="hover:border-cyan-400/60">
                 <a href={meeting.audio_url} download>
                   <Download className="w-4 h-4 mr-2" />
-                  Download
+                  Audio
                 </a>
               </Button>
             )}
@@ -425,7 +422,7 @@ export default function MeetingPage() {
               variant={activeTab === "transcript" ? "glow" : "glass"}
               size="sm"
               onClick={() => setActiveTab("transcript")}
-              className={cn("transition-all", activeTab === "transcript" ? "shadow-lg" : "hover:border-purple-400/60")}
+              className={cn("transition-all", activeTab === "transcript" ? "shadow-lg" : "hover:border-white/30")}
             >
               <FileText className="w-4 h-4 mr-2" />
               Transcript
@@ -434,7 +431,7 @@ export default function MeetingPage() {
               variant={activeTab === "summary" ? "glow" : "glass"}
               size="sm"
               onClick={() => setActiveTab("summary")}
-              className={cn("transition-all", activeTab === "summary" ? "shadow-lg" : "hover:border-cyan-400/60")}
+              className={cn("transition-all", activeTab === "summary" ? "shadow-lg" : "hover:border-white/30")}
             >
               <Lightbulb className="w-4 h-4 mr-2" />
               Summary
@@ -443,16 +440,16 @@ export default function MeetingPage() {
               variant={activeTab === "actions" ? "glow" : "glass"}
               size="sm"
               onClick={() => setActiveTab("actions")}
-              className={cn("transition-all", activeTab === "actions" ? "shadow-lg" : "hover:border-blue-400/60")}
+              className={cn("transition-all", activeTab === "actions" ? "shadow-lg" : "hover:border-white/30")}
             >
               <ListChecks className="w-4 h-4 mr-2" />
-              Actions
+              Action Items
             </Button>
             <Button
               variant={activeTab === "insights" ? "glow" : "glass"}
               size="sm"
               onClick={() => setActiveTab("insights")}
-              className={cn("transition-all", activeTab === "insights" ? "shadow-lg" : "hover:border-green-400/60")}
+              className={cn("transition-all", activeTab === "insights" ? "shadow-lg" : "hover:border-white/30")}
             >
               <BarChart3 className="w-4 h-4 mr-2" />
               Insights
@@ -461,7 +458,7 @@ export default function MeetingPage() {
             {meeting.transcript && availableLanguages.length > 0 && (
               <div className="ml-auto">
                 <LanguageSelector
-                  selectedLanguage={currentLanguage}
+                  selectedLanguage={selectedLanguage}
                   availableLanguages={availableLanguages}
                   onLanguageChange={handleTranslate}
                   isLoading={isTranslating}
@@ -475,13 +472,13 @@ export default function MeetingPage() {
             <div className="space-y-4">
               <div className="flex justify-between items-center">
                 <h3 className="text-lg font-semibold">Transcript</h3>
-                {meeting.audio_url && !isRegeneratingTranscript && (
+                {meeting.transcript && !isRegeneratingTranscript && !isTranscribing && (
                   <Button
                     variant="glass"
                     size="sm"
                     onClick={handleRegenerateTranscript}
-                    disabled={isTranscribing || isRegeneratingTranscript}
-                    className="hover:border-purple-400/60"
+                    disabled={isRegeneratingTranscript}
+                    className="hover:border-green-400/60"
                   >
                     {isRegeneratingTranscript ? (
                       <>
@@ -504,27 +501,18 @@ export default function MeetingPage() {
                   <p className="text-white/60">Transcription in progress...</p>
                   <p className="text-sm text-white/40 mt-2">This may take a few minutes</p>
                 </div>
-              ) : displayedContent.transcript ? (
+              ) : meeting.transcript ? (
                 <div className="prose prose-invert max-w-none">
-                  <div className="bg-white/[0.02] rounded-lg p-6 whitespace-pre-wrap text-white/80 leading-relaxed">
-                    {displayedContent.transcript}
-                  </div>
+                  <p className="whitespace-pre-wrap text-white/80">{displayedContent.transcript}</p>
                 </div>
               ) : (
                 <div className="text-center py-12">
                   <FileText className="w-12 h-12 text-white/20 mx-auto mb-4" />
-                  <p className="text-white/50 italic">No transcript available yet.</p>
-                  {meeting.audio_url && !isProcessing && (
-                    <Button
-                      variant="glow"
-                      onClick={handleRegenerateTranscript}
-                      className="mt-4 shadow-lg"
-                      disabled={isTranscribing}
-                    >
-                      <Bot className="w-4 h-4 mr-2" />
-                      Generate Transcript
-                    </Button>
-                  )}
+                  <p className="text-white/50 italic">
+                    {meeting.audio_url
+                      ? "Transcript will be generated automatically"
+                      : "No audio file available for transcription"}
+                  </p>
                 </div>
               )}
             </div>
@@ -533,14 +521,14 @@ export default function MeetingPage() {
           {activeTab === "summary" && (
             <div className="space-y-4">
               <div className="flex justify-between items-center">
-                <h3 className="text-lg font-semibold">AI Summary</h3>
+                <h3 className="text-lg font-semibold">Summary</h3>
                 {meeting.transcript && !isRegeneratingSummary && (
                   <Button
                     variant="glass"
                     size="sm"
                     onClick={handleRegenerateSummary}
                     disabled={isRegeneratingSummary}
-                    className="hover:border-cyan-400/60"
+                    className="hover:border-green-400/60"
                   >
                     {isRegeneratingSummary ? (
                       <>
@@ -557,20 +545,20 @@ export default function MeetingPage() {
                 )}
               </div>
 
-              {displayedContent.summary ? (
+              {meeting.summary ? (
                 <div className="space-y-6">
                   <div>
-                    <h4 className="text-sm font-semibold text-white/60 uppercase tracking-wider mb-3">Overview</h4>
-                    <p className="text-white/80 leading-relaxed">{displayedContent.summary.overview}</p>
+                    <h4 className="text-sm font-medium text-white/70 mb-2">Overview</h4>
+                    <p className="text-white/80">{displayedContent.summary?.overview || meeting.summary.overview}</p>
                   </div>
 
-                  {displayedContent.summary.key_points && displayedContent.summary.key_points.length > 0 && (
+                  {(displayedContent.summary?.key_points?.length ?? 0) > 0 && (
                     <div>
-                      <h4 className="text-sm font-semibold text-white/60 uppercase tracking-wider mb-3">Key Points</h4>
+                      <h4 className="text-sm font-medium text-white/70 mb-2">Key Points</h4>
                       <ul className="space-y-2">
-                        {displayedContent.summary.key_points.map((point: string, index: number) => (
-                          <li key={index} className="flex items-start gap-2">
-                            <span className="text-cyan-400 mt-1">•</span>
+                        {(displayedContent.summary?.key_points || []).map((point: string, i: number) => (
+                          <li key={i} className="flex items-start gap-2">
+                            <span className="text-purple-400 mt-0.5">•</span>
                             <span className="text-white/80">{point}</span>
                           </li>
                         ))}
@@ -578,13 +566,13 @@ export default function MeetingPage() {
                     </div>
                   )}
 
-                  {displayedContent.summary.decisions && displayedContent.summary.decisions.length > 0 && (
+                  {(displayedContent.summary?.decisions?.length ?? 0) > 0 && (
                     <div>
-                      <h4 className="text-sm font-semibold text-white/60 uppercase tracking-wider mb-3">Decisions</h4>
+                      <h4 className="text-sm font-medium text-white/70 mb-2">Decisions</h4>
                       <ul className="space-y-2">
-                        {displayedContent.summary.decisions.map((decision: string, index: number) => (
-                          <li key={index} className="flex items-start gap-2">
-                            <span className="text-purple-400 mt-1">✓</span>
+                        {(displayedContent.summary?.decisions || []).map((decision: string, i: number) => (
+                          <li key={i} className="flex items-start gap-2">
+                            <span className="text-cyan-400 mt-0.5">→</span>
                             <span className="text-white/80">{decision}</span>
                           </li>
                         ))}
@@ -592,13 +580,13 @@ export default function MeetingPage() {
                     </div>
                   )}
 
-                  {displayedContent.summary.next_steps && displayedContent.summary.next_steps.length > 0 && (
+                  {(displayedContent.summary?.next_steps?.length ?? 0) > 0 && (
                     <div>
-                      <h4 className="text-sm font-semibold text-white/60 uppercase tracking-wider mb-3">Next Steps</h4>
+                      <h4 className="text-sm font-medium text-white/70 mb-2">Next Steps</h4>
                       <ul className="space-y-2">
-                        {displayedContent.summary.next_steps.map((step: string, index: number) => (
-                          <li key={index} className="flex items-start gap-2">
-                            <span className="text-blue-400 mt-1">→</span>
+                        {(displayedContent.summary?.next_steps || []).map((step: string, i: number) => (
+                          <li key={i} className="flex items-start gap-2">
+                            <span className="text-green-400 mt-0.5">✓</span>
                             <span className="text-white/80">{step}</span>
                           </li>
                         ))}
@@ -609,15 +597,11 @@ export default function MeetingPage() {
               ) : (
                 <div className="text-center py-12">
                   <Lightbulb className="w-12 h-12 text-white/20 mx-auto mb-4" />
-                  <p className="text-white/50 italic mb-4">
-                    AI summary will be generated after transcription is complete.
+                  <p className="text-white/50 italic">
+                    {meeting.transcript
+                      ? "Summary will be generated after transcription"
+                      : "Summary requires a transcript"}
                   </p>
-                  {meeting.transcript && !isRegeneratingSummary && (
-                    <Button variant="glow" onClick={handleRegenerateSummary} className="shadow-lg">
-                      <Bot className="w-4 h-4 mr-2" />
-                      Generate Summary
-                    </Button>
-                  )}
                 </div>
               )}
             </div>
@@ -627,36 +611,33 @@ export default function MeetingPage() {
             <div className="space-y-4">
               <div className="flex justify-between items-center">
                 <h3 className="text-lg font-semibold">Action Items</h3>
-                {meeting.transcript &&
-                  meeting.action_items &&
-                  meeting.action_items.length > 0 &&
-                  !isRegeneratingActions && (
-                    <Button
-                      variant="glass"
-                      size="sm"
-                      onClick={handleRegenerateActions}
-                      disabled={isRegeneratingActions}
-                      className="hover:border-blue-400/60"
-                    >
-                      {isRegeneratingActions ? (
-                        <>
-                          <Loader2 className="w-4 h-4 mr-2 animate-spin" />
-                          Regenerating...
-                        </>
-                      ) : (
-                        <>
-                          <Sparkles className="w-4 h-4 mr-2" />
-                          Regenerate
-                        </>
-                      )}
-                    </Button>
-                  )}
+                {meeting.summary && !isRegeneratingActions && (
+                  <Button
+                    variant="glass"
+                    size="sm"
+                    onClick={handleRegenerateActions}
+                    disabled={isRegeneratingActions}
+                    className="hover:border-green-400/60"
+                  >
+                    {isRegeneratingActions ? (
+                      <>
+                        <Loader2 className="w-4 h-4 mr-2 animate-spin" />
+                        Regenerating...
+                      </>
+                    ) : (
+                      <>
+                        <Sparkles className="w-4 h-4 mr-2" />
+                        Regenerate
+                      </>
+                    )}
+                  </Button>
+                )}
               </div>
 
               {meeting.action_items && meeting.action_items.length > 0 ? (
-                meeting.action_items.map((item, index) => (
+                meeting.action_items.map((item: any, i: number) => (
                   <div
-                    key={item.id || index}
+                    key={item.id || i}
                     className={cn(
                       "p-4 rounded-lg border transition-all",
                       item.completed
@@ -778,6 +759,14 @@ export default function MeetingPage() {
         isOpen={showEditDialog}
         onClose={() => setShowEditDialog(false)}
         onUpdate={(updatedMeeting) => window.location.reload()}
+      />
+
+      <ExportDialog
+        meeting={meeting}
+        userEmail={user?.email || "user@example.com"}
+        insights={dbInsights}
+        isOpen={showExportDialog}
+        onClose={() => setShowExportDialog(false)}
       />
     </div>
   );
