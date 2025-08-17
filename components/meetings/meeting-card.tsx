@@ -5,7 +5,8 @@ import { Clock, Users, FileText, Play, Pause, MoreVertical, Edit2, Share2, Downl
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Database } from "@/types/supabase";
-import { useState, useRef } from "react";
+import { useState, useRef, useEffect } from "react";
+import { cn } from "@/lib/utils";
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -26,10 +27,12 @@ interface MeetingCardProps {
 
 export function MeetingCard({ meeting, onView, onEdit, onDelete, onShare }: MeetingCardProps) {
   const audioRef = useRef<HTMLAudioElement>(null);
+  const progressRef = useRef<HTMLDivElement>(null);
   const [isPlaying, setIsPlaying] = useState(false);
   const [currentTime, setCurrentTime] = useState(0);
   const [duration, setDuration] = useState(0);
   const [isMenuOpen, setIsMenuOpen] = useState(false);
+  const [isDragging, setIsDragging] = useState(false);
 
   const handlePlayPause = (e: React.MouseEvent) => {
     e.stopPropagation();
@@ -53,6 +56,52 @@ export function MeetingCard({ meeting, onView, onEdit, onDelete, onShare }: Meet
       setDuration(audioRef.current.duration);
     }
   };
+
+  const handleProgressClick = (e: React.MouseEvent<HTMLDivElement>) => {
+    e.stopPropagation();
+    if (!audioRef.current || !duration) return;
+
+    const rect = e.currentTarget.getBoundingClientRect();
+    const x = e.clientX - rect.left;
+    const percentage = x / rect.width;
+    const newTime = percentage * duration;
+
+    audioRef.current.currentTime = newTime;
+    setCurrentTime(newTime);
+  };
+
+  const handleProgressMouseDown = (e: React.MouseEvent<HTMLDivElement>) => {
+    e.stopPropagation();
+    setIsDragging(true);
+    handleProgressClick(e);
+  };
+
+  const handleProgressMouseMove = (e: MouseEvent) => {
+    if (!isDragging || !progressRef.current || !audioRef.current || !duration) return;
+
+    const rect = progressRef.current.getBoundingClientRect();
+    const x = Math.max(0, Math.min(e.clientX - rect.left, rect.width));
+    const percentage = x / rect.width;
+    const newTime = percentage * duration;
+
+    audioRef.current.currentTime = newTime;
+    setCurrentTime(newTime);
+  };
+
+  const handleProgressMouseUp = () => {
+    setIsDragging(false);
+  };
+
+  useEffect(() => {
+    if (isDragging) {
+      document.addEventListener("mousemove", handleProgressMouseMove);
+      document.addEventListener("mouseup", handleProgressMouseUp);
+      return () => {
+        document.removeEventListener("mousemove", handleProgressMouseMove);
+        document.removeEventListener("mouseup", handleProgressMouseUp);
+      };
+    }
+  }, [isDragging]);
 
   const handleEdit = (e: React.MouseEvent) => {
     e.stopPropagation();
@@ -188,10 +237,23 @@ export function MeetingCard({ meeting, onView, onEdit, onDelete, onShare }: Meet
               {isPlaying ? <Pause className="w-4 h-4" /> : <Play className="w-4 h-4" />}
             </Button>
 
-            <div className="flex-1 h-2 bg-white/10 rounded-full relative overflow-hidden cursor-pointer group hover:h-3 transition-all">
+            <div
+              ref={progressRef}
+              className="flex-1 h-2 bg-white/10 rounded-full relative overflow-hidden cursor-pointer group/progress hover:h-3 transition-all"
+              onClick={handleProgressClick}
+              onMouseDown={handleProgressMouseDown}
+            >
               <div
-                className="absolute left-0 top-0 h-full bg-gradient-to-r from-purple-500 to-cyan-500 transition-all duration-200"
+                className="absolute left-0 top-0 h-full bg-gradient-to-r from-purple-500 to-cyan-500 transition-all duration-200 pointer-events-none"
                 style={{ width: `${progress}%` }}
+              />
+              <div
+                className={cn(
+                  "absolute top-1/2 -translate-y-1/2 w-3 h-3 bg-white rounded-full shadow-lg transition-all duration-200 pointer-events-none",
+                  "opacity-0 group-hover/progress:opacity-100",
+                  isDragging && "opacity-100"
+                )}
+                style={{ left: `${progress}%`, transform: "translateX(-50%) translateY(-50%)" }}
               />
             </div>
 
