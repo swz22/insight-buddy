@@ -134,7 +134,7 @@ export function ExportDialog({ meeting, userEmail, insights, isOpen, onClose }: 
           animate={{ opacity: 1, scale: 1, y: 0 }}
           exit={{ opacity: 0, scale: 0.95, y: 20 }}
           transition={{ type: "spring", duration: 0.3 }}
-          className="relative bg-black/90 backdrop-blur-xl rounded-xl shadow-2xl w-full max-w-2xl border border-white/10 overflow-hidden flex flex-col mt-20"
+          className="relative bg-black/90 backdrop-blur-xl rounded-xl shadow-2xl w-full max-w-3xl max-h-[80vh] border border-white/10 overflow-hidden flex flex-col mt-20"
         >
           <div className="flex items-center justify-between p-4 border-b border-white/10">
             <div>
@@ -152,7 +152,7 @@ export function ExportDialog({ meeting, userEmail, insights, isOpen, onClose }: 
             </button>
           </div>
 
-          <div className="flex-1 overflow-y-auto p-4">
+          <div className="flex-1 overflow-y-auto p-4 max-h-[calc(80vh-8rem)]">
             <div className="space-y-4">
               <div>
                 <h3 className="text-sm font-medium text-white/90 mb-2">Select Format</h3>
@@ -164,7 +164,7 @@ export function ExportDialog({ meeting, userEmail, insights, isOpen, onClose }: 
                         key={format.value}
                         onClick={() => setSelectedFormat(format.value)}
                         className={cn(
-                          "p-3 rounded-lg border transition-all duration-200 text-center group",
+                          "p-4 rounded-lg border transition-all duration-200 text-center group",
                           selectedFormat === format.value
                             ? "bg-white/[0.08] border-purple-400/60 shadow-lg"
                             : "bg-white/[0.03] border-white/20 hover:border-white/30 hover:bg-white/[0.05]"
@@ -172,7 +172,7 @@ export function ExportDialog({ meeting, userEmail, insights, isOpen, onClose }: 
                       >
                         <Icon
                           className={cn(
-                            "w-6 h-6 mx-auto mb-1 transition-colors",
+                            "w-7 h-7 mx-auto mb-2 transition-colors",
                             selectedFormat === format.value
                               ? "text-purple-400"
                               : "text-white/50 group-hover:text-white/70"
@@ -208,7 +208,7 @@ export function ExportDialog({ meeting, userEmail, insights, isOpen, onClose }: 
                       <div
                         key={key}
                         className={cn(
-                          "flex items-center gap-3 p-2.5 rounded-lg bg-white/[0.03] border border-white/20 cursor-pointer hover:border-white/30 hover:bg-white/[0.05] transition-all",
+                          "flex items-center gap-3 p-3 rounded-lg bg-white/[0.03] border border-white/20 cursor-pointer hover:border-white/30 hover:bg-white/[0.05] transition-all",
                           isDisabled && "opacity-50 cursor-not-allowed"
                         )}
                         onClick={() => !isDisabled && handleSectionToggle(key as keyof ExportSections)}
@@ -235,7 +235,7 @@ export function ExportDialog({ meeting, userEmail, insights, isOpen, onClose }: 
                   <button
                     onClick={() => setDeliveryMethod("download")}
                     className={cn(
-                      "p-3 rounded-lg border transition-all duration-200 group",
+                      "p-4 rounded-lg border transition-all duration-200 group",
                       deliveryMethod === "download"
                         ? "bg-white/[0.08] border-purple-400/60 shadow-lg"
                         : "bg-white/[0.03] border-white/20 hover:border-white/30 hover:bg-white/[0.05]"
@@ -243,7 +243,7 @@ export function ExportDialog({ meeting, userEmail, insights, isOpen, onClose }: 
                   >
                     <Download
                       className={cn(
-                        "w-5 h-5 mx-auto mb-1 transition-colors",
+                        "w-6 h-6 mx-auto mb-2 transition-colors",
                         deliveryMethod === "download" ? "text-purple-400" : "text-white/50 group-hover:text-white/70"
                       )}
                     />
@@ -267,7 +267,7 @@ export function ExportDialog({ meeting, userEmail, insights, isOpen, onClose }: 
                   >
                     <Mail
                       className={cn(
-                        "w-5 h-5 mx-auto mb-1 transition-colors",
+                        "w-6 h-6 mx-auto mb-2 transition-colors",
                         deliveryMethod === "email" ? "text-purple-400" : "text-white/50 group-hover:text-white/70"
                       )}
                     />
@@ -297,7 +297,7 @@ export function ExportDialog({ meeting, userEmail, insights, isOpen, onClose }: 
                         value={customMessage}
                         onChange={(e) => setCustomMessage(e.target.value)}
                         placeholder="Add a personal message..."
-                        rows={2}
+                        rows={4}
                         className="w-full px-3 py-2 rounded-lg bg-white/[0.03] backdrop-blur-sm border border-white/20 text-white placeholder:text-white/40 focus:outline-none focus:border-purple-400/60 focus:bg-white/[0.05] hover:border-white/30 hover:bg-white/[0.04] transition-all duration-200 resize-none"
                       />
                     </div>
