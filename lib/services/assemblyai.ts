@@ -3,7 +3,7 @@ import { z } from "zod";
 export const transcriptSchema = z.object({
   id: z.string(),
   status: z.enum(["queued", "processing", "completed", "error"]),
-  text: z.string().nullable(),
+  text: z.string().nullable().optional(),
   error: z.string().optional(),
   audio_duration: z.number().optional(),
   confidence: z.number().optional(),
@@ -19,7 +19,8 @@ export const transcriptSchema = z.object({
         confidence: z.number(),
       })
     )
-    .optional(),
+    .optional()
+    .nullable(),
   words: z
     .array(
       z.object({
@@ -30,7 +31,8 @@ export const transcriptSchema = z.object({
         speaker: z.string().nullable(),
       })
     )
-    .optional(),
+    .optional()
+    .nullable(),
 });
 
 export type Transcript = z.infer<typeof transcriptSchema>;
@@ -95,7 +97,28 @@ export class AssemblyAIService {
     }
 
     const data = await response.json();
-    return transcriptSchema.parse(data);
+
+    // Log the response for debugging
+    console.log("AssemblyAI response:", JSON.stringify(data, null, 2));
+
+    try {
+      return transcriptSchema.parse(data);
+    } catch (error) {
+      console.error("Failed to parse transcript response:", error);
+      // Return a minimal valid transcript object if parsing fails
+      return {
+        id: data.id || id,
+        status: data.status || "processing",
+        text: data.text || null,
+        error: data.error,
+        audio_duration: data.audio_duration,
+        confidence: data.confidence,
+        language_code: data.language_code,
+        language_confidence: data.language_confidence,
+        utterances: data.utterances || null,
+        words: data.words || null,
+      };
+    }
   }
 
   async waitForTranscription(id: string, maxAttempts = 60, intervalMs = 5000): Promise<Transcript> {

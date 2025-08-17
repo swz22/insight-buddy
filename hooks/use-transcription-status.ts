@@ -34,11 +34,7 @@ export function useTranscriptionStatus({
     if (needsPolling) {
       const checkStatus = async () => {
         try {
-          const response = await fetch(`/api/meetings/${meeting.id}/check-transcript`, {
-            method: "POST",
-            headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({ transcriptId: meeting.transcript_id }),
-          });
+          const response = await fetch(`/api/meetings/${meeting.id}/transcription-status`);
 
           if (!response.ok) {
             console.error("Failed to check transcript status");

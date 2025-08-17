@@ -84,10 +84,8 @@ export default function UploadPage() {
       const shouldTranscribe = transcriptionEnabled && meeting.audio_url;
       if (shouldTranscribe) {
         try {
-          const transcriptResponse = await fetch("/api/transcribe", {
+          const transcriptResponse = await fetch(`/api/meetings/${meeting.id}/transcribe`, {
             method: "POST",
-            headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({ meetingId: meeting.id }),
           });
 
           if (!transcriptResponse.ok) {
@@ -138,61 +136,57 @@ export default function UploadPage() {
           <h1 className="text-4xl font-bold font-display text-white mb-2">
             Upload <span className="gradient-text">Meeting</span>
           </h1>
-          <p className="text-white/60">Transform your recording into actionable insights with AI</p>
+          <p className="text-white/60">Transform your recordings into actionable insights</p>
         </div>
 
-        <Card className="relative overflow-hidden">
+        <Card className="relative overflow-hidden bg-white/[0.02] backdrop-blur-sm border-white/10 shadow-2xl">
           <div className="absolute inset-0 bg-gradient-to-br from-purple-500/5 via-transparent to-cyan-500/5" />
-
           <form onSubmit={handleSubmit} className="relative p-8 space-y-6">
-            <div className="space-y-6">
-              <div>
-                <label htmlFor="title" className="block text-sm font-medium text-white/90 mb-2">
-                  Meeting Title <span className="text-red-400">*</span>
-                </label>
-                <Input
-                  id="title"
-                  type="text"
-                  value={formData.title}
-                  onChange={(e) => setFormData({ ...formData, title: e.target.value })}
-                  placeholder="e.g., Weekly Team Standup"
-                  className="w-full"
-                  disabled={isUploading}
-                  required
-                />
-              </div>
-
-              <div>
-                <label htmlFor="description" className="block text-sm font-medium text-white/90 mb-2">
-                  Description
-                </label>
-                <textarea
-                  id="description"
-                  value={formData.description}
-                  onChange={(e) => setFormData({ ...formData, description: e.target.value })}
-                  placeholder="Brief description of the meeting..."
-                  className={cn(
-                    "w-full min-h-[100px] px-3 py-2 rounded-lg",
-                    "bg-white/[0.03] border border-white/10",
-                    "text-white placeholder:text-white/40",
-                    "focus:outline-none focus:border-purple-500/50 focus:ring-1 focus:ring-purple-500/50",
-                    "disabled:opacity-50 disabled:cursor-not-allowed",
-                    "transition-colors"
-                  )}
-                  disabled={isUploading}
-                />
-              </div>
-
-              <div>
-                <label className="block text-sm font-medium text-white/90 mb-2">
-                  Audio/Video File <span className="text-red-400">*</span>
-                </label>
-                <FileUpload onFileSelect={setSelectedFile} disabled={isUploading} />
-              </div>
+            <div className="space-y-2">
+              <label htmlFor="title" className="block text-sm font-medium text-white/90">
+                Meeting Title
+              </label>
+              <Input
+                id="title"
+                type="text"
+                value={formData.title}
+                onChange={(e) => setFormData({ ...formData, title: e.target.value })}
+                placeholder="e.g., Weekly Team Standup"
+                required
+                disabled={isUploading}
+                className="bg-white/[0.03] border-white/20 focus:border-purple-400/60 text-white placeholder:text-white/30"
+              />
             </div>
 
-            <div className="flex gap-4 pt-4">
-              <Button type="submit" disabled={isUploading || !selectedFile} className="flex-1" variant="glow">
+            <div className="space-y-2">
+              <label htmlFor="description" className="block text-sm font-medium text-white/90">
+                Description
+                <span className="text-white/40 text-xs ml-2">(optional)</span>
+              </label>
+              <Input
+                id="description"
+                type="text"
+                value={formData.description}
+                onChange={(e) => setFormData({ ...formData, description: e.target.value })}
+                placeholder="Brief description of the meeting"
+                disabled={isUploading}
+                className="bg-white/[0.03] border-white/20 focus:border-purple-400/60 text-white placeholder:text-white/30"
+              />
+            </div>
+
+            <div className="space-y-2">
+              <label className="block text-sm font-medium text-white/90">Audio/Video File</label>
+              <FileUpload onFileSelect={setSelectedFile} accept="audio/*,video/*" disabled={isUploading} />
+            </div>
+
+            <div className="flex gap-3">
+              <Button
+                type="submit"
+                variant="glow"
+                size="lg"
+                disabled={!selectedFile || !formData.title || isUploading}
+                className="flex-1 shadow-lg"
+              >
                 {isUploading ? (
                   <>
                     <Upload className="w-4 h-4 mr-2 animate-pulse" />
