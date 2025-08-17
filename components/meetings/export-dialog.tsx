@@ -205,23 +205,25 @@ export function ExportDialog({ meeting, userEmail, insights, isOpen, onClose }: 
                   }).map(([key, label]) => {
                     const isDisabled = key === "insights" && !insights;
                     return (
-                      <label
+                      <div
                         key={key}
                         className={cn(
                           "flex items-center gap-3 p-2.5 rounded-lg bg-white/[0.03] border border-white/20 cursor-pointer hover:border-white/30 hover:bg-white/[0.05] transition-all",
                           isDisabled && "opacity-50 cursor-not-allowed"
                         )}
+                        onClick={() => !isDisabled && handleSectionToggle(key as keyof ExportSections)}
                       >
                         <Checkbox
                           checked={sections[key as keyof ExportSections]}
                           onCheckedChange={() => !isDisabled && handleSectionToggle(key as keyof ExportSections)}
                           disabled={isDisabled}
+                          onClick={(e) => e.stopPropagation()}
                         />
-                        <span className="text-sm text-white/80">
+                        <span className="text-sm text-white/80 flex-1">
                           {label}
                           {isDisabled && <span className="text-white/40 ml-2">(Not available)</span>}
                         </span>
-                      </label>
+                      </div>
                     );
                   })}
                 </div>
