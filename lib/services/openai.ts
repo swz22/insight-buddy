@@ -32,10 +32,18 @@ Your analysis should:
 - Be specific and avoid generic statements
 
 Important guidelines:
-- The overview should capture the meeting's purpose and main outcome in 2-3 sentences
+- The overview should capture the meeting's purpose and main outcome in 2-5 sentences
 - Key points should be specific topics discussed, not obvious statements
 - Decisions should be concrete agreements or conclusions reached
-- Next steps should be actionable items that emerged from the discussion`;
+- Next steps should be actionable items that emerged from the discussion
+
+You MUST respond with a valid JSON object in this exact format:
+{
+  "overview": "string - A concise 2-3 sentence summary of the meeting",
+  "key_points": ["string array - Main discussion points, max 10 items"],
+  "decisions": ["string array - Key decisions made, max 10 items"],
+  "next_steps": ["string array - Action items and follow-up tasks, max 10 items"]
+}`;
 
     const userPrompt = `Analyze this meeting transcript and provide a structured summary.
 
@@ -46,7 +54,8 @@ Meeting Context:
 Transcript:
 ${transcript}
 
-Focus on extracting specific, actionable content from what was actually discussed.`;
+Focus on extracting specific, actionable content from what was actually discussed.
+Remember to respond with valid JSON only.`;
 
     try {
       const response = await this.callOpenAI<MeetingSummary>({
@@ -54,42 +63,6 @@ Focus on extracting specific, actionable content from what was actually discusse
           { role: "system", content: systemPrompt },
           { role: "user", content: userPrompt },
         ],
-        response_format: {
-          type: "json_schema",
-          json_schema: {
-            name: "meeting_summary",
-            strict: true,
-            schema: {
-              type: "object",
-              properties: {
-                overview: {
-                  type: "string",
-                  description: "A concise 2-3 sentence summary of the meeting",
-                },
-                key_points: {
-                  type: "array",
-                  items: { type: "string" },
-                  maxItems: 5,
-                  description: "Main discussion points and important topics",
-                },
-                decisions: {
-                  type: "array",
-                  items: { type: "string" },
-                  maxItems: 5,
-                  description: "Key decisions made during the meeting",
-                },
-                next_steps: {
-                  type: "array",
-                  items: { type: "string" },
-                  maxItems: 5,
-                  description: "Action items and follow-up tasks",
-                },
-              },
-              required: ["overview", "key_points", "decisions", "next_steps"],
-              additionalProperties: false,
-            },
-          },
-        },
         temperature: 0.3,
         max_tokens: 1000,
       });
@@ -120,7 +93,20 @@ Priority guidelines:
 - Medium: Important tasks with standard timelines
 - Low: Nice-to-have items or long-term considerations
 
-If no explicit assignee is mentioned, leave it null rather than guessing.`;
+If no explicit assignee is mentioned, leave it null rather than guessing.
+
+You MUST respond with a valid JSON object in this exact format:
+{
+  "action_items": [
+    {
+      "task": "string - Clear description of the task",
+      "assignee": "string or null - Person responsible",
+      "due_date": "string or null - ISO date string",
+      "priority": "high" | "medium" | "low",
+      "context": "string - Additional context"
+    }
+  ]
+}`;
 
     const userPrompt = `Extract action items from this meeting transcript.
 
@@ -137,7 +123,8 @@ ${summary.next_steps.map((s, i) => `${i + 1}. ${s}`).join("\n")}
 Full Transcript:
 ${transcript}
 
-Extract specific action items with clear ownership and timelines where mentioned.`;
+Extract specific action items with clear ownership and timelines where mentioned.
+Remember to respond with valid JSON only.`;
 
     try {
       const response = await this.callOpenAI<{ action_items: ActionItem[] }>({
@@ -145,52 +132,6 @@ Extract specific action items with clear ownership and timelines where mentioned
           { role: "system", content: systemPrompt },
           { role: "user", content: userPrompt },
         ],
-        response_format: {
-          type: "json_schema",
-          json_schema: {
-            name: "action_items",
-            strict: true,
-            schema: {
-              type: "object",
-              properties: {
-                action_items: {
-                  type: "array",
-                  items: {
-                    type: "object",
-                    properties: {
-                      task: {
-                        type: "string",
-                        description: "Clear description of the task",
-                      },
-                      assignee: {
-                        type: ["string", "null"],
-                        description: "Person responsible for the task",
-                      },
-                      due_date: {
-                        type: ["string", "null"],
-                        description: "ISO date string for when the task should be completed",
-                      },
-                      priority: {
-                        type: "string",
-                        enum: ["high", "medium", "low"],
-                        description: "Priority level of the task",
-                      },
-                      context: {
-                        type: "string",
-                        description: "Additional context about the task",
-                      },
-                    },
-                    required: ["task", "assignee", "due_date", "priority"],
-                    additionalProperties: false,
-                  },
-                  maxItems: 10,
-                },
-              },
-              required: ["action_items"],
-              additionalProperties: false,
-            },
-          },
-        },
         temperature: 0.2,
         max_tokens: 1500,
       });
@@ -213,7 +154,6 @@ Extract specific action items with clear ownership and timelines where mentioned
 
   private async callOpenAI<T>(params: {
     messages: Array<{ role: string; content: string }>;
-    response_format?: any;
     temperature?: number;
     max_tokens?: number;
   }): Promise<T> {
@@ -230,7 +170,6 @@ Extract specific action items with clear ownership and timelines where mentioned
           body: JSON.stringify({
             model: "gpt-3.5-turbo",
             messages: params.messages,
-            response_format: params.response_format,
             temperature: params.temperature ?? 0.3,
             max_tokens: params.max_tokens ?? 1000,
           }),
@@ -248,7 +187,16 @@ Extract specific action items with clear ownership and timelines where mentioned
         }
 
         const content = data.choices[0].message.content;
-        return JSON.parse(content) as T;
+
+        try {
+          return JSON.parse(content) as T;
+        } catch (parseError) {
+          const jsonMatch = content.match(/\{[\s\S]*\}/);
+          if (jsonMatch) {
+            return JSON.parse(jsonMatch[0]) as T;
+          }
+          throw new Error("Failed to parse OpenAI response as JSON");
+        }
       } catch (error) {
         lastError = error instanceof Error ? error : new Error("Unknown error");
         console.error(`OpenAI API attempt ${attempt + 1} failed:`, error);

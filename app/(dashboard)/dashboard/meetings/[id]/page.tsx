@@ -14,6 +14,9 @@ import {
   Loader2,
   BarChart3,
   Sparkles,
+  Bot,
+  Download,
+  Edit2,
 } from "lucide-react";
 import Link from "next/link";
 import { Button } from "@/components/ui/button";
@@ -21,6 +24,7 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/com
 import { useMeeting } from "@/hooks/use-meetings";
 import { AudioPlayer } from "@/components/audio/audio-player";
 import { ShareDialog } from "@/components/meetings/share-dialog";
+import { EditMeetingDialog } from "@/components/meetings/edit-meeting-dialog";
 import { LanguageSelector } from "@/components/ui/language-selector";
 import { useTranslation } from "@/hooks/use-translation";
 import { useInsights } from "@/hooks/use-insights";
@@ -70,11 +74,11 @@ export default function MeetingPage() {
   const { insights, isLoading: insightsLoading } = useInsights({ meetingId, enabled: !!meeting });
   const { isTranscribing } = useTranscriptionStatus({ meeting, enabled: !!meeting });
 
-  // Cast insights to the database format
   const dbInsights = insights as DatabaseInsights | null;
 
   const [activeTab, setActiveTab] = useState<"transcript" | "summary" | "actions" | "insights">("transcript");
   const [showShareDialog, setShowShareDialog] = useState(false);
+  const [showEditDialog, setShowEditDialog] = useState(false);
   const [isGeneratingInsights, setIsGeneratingInsights] = useState(false);
   const [currentLanguage, setCurrentLanguage] = useState("en");
   const [isTranslating, setIsTranslating] = useState(false);
@@ -202,10 +206,10 @@ export default function MeetingPage() {
       });
 
       if (!response.ok) {
-        throw new Error("Failed to regenerate summary");
+        throw new Error("Failed to generate summary");
       }
 
-      toast.success("Summary regenerated successfully!");
+      toast.success("Summary generated successfully!");
       window.location.reload();
     } catch (error) {
       console.error("Summary regeneration error:", error);
@@ -298,72 +302,87 @@ export default function MeetingPage() {
   };
 
   return (
-    <div className="container mx-auto px-4 py-8 space-y-6">
-      <div className="flex items-center justify-between">
-        <div className="flex items-center gap-4">
-          <Link href="/dashboard">
-            <Button variant="ghost" size="sm">
-              <ArrowLeft className="w-4 h-4" />
-            </Button>
-          </Link>
+    <div className="container mx-auto px-4 py-8 max-w-5xl">
+      <div className="mb-8">
+        <Link
+          href="/dashboard"
+          className="inline-flex items-center text-white/60 hover:text-white/90 transition-colors group mb-4"
+        >
+          <ArrowLeft className="w-4 h-4 mr-2 group-hover:-translate-x-1 transition-transform" />
+          Back to meetings
+        </Link>
+
+        <div className="flex items-start justify-between">
           <div>
-            <h1 className="text-2xl font-bold">{displayedContent.title}</h1>
-            {displayedContent.description && <p className="text-white/60 mt-1">{displayedContent.description}</p>}
+            <h1 className="text-3xl font-bold font-display mb-2">{displayedContent.title}</h1>
+            {displayedContent.description && <p className="text-white/60">{displayedContent.description}</p>}
           </div>
-        </div>
-        <div className="flex items-center gap-2">
-          <LanguageSelector
-            selectedLanguage={currentLanguage}
-            onLanguageChange={handleTranslate}
-            availableLanguages={availableLanguages}
-            isLoading={isTranslating}
-          />
-          <Button variant="outline" onClick={() => setShowShareDialog(true)}>
-            <Share2 className="w-4 h-4 mr-2" />
-            Share
-          </Button>
+          <div className="flex gap-2">
+            <Button
+              variant="glass"
+              size="sm"
+              onClick={() => setShowShareDialog(true)}
+              className="hover:border-cyan-400/60"
+            >
+              <Share2 className="w-4 h-4 mr-2" />
+              Share
+            </Button>
+            <Button
+              variant="glass"
+              size="sm"
+              onClick={() => setShowEditDialog(true)}
+              className="hover:border-purple-400/60"
+            >
+              <Edit2 className="w-4 h-4 mr-2" />
+              Edit
+            </Button>
+            {meeting.audio_url && (
+              <Button variant="glass" size="sm" asChild className="hover:border-cyan-400/60">
+                <a href={meeting.audio_url} download>
+                  <Download className="w-4 h-4 mr-2" />
+                  Download
+                </a>
+              </Button>
+            )}
+          </div>
         </div>
       </div>
 
-      <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
+      <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mb-8">
         <Card className="bg-white/[0.02] backdrop-blur-sm border-white/10">
-          <CardContent className="p-4 flex items-center gap-3">
-            <Calendar className="w-5 h-5 text-white/40" />
-            <div>
-              <p className="text-sm text-white/60">Date</p>
-              <p className="font-medium">{formatDate(meeting.recorded_at)}</p>
+          <CardContent className="p-4">
+            <div className="flex items-center gap-3">
+              <Calendar className="w-5 h-5 text-purple-400" />
+              <div>
+                <p className="text-sm text-white/60">Recorded</p>
+                <p className="font-medium">{formatDate(meeting.recorded_at)}</p>
+              </div>
             </div>
           </CardContent>
         </Card>
 
         <Card className="bg-white/[0.02] backdrop-blur-sm border-white/10">
-          <CardContent className="p-4 flex items-center gap-3">
-            <Clock className="w-5 h-5 text-white/40" />
-            <div>
-              <p className="text-sm text-white/60">Duration</p>
-              <p className="font-medium">{formatDuration(meeting.duration)}</p>
+          <CardContent className="p-4">
+            <div className="flex items-center gap-3">
+              <Clock className="w-5 h-5 text-cyan-400" />
+              <div>
+                <p className="text-sm text-white/60">Duration</p>
+                <p className="font-medium">{formatDuration(meeting.duration)}</p>
+              </div>
             </div>
           </CardContent>
         </Card>
 
         <Card className="bg-white/[0.02] backdrop-blur-sm border-white/10">
-          <CardContent className="p-4 flex items-center gap-3">
-            <Users className="w-5 h-5 text-white/40" />
-            <div>
-              <p className="text-sm text-white/60">Participants</p>
-              <p className="font-medium">{meeting.participants?.length || 0}</p>
-            </div>
-          </CardContent>
-        </Card>
-
-        <Card className="bg-white/[0.02] backdrop-blur-sm border-white/10">
-          <CardContent className="p-4 flex items-center gap-3">
-            <FileText className="w-5 h-5 text-white/40" />
-            <div>
-              <p className="text-sm text-white/60">Status</p>
-              <p className="font-medium">
-                {isTranscribing ? "Transcribing..." : meeting.transcript ? "Complete" : "Pending"}
-              </p>
+          <CardContent className="p-4">
+            <div className="flex items-center gap-3">
+              <Users className="w-5 h-5 text-blue-400" />
+              <div>
+                <p className="text-sm text-white/60">Status</p>
+                <p className="font-medium">
+                  {isTranscribing ? "Transcribing..." : meeting.transcript ? "Complete" : "Pending"}
+                </p>
+              </div>
             </div>
           </CardContent>
         </Card>
@@ -420,7 +439,27 @@ export default function MeetingPage() {
           {activeTab === "transcript" && (
             <div className="space-y-4">
               {meeting.transcript && (
-                <div className="flex justify-end mb-4">
+                <div className="flex justify-end mb-4 gap-2">
+                  {!meeting.summary && (
+                    <Button
+                      variant="glow"
+                      size="sm"
+                      onClick={() => handleRegenerateSummary()}
+                      disabled={isRegeneratingSummary}
+                    >
+                      {isRegeneratingSummary ? (
+                        <>
+                          <Loader2 className="w-4 h-4 mr-2 animate-spin" />
+                          Generating...
+                        </>
+                      ) : (
+                        <>
+                          <Bot className="w-4 h-4 mr-2" />
+                          Generate Summary
+                        </>
+                      )}
+                    </Button>
+                  )}
                   <Button
                     variant="outline"
                     size="sm"
@@ -611,138 +650,27 @@ export default function MeetingPage() {
                 </div>
               )}
 
-              {!dbInsights && !insightsLoading && meeting.transcript && (
-                <Card className="bg-blue-500/10 border-blue-500/20">
-                  <CardContent className="p-6 flex items-center justify-between">
-                    <div>
-                      <h3 className="text-lg font-semibold text-blue-400">Generate Meeting Insights</h3>
-                      <p className="text-sm text-white/60 mt-1">
-                        Analyze speaker participation, sentiment, and conversation dynamics
-                      </p>
-                    </div>
-                    <Button
-                      onClick={handleGenerateInsights}
-                      disabled={isGeneratingInsights}
-                      className="bg-blue-500 hover:bg-blue-600"
-                    >
-                      {isGeneratingInsights ? (
-                        <>
-                          <Loader2 className="w-4 h-4 mr-2 animate-spin" />
-                          Generating...
-                        </>
-                      ) : (
-                        <>
-                          <Sparkles className="w-4 h-4 mr-2" />
-                          Generate Insights
-                        </>
-                      )}
+              {dbInsights ? (
+                <>
+                  {dbInsights.speaker_metrics && (
+                    <SpeakerMetricsChart metrics={transformSpeakerMetrics(dbInsights.speaker_metrics)} />
+                  )}
+                  {dbInsights.sentiment && dbInsights.sentiment.timeline && (
+                    <SentimentTimeline data={dbInsights.sentiment.timeline} />
+                  )}
+                  {dbInsights.key_moments && <KeyMoments moments={dbInsights.key_moments} />}
+                </>
+              ) : (
+                <div className="text-center py-12">
+                  <BarChart3 className="w-12 h-12 text-white/20 mx-auto mb-4" />
+                  <p className="text-white/50 italic mb-4">Generate insights to see detailed analytics</p>
+                  {meeting.transcript && !isGeneratingInsights && (
+                    <Button variant="glow" onClick={handleGenerateInsights} className="shadow-lg">
+                      <Bot className="w-4 h-4 mr-2" />
+                      Generate Insights
                     </Button>
-                  </CardContent>
-                </Card>
-              )}
-
-              {insightsLoading && (
-                <div className="flex items-center justify-center py-12">
-                  <Loader2 className="w-8 h-8 animate-spin" />
-                </div>
-              )}
-
-              {dbInsights && (
-                <div className="space-y-6">
-                  {dbInsights.engagement_score !== undefined && (
-                    <Card className="bg-white/[0.02] backdrop-blur-sm border-white/10">
-                      <CardHeader>
-                        <CardTitle className="text-white">Engagement Score</CardTitle>
-                      </CardHeader>
-                      <CardContent>
-                        <div className="flex items-center gap-4">
-                          <div className="text-4xl font-bold text-white">
-                            {Math.round(dbInsights.engagement_score)}%
-                          </div>
-                          <p className="text-white/60">
-                            {dbInsights.engagement_score >= 80
-                              ? "Excellent"
-                              : dbInsights.engagement_score >= 60
-                              ? "Good"
-                              : dbInsights.engagement_score >= 40
-                              ? "Fair"
-                              : "Needs Improvement"}
-                          </p>
-                        </div>
-                      </CardContent>
-                    </Card>
                   )}
-
-                  {dbInsights.speaker_metrics &&
-                    Array.isArray(dbInsights.speaker_metrics) &&
-                    dbInsights.speaker_metrics.length > 0 && (
-                      <Card className="bg-white/[0.02] backdrop-blur-sm border-white/10">
-                        <CardHeader>
-                          <CardTitle className="text-white">Speaker Participation</CardTitle>
-                          <CardDescription className="text-white/60">Speaking time distribution</CardDescription>
-                        </CardHeader>
-                        <CardContent>
-                          <SpeakerMetricsChart data={transformSpeakerMetrics(dbInsights.speaker_metrics)} />
-                        </CardContent>
-                      </Card>
-                    )}
-
-                  {dbInsights.sentiment?.timeline &&
-                    Array.isArray(dbInsights.sentiment.timeline) &&
-                    dbInsights.sentiment.timeline.length > 0 && (
-                      <Card className="bg-white/[0.02] backdrop-blur-sm border-white/10">
-                        <CardHeader>
-                          <CardTitle className="text-white">Sentiment Timeline</CardTitle>
-                          <CardDescription className="text-white/60">Emotional tone over time</CardDescription>
-                        </CardHeader>
-                        <CardContent>
-                          <SentimentTimeline data={dbInsights.sentiment.timeline} />
-                        </CardContent>
-                      </Card>
-                    )}
-
-                  {dbInsights.dynamics && (
-                    <Card className="bg-white/[0.02] backdrop-blur-sm border-white/10">
-                      <CardHeader>
-                        <CardTitle className="text-white">Conversation Dynamics</CardTitle>
-                      </CardHeader>
-                      <CardContent>
-                        <div className="grid grid-cols-2 gap-4">
-                          <div>
-                            <p className="text-white/60 text-sm mb-1">Speaker Balance</p>
-                            <p className="text-xl font-bold text-white">
-                              {Math.round((dbInsights.dynamics.speakerBalance || 0) * 100)}%
-                            </p>
-                          </div>
-                          <div>
-                            <p className="text-white/60 text-sm mb-1">Interruption Rate</p>
-                            <p className="text-xl font-bold text-white">
-                              {dbInsights.dynamics.interruptionRate || 0}/min
-                            </p>
-                          </div>
-                        </div>
-                        {dbInsights.dynamics.averageTurnDuration && (
-                          <div className="mt-4">
-                            <p className="text-white/60 text-sm mb-1">Average Turn Duration</p>
-                            <p className="text-xl font-bold text-white">
-                              {Math.round(dbInsights.dynamics.averageTurnDuration)}s
-                            </p>
-                          </div>
-                        )}
-                      </CardContent>
-                    </Card>
-                  )}
-
-                  {dbInsights.key_moments &&
-                    Array.isArray(dbInsights.key_moments) &&
-                    dbInsights.key_moments.length > 0 && <KeyMoments moments={dbInsights.key_moments} />}
                 </div>
-              )}
-
-              {!meeting.transcript && (
-                <p className="text-white/40 italic text-center py-12">
-                  Insights require a transcript. Please wait for transcription to complete.
-                </p>
               )}
             </div>
           )}
@@ -754,6 +682,13 @@ export default function MeetingPage() {
         meetingTitle={meeting.title}
         isOpen={showShareDialog}
         onClose={() => setShowShareDialog(false)}
+      />
+
+      <EditMeetingDialog
+        meeting={meeting}
+        isOpen={showEditDialog}
+        onClose={() => setShowEditDialog(false)}
+        onUpdate={(updatedMeeting) => window.location.reload()}
       />
     </div>
   );
