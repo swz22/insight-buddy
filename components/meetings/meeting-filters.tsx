@@ -11,6 +11,7 @@ interface MeetingFiltersProps {
   dateRange: { start: string; end: string };
   onDateRangeChange: (range: { start: string; end: string }) => void;
   onClearFilters: () => void;
+  hasActiveFilters?: boolean;
 }
 
 export function MeetingFilters({
@@ -19,8 +20,9 @@ export function MeetingFilters({
   dateRange,
   onDateRangeChange,
   onClearFilters,
+  hasActiveFilters: hasActiveFiltersProp,
 }: MeetingFiltersProps) {
-  const hasActiveFilters = searchTerm || dateRange.start || dateRange.end;
+  const hasActiveFilters = hasActiveFiltersProp ?? (searchTerm || dateRange.start || dateRange.end);
   const startInputRef = useRef<HTMLInputElement>(null);
   const endInputRef = useRef<HTMLInputElement>(null);
 

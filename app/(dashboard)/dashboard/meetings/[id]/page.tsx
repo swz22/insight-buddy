@@ -30,6 +30,7 @@ import { useTranslation } from "@/hooks/use-translation";
 import { useInsights } from "@/hooks/use-insights";
 import { useMeetingProcessing } from "@/hooks/use-meeting-processing";
 import { useTranscriptionStatus } from "@/hooks/use-transcription-status";
+import { useMeetingRealtime } from "@/hooks/use-meeting-realtime";
 import { SpeakerMetricsChart, type SpeakerMetric } from "@/components/insights/speaker-metrics-chart";
 import { SentimentTimeline } from "@/components/insights/sentiment-timeline";
 import { KeyMoments } from "@/components/insights/key-moments";
@@ -69,10 +70,31 @@ export default function MeetingPage() {
   const toast = useToast();
   const meetingId = params.id as string;
 
-  const { data: meeting, isLoading: meetingLoading, error: meetingError } = useMeeting(meetingId);
+  const {
+    data: meeting,
+    isLoading: meetingLoading,
+    error: meetingError,
+    refetch: refetchMeeting,
+  } = useMeeting(meetingId);
   const { isProcessing } = useMeetingProcessing({ meeting, enabled: !!meeting });
   const { insights, isLoading: insightsLoading } = useInsights({ meetingId, enabled: !!meeting });
-  const { isTranscribing } = useTranscriptionStatus({ meeting, enabled: !!meeting });
+  const { isTranscribing } = useTranscriptionStatus({
+    meeting,
+    enabled: !!meeting && !meeting.transcript && !!meeting.transcript_id,
+    pollingInterval: 30000, // Increase to 30s as backup only
+    onTranscriptionComplete: () => {
+      refetchMeeting();
+    },
+  });
+
+  // Use Realtime subscriptions for instant updates
+  useMeetingRealtime({
+    meetingId,
+    enabled: !!meeting,
+    onUpdate: (updatedMeeting) => {
+      refetchMeeting();
+    },
+  });
 
   const dbInsights = insights as DatabaseInsights | null;
 
@@ -400,71 +422,66 @@ export default function MeetingPage() {
         <CardHeader>
           <div className="flex gap-2">
             <Button
-              variant={activeTab === "transcript" ? "default" : "outline"}
+              variant={activeTab === "transcript" ? "glow" : "glass"}
               size="sm"
               onClick={() => setActiveTab("transcript")}
+              className={cn("transition-all", activeTab === "transcript" ? "shadow-lg" : "hover:border-purple-400/60")}
             >
               <FileText className="w-4 h-4 mr-2" />
               Transcript
             </Button>
             <Button
-              variant={activeTab === "summary" ? "default" : "outline"}
+              variant={activeTab === "summary" ? "glow" : "glass"}
               size="sm"
               onClick={() => setActiveTab("summary")}
-              disabled={!meeting.summary}
+              className={cn("transition-all", activeTab === "summary" ? "shadow-lg" : "hover:border-cyan-400/60")}
             >
               <Lightbulb className="w-4 h-4 mr-2" />
               Summary
             </Button>
             <Button
-              variant={activeTab === "actions" ? "default" : "outline"}
+              variant={activeTab === "actions" ? "glow" : "glass"}
               size="sm"
               onClick={() => setActiveTab("actions")}
-              disabled={!meeting.action_items}
+              className={cn("transition-all", activeTab === "actions" ? "shadow-lg" : "hover:border-blue-400/60")}
             >
               <ListChecks className="w-4 h-4 mr-2" />
               Actions
             </Button>
             <Button
-              variant={activeTab === "insights" ? "default" : "outline"}
+              variant={activeTab === "insights" ? "glow" : "glass"}
               size="sm"
               onClick={() => setActiveTab("insights")}
+              className={cn("transition-all", activeTab === "insights" ? "shadow-lg" : "hover:border-green-400/60")}
             >
               <BarChart3 className="w-4 h-4 mr-2" />
               Insights
             </Button>
+
+            {meeting.transcript && availableLanguages.length > 0 && (
+              <div className="ml-auto">
+                <LanguageSelector
+                  selectedLanguage={currentLanguage}
+                  availableLanguages={availableLanguages}
+                  onLanguageChange={handleTranslate}
+                  isLoading={isTranslating}
+                />
+              </div>
+            )}
           </div>
         </CardHeader>
         <CardContent>
           {activeTab === "transcript" && (
             <div className="space-y-4">
-              {meeting.transcript && (
-                <div className="flex justify-end mb-4 gap-2">
-                  {!meeting.summary && (
-                    <Button
-                      variant="glow"
-                      size="sm"
-                      onClick={() => handleRegenerateSummary()}
-                      disabled={isRegeneratingSummary}
-                    >
-                      {isRegeneratingSummary ? (
-                        <>
-                          <Loader2 className="w-4 h-4 mr-2 animate-spin" />
-                          Generating...
-                        </>
-                      ) : (
-                        <>
-                          <Bot className="w-4 h-4 mr-2" />
-                          Generate Summary
-                        </>
-                      )}
-                    </Button>
-                  )}
+              <div className="flex justify-between items-center">
+                <h3 className="text-lg font-semibold">Transcript</h3>
+                {meeting.audio_url && !isRegeneratingTranscript && (
                   <Button
-                    variant="outline"
+                    variant="glass"
                     size="sm"
                     onClick={handleRegenerateTranscript}
-                    disabled={isRegeneratingTranscript || !meeting.audio_url}
+                    disabled={isTranscribing || isRegeneratingTranscript}
+                    className="hover:border-purple-400/60"
                   >
                     {isRegeneratingTranscript ? (
                       <>
@@ -474,35 +491,56 @@ export default function MeetingPage() {
                     ) : (
                       <>
                         <Sparkles className="w-4 h-4 mr-2" />
-                        Regenerate Transcript
+                        Regenerate
                       </>
                     )}
                   </Button>
-                </div>
-              )}
-              <div className="prose prose-invert max-w-none">
-                {displayedContent.transcript ? (
-                  <pre className="whitespace-pre-wrap font-sans text-sm text-white/80">
-                    {displayedContent.transcript}
-                  </pre>
-                ) : (
-                  <p className="text-white/40 italic">
-                    {isTranscribing ? "Transcription in progress..." : "No transcript available"}
-                  </p>
                 )}
               </div>
+
+              {isTranscribing ? (
+                <div className="text-center py-12">
+                  <Loader2 className="w-8 h-8 animate-spin mx-auto mb-4 text-purple-400" />
+                  <p className="text-white/60">Transcription in progress...</p>
+                  <p className="text-sm text-white/40 mt-2">This may take a few minutes</p>
+                </div>
+              ) : displayedContent.transcript ? (
+                <div className="prose prose-invert max-w-none">
+                  <div className="bg-white/[0.02] rounded-lg p-6 whitespace-pre-wrap text-white/80 leading-relaxed">
+                    {displayedContent.transcript}
+                  </div>
+                </div>
+              ) : (
+                <div className="text-center py-12">
+                  <FileText className="w-12 h-12 text-white/20 mx-auto mb-4" />
+                  <p className="text-white/50 italic">No transcript available yet.</p>
+                  {meeting.audio_url && !isProcessing && (
+                    <Button
+                      variant="glow"
+                      onClick={handleRegenerateTranscript}
+                      className="mt-4 shadow-lg"
+                      disabled={isTranscribing}
+                    >
+                      <Bot className="w-4 h-4 mr-2" />
+                      Generate Transcript
+                    </Button>
+                  )}
+                </div>
+              )}
             </div>
           )}
 
           {activeTab === "summary" && (
-            <div className="space-y-6">
-              {displayedContent.summary && (
-                <div className="flex justify-end mb-4">
+            <div className="space-y-4">
+              <div className="flex justify-between items-center">
+                <h3 className="text-lg font-semibold">AI Summary</h3>
+                {meeting.transcript && !isRegeneratingSummary && (
                   <Button
-                    variant="outline"
+                    variant="glass"
                     size="sm"
                     onClick={handleRegenerateSummary}
-                    disabled={isRegeneratingSummary || !meeting.transcript}
+                    disabled={isRegeneratingSummary}
+                    className="hover:border-cyan-400/60"
                   >
                     {isRegeneratingSummary ? (
                       <>
@@ -512,130 +550,181 @@ export default function MeetingPage() {
                     ) : (
                       <>
                         <Sparkles className="w-4 h-4 mr-2" />
-                        Regenerate Summary
+                        Regenerate
                       </>
                     )}
                   </Button>
-                </div>
-              )}
+                )}
+              </div>
+
               {displayedContent.summary ? (
-                <>
+                <div className="space-y-6">
                   <div>
-                    <h3 className="text-lg font-semibold mb-2">Overview</h3>
-                    <p className="text-white/80">{displayedContent.summary.overview}</p>
+                    <h4 className="text-sm font-semibold text-white/60 uppercase tracking-wider mb-3">Overview</h4>
+                    <p className="text-white/80 leading-relaxed">{displayedContent.summary.overview}</p>
                   </div>
 
-                  {displayedContent.summary.key_points?.length > 0 && (
+                  {displayedContent.summary.key_points && displayedContent.summary.key_points.length > 0 && (
                     <div>
-                      <h3 className="text-lg font-semibold mb-2">Key Points</h3>
-                      <ul className="list-disc list-inside space-y-1">
+                      <h4 className="text-sm font-semibold text-white/60 uppercase tracking-wider mb-3">Key Points</h4>
+                      <ul className="space-y-2">
                         {displayedContent.summary.key_points.map((point: string, index: number) => (
-                          <li key={index} className="text-white/80">
-                            {point}
+                          <li key={index} className="flex items-start gap-2">
+                            <span className="text-cyan-400 mt-1">•</span>
+                            <span className="text-white/80">{point}</span>
                           </li>
                         ))}
                       </ul>
                     </div>
                   )}
 
-                  {displayedContent.summary.decisions?.length > 0 && (
+                  {displayedContent.summary.decisions && displayedContent.summary.decisions.length > 0 && (
                     <div>
-                      <h3 className="text-lg font-semibold mb-2">Decisions</h3>
-                      <ul className="list-disc list-inside space-y-1">
+                      <h4 className="text-sm font-semibold text-white/60 uppercase tracking-wider mb-3">Decisions</h4>
+                      <ul className="space-y-2">
                         {displayedContent.summary.decisions.map((decision: string, index: number) => (
-                          <li key={index} className="text-white/80">
-                            {decision}
+                          <li key={index} className="flex items-start gap-2">
+                            <span className="text-purple-400 mt-1">✓</span>
+                            <span className="text-white/80">{decision}</span>
                           </li>
                         ))}
                       </ul>
                     </div>
                   )}
 
-                  {displayedContent.summary.next_steps?.length > 0 && (
+                  {displayedContent.summary.next_steps && displayedContent.summary.next_steps.length > 0 && (
                     <div>
-                      <h3 className="text-lg font-semibold mb-2">Next Steps</h3>
-                      <ul className="list-disc list-inside space-y-1">
+                      <h4 className="text-sm font-semibold text-white/60 uppercase tracking-wider mb-3">Next Steps</h4>
+                      <ul className="space-y-2">
                         {displayedContent.summary.next_steps.map((step: string, index: number) => (
-                          <li key={index} className="text-white/80">
-                            {step}
+                          <li key={index} className="flex items-start gap-2">
+                            <span className="text-blue-400 mt-1">→</span>
+                            <span className="text-white/80">{step}</span>
                           </li>
                         ))}
                       </ul>
                     </div>
                   )}
-                </>
+                </div>
               ) : (
-                <p className="text-white/40 italic">Summary not available</p>
+                <div className="text-center py-12">
+                  <Lightbulb className="w-12 h-12 text-white/20 mx-auto mb-4" />
+                  <p className="text-white/50 italic mb-4">
+                    AI summary will be generated after transcription is complete.
+                  </p>
+                  {meeting.transcript && !isRegeneratingSummary && (
+                    <Button variant="glow" onClick={handleRegenerateSummary} className="shadow-lg">
+                      <Bot className="w-4 h-4 mr-2" />
+                      Generate Summary
+                    </Button>
+                  )}
+                </div>
               )}
             </div>
           )}
 
           {activeTab === "actions" && (
             <div className="space-y-4">
-              {meeting.action_items && meeting.action_items.length > 0 && (
-                <div className="flex justify-end mb-4">
-                  <Button
-                    variant="outline"
-                    size="sm"
-                    onClick={handleRegenerateActions}
-                    disabled={isRegeneratingActions || !meeting.transcript}
-                  >
-                    {isRegeneratingActions ? (
-                      <>
-                        <Loader2 className="w-4 h-4 mr-2 animate-spin" />
-                        Regenerating...
-                      </>
-                    ) : (
-                      <>
-                        <Sparkles className="w-4 h-4 mr-2" />
-                        Regenerate Actions
-                      </>
-                    )}
-                  </Button>
-                </div>
-              )}
+              <div className="flex justify-between items-center">
+                <h3 className="text-lg font-semibold">Action Items</h3>
+                {meeting.transcript &&
+                  meeting.action_items &&
+                  meeting.action_items.length > 0 &&
+                  !isRegeneratingActions && (
+                    <Button
+                      variant="glass"
+                      size="sm"
+                      onClick={handleRegenerateActions}
+                      disabled={isRegeneratingActions}
+                      className="hover:border-blue-400/60"
+                    >
+                      {isRegeneratingActions ? (
+                        <>
+                          <Loader2 className="w-4 h-4 mr-2 animate-spin" />
+                          Regenerating...
+                        </>
+                      ) : (
+                        <>
+                          <Sparkles className="w-4 h-4 mr-2" />
+                          Regenerate
+                        </>
+                      )}
+                    </Button>
+                  )}
+              </div>
+
               {meeting.action_items && meeting.action_items.length > 0 ? (
-                meeting.action_items.map((item: any) => (
-                  <Card key={item.id} className="bg-white/[0.02] border-white/10">
-                    <CardContent className="p-4">
-                      <div className="flex items-start justify-between">
-                        <div className="flex-1">
-                          <p className="font-medium">{item.task}</p>
-                          {item.assignee && <p className="text-sm text-white/60 mt-1">Assigned to: {item.assignee}</p>}
-                        </div>
-                        <span
-                          className={cn(
-                            "px-2 py-1 text-xs rounded-full",
-                            item.priority === "high"
-                              ? "bg-red-500/20 text-red-400"
-                              : item.priority === "medium"
-                              ? "bg-yellow-500/20 text-yellow-400"
-                              : "bg-green-500/20 text-green-400"
-                          )}
+                meeting.action_items.map((item, index) => (
+                  <div
+                    key={item.id || index}
+                    className={cn(
+                      "p-4 rounded-lg border transition-all",
+                      item.completed
+                        ? "bg-white/[0.02] border-white/10 opacity-60"
+                        : "bg-white/[0.03] border-white/20 hover:border-white/30"
+                    )}
+                  >
+                    <div className="flex items-start justify-between">
+                      <div className="flex-1 space-y-2">
+                        <p
+                          className={cn("font-medium", item.completed ? "text-white/50 line-through" : "text-white/90")}
                         >
-                          {item.priority}
-                        </span>
+                          {item.task}
+                        </p>
+                        <div className="flex gap-4 text-sm">
+                          {item.assignee && (
+                            <div className="flex items-center gap-1.5 text-white/50">
+                              <Users className="w-3.5 h-3.5" />
+                              <span>{item.assignee}</span>
+                            </div>
+                          )}
+                          {item.due_date && (
+                            <div className="flex items-center gap-1.5 text-white/50">
+                              <Calendar className="w-3.5 h-3.5" />
+                              <span>{format(new Date(item.due_date), "PPP")}</span>
+                            </div>
+                          )}
+                        </div>
                       </div>
-                    </CardContent>
-                  </Card>
+                      <span
+                        className={cn(
+                          "px-2.5 py-1 text-xs rounded-full font-medium",
+                          item.priority === "high"
+                            ? "bg-red-500/20 text-red-400 border border-red-500/30"
+                            : item.priority === "medium"
+                            ? "bg-yellow-500/20 text-yellow-400 border border-yellow-500/30"
+                            : "bg-green-500/20 text-green-400 border border-green-500/30"
+                        )}
+                      >
+                        {item.priority}
+                      </span>
+                    </div>
+                  </div>
                 ))
               ) : (
-                <p className="text-white/40 italic">No action items available</p>
+                <div className="text-center py-12">
+                  <ListChecks className="w-12 h-12 text-white/20 mx-auto mb-4" />
+                  <p className="text-white/50 italic">
+                    Action items will be extracted after AI processing is complete.
+                  </p>
+                </div>
               )}
             </div>
           )}
 
           {activeTab === "insights" && (
             <div className="space-y-6">
-              {dbInsights && (
-                <div className="flex justify-end mb-4">
+              <div className="flex justify-between items-center">
+                <h3 className="text-lg font-semibold">Meeting Insights</h3>
+                {meeting.transcript && !isGeneratingInsights && (
                   <Button
-                    variant="outline"
+                    variant="glass"
                     size="sm"
-                    onClick={handleRegenerateInsights}
-                    disabled={isRegeneratingInsights || !meeting.transcript}
+                    onClick={dbInsights ? handleRegenerateInsights : handleGenerateInsights}
+                    disabled={isGeneratingInsights || isRegeneratingInsights}
+                    className="hover:border-green-400/60"
                   >
-                    {isRegeneratingInsights ? (
+                    {isGeneratingInsights || isRegeneratingInsights ? (
                       <>
                         <Loader2 className="w-4 h-4 mr-2 animate-spin" />
                         Regenerating...
@@ -647,8 +736,8 @@ export default function MeetingPage() {
                       </>
                     )}
                   </Button>
-                </div>
-              )}
+                )}
+              </div>
 
               {dbInsights ? (
                 <>

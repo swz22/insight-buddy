@@ -16,6 +16,8 @@ import { useToast } from "@/hooks/use-toast";
 import { FileText } from "lucide-react";
 import { SkeletonCard } from "@/components/ui/skeleton";
 import { VirtualMeetingsList } from "@/components/meetings/virtual-meetings-list";
+import { useMeetingsRealtime } from "@/hooks/use-meetings-realtime";
+import { useAuth } from "@/hooks/use-auth";
 
 type Meeting = Database["public"]["Tables"]["meetings"]["Row"];
 
@@ -27,9 +29,16 @@ export function MeetingsList({ userEmail }: MeetingsListProps) {
   const router = useRouter();
   const queryClient = useQueryClient();
   const toast = useToast();
+  const { user } = useAuth();
   const { data: meetings, isLoading, error } = useMeetings();
   const deleteMeeting = useDeleteMeeting();
   const [editingMeeting, setEditingMeeting] = useState<Meeting | null>(null);
+
+  // Enable Realtime subscriptions for instant updates
+  useMeetingsRealtime({
+    userId: user?.id,
+    enabled: !!user?.id,
+  });
 
   const { searchTerm, setSearchTerm, dateRange, setDateRange, filteredMeetings, clearFilters, hasActiveFilters } =
     useMeetingFilters(meetings);
@@ -54,106 +63,111 @@ export function MeetingsList({ userEmail }: MeetingsListProps) {
     }
   };
 
-  const handleShareClick = (e: React.MouseEvent, meeting: Meeting) => {
-    e.stopPropagation();
-    router.push(`/dashboard/meetings/${meeting.id}?share=true`);
-  };
-
   const handleShare = (meeting: Meeting) => {
-    router.push(`/dashboard/meetings/${meeting.id}?share=true`);
+    router.push(`/dashboard/meetings/${meeting.id}`);
   };
 
-  const handleUpdateSuccess = (updatedMeeting: Meeting) => {
-    queryClient.invalidateQueries({ queryKey: ["meetings"] });
+  const handleUpdate = (updatedMeeting: Meeting) => {
+    queryClient.setQueryData<Meeting[]>(["meetings"], (old) =>
+      old ? old.map((m) => (m.id === updatedMeeting.id ? updatedMeeting : m)) : []
+    );
+    queryClient.setQueryData<Meeting>(["meetings", updatedMeeting.id], updatedMeeting);
     setEditingMeeting(null);
-    toast.success("Meeting updated successfully");
   };
-
-  if (isLoading) {
-    return (
-      <div className="space-y-6">
-        <div className="flex items-center justify-between mb-6">
-          <h1 className="text-3xl font-display gradient-text">Meetings</h1>
-        </div>
-        <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-3">
-          {[...Array(6)].map((_, i) => (
-            <SkeletonCard key={i} />
-          ))}
-        </div>
-      </div>
-    );
-  }
-
-  if (error) {
-    return (
-      <div className="text-center py-12">
-        <p className="text-red-500">Failed to load meetings</p>
-        <Button variant="glass" className="mt-4" onClick={() => router.refresh()}>
-          Try Again
-        </Button>
-      </div>
-    );
-  }
-
-  const displayMeetings = filteredMeetings || meetings || [];
 
   return (
-    <div className="space-y-6">
-      <div className="flex items-center justify-between">
-        <div>
-          <h1 className="text-3xl font-display gradient-text">Meetings</h1>
-          <p className="text-white/60 mt-1">Logged in as {userEmail}</p>
-        </div>
-        <Button variant="glow" size="lg" asChild className="shadow-lg hover:shadow-cyan-500/20">
-          <Link href="/dashboard/upload">Upload Meeting</Link>
-        </Button>
-      </div>
+    <>
+      <Card className="bg-white/[0.02] backdrop-blur-sm border-white/10 shadow-xl">
+        <CardHeader>
+          <div className="flex items-center justify-between">
+            <div>
+              <CardTitle className="text-2xl font-display">
+                Your <span className="gradient-text">Meetings</span>
+              </CardTitle>
+              <CardDescription className="text-white/60 mt-1">Welcome back, {userEmail.split("@")[0]}</CardDescription>
+            </div>
+            <Link href="/dashboard/upload">
+              <Button variant="glow" className="shadow-lg hover:shadow-xl transition-all">
+                <FileText className="w-4 h-4 mr-2" />
+                New Meeting
+              </Button>
+            </Link>
+          </div>
+        </CardHeader>
+        <CardContent>
+          <MeetingFilters
+            searchTerm={searchTerm}
+            onSearchChange={setSearchTerm}
+            dateRange={dateRange}
+            onDateRangeChange={setDateRange}
+            onClearFilters={clearFilters}
+            hasActiveFilters={hasActiveFilters}
+          />
 
-      <MeetingFilters
-        searchTerm={searchTerm}
-        onSearchChange={setSearchTerm}
-        dateRange={dateRange}
-        onDateRangeChange={setDateRange}
-        onClearFilters={clearFilters}
-      />
-
-      {displayMeetings.length === 0 ? (
-        <Card className="p-12 text-center">
-          <FileText className="w-16 h-16 mx-auto mb-4 text-white/20" />
-          <h3 className="text-xl font-semibold mb-2">
-            {hasActiveFilters ? "No meetings match your filters" : "No meetings yet"}
-          </h3>
-          <p className="text-white/60 mb-6">
-            {hasActiveFilters ? "Try adjusting your search criteria" : "Upload your first meeting to get started"}
-          </p>
-          {hasActiveFilters ? (
-            <Button variant="glass" onClick={clearFilters}>
-              Clear Filters
-            </Button>
+          {isLoading ? (
+            <div className="grid gap-4 mt-6">
+              <SkeletonCard />
+              <SkeletonCard />
+              <SkeletonCard />
+            </div>
+          ) : error ? (
+            <div className="text-center py-12">
+              <p className="text-red-400">Failed to load meetings</p>
+              <Button
+                onClick={() => queryClient.invalidateQueries({ queryKey: ["meetings"] })}
+                className="mt-4"
+                variant="outline"
+              >
+                Retry
+              </Button>
+            </div>
+          ) : filteredMeetings.length === 0 ? (
+            <div className="text-center py-12">
+              <FileText className="w-12 h-12 text-white/20 mx-auto mb-4" />
+              {hasActiveFilters ? (
+                <>
+                  <p className="text-white/60 mb-4">No meetings match your filters</p>
+                  <Button onClick={clearFilters} variant="outline" size="sm">
+                    Clear Filters
+                  </Button>
+                </>
+              ) : (
+                <>
+                  <p className="text-white/60 mb-4">No meetings yet</p>
+                  <Link href="/dashboard/upload">
+                    <Button variant="glow" className="shadow-lg">
+                      Upload Your First Meeting
+                    </Button>
+                  </Link>
+                </>
+              )}
+            </div>
           ) : (
-            <Button variant="glow" asChild>
-              <Link href="/dashboard/upload">Upload Your First Meeting</Link>
-            </Button>
+            <div className="mt-6">
+              <div className="mb-4 text-sm text-white/50">
+                {filteredMeetings.length} {filteredMeetings.length === 1 ? "meeting" : "meetings"}
+                {hasActiveFilters && ` (filtered from ${meetings?.length || 0} total)`}
+              </div>
+              <VirtualMeetingsList
+                meetings={filteredMeetings}
+                onView={handleView}
+                onEdit={handleEdit}
+                onDelete={handleDelete}
+                onShare={handleShare}
+              />
+            </div>
           )}
-        </Card>
-      ) : (
-        <VirtualMeetingsList
-          meetings={displayMeetings}
-          onView={handleView}
-          onEdit={handleEdit}
-          onDelete={handleDelete}
-          onShare={handleShare}
-        />
-      )}
+        </CardContent>
+      </Card>
 
       {editingMeeting && (
         <EditMeetingDialog
           meeting={editingMeeting}
-          isOpen={!!editingMeeting}
+          isOpen={true}
           onClose={() => setEditingMeeting(null)}
-          onUpdate={handleUpdateSuccess}
+          onUpdate={handleUpdate}
         />
       )}
-    </div>
+    </>
   );
 }
