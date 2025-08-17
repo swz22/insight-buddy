@@ -2,9 +2,9 @@ import { z } from "zod";
 
 export const meetingSummarySchema = z.object({
   overview: z.string().describe("A concise 2-3 sentence summary of the meeting"),
-  key_points: z.array(z.string()).max(5).describe("Main discussion points and important topics"),
-  decisions: z.array(z.string()).max(5).describe("Key decisions made during the meeting"),
-  next_steps: z.array(z.string()).max(5).describe("Action items and follow-up tasks"),
+  key_points: z.array(z.string()).max(10).describe("Main discussion points and important topics"),
+  decisions: z.array(z.string()).max(10).describe("Key decisions made during the meeting"),
+  next_steps: z.array(z.string()).max(10).describe("Action items and follow-up tasks"),
 });
 
 export const actionItemSchema = z.object({

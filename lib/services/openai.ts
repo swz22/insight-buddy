@@ -4,6 +4,7 @@ import {
   actionItemsResponseSchema,
   type MeetingSummary,
   type ActionItem,
+  type ActionItemsResponse,
   type OpenAIResponse,
 } from "@/lib/types/openai";
 
@@ -40,10 +41,12 @@ Important guidelines:
 You MUST respond with a valid JSON object in this exact format:
 {
   "overview": "string - A concise 2-3 sentence summary of the meeting",
-  "key_points": ["string array - Main discussion points, max 10 items"],
-  "decisions": ["string array - Key decisions made, max 10 items"],
-  "next_steps": ["string array - Action items and follow-up tasks, max 10 items"]
-}`;
+  "key_points": ["string array - Main discussion points, MAXIMUM 10 items"],
+  "decisions": ["string array - Key decisions made, MAXIMUM 10 items"],
+  "next_steps": ["string array - Action items and follow-up tasks, MAXIMUM 10 items"]
+}
+
+CRITICAL: Each array MUST contain NO MORE THAN 10 items. If there are more than 10 points to include, select only the 10 most important ones.`;
 
     const userPrompt = `Analyze this meeting transcript and provide a structured summary.
 
@@ -81,64 +84,50 @@ Remember to respond with valid JSON only.`;
   ): Promise<ActionItem[]> {
     const systemPrompt = `You are an expert at extracting actionable tasks from meeting transcripts.
 
-Your task extraction should:
-- Identify specific, measurable tasks that need to be completed
-- Assign tasks to specific people when they volunteer or are assigned in the meeting
-- Determine priority based on urgency expressed in the discussion
-- Extract any mentioned deadlines or timeframes
-- Include relevant context to make the task clear
+Extract clear, specific action items with:
+- Task description
+- Assignee (if mentioned)
+- Due date (if mentioned)
+- Priority level (high/medium/low based on context)
 
-Priority guidelines:
-- High: Urgent tasks, blockers, or items with near-term deadlines
-- Medium: Important tasks with standard timelines
-- Low: Nice-to-have items or long-term considerations
-
-If no explicit assignee is mentioned, leave it null rather than guessing.
-
-You MUST respond with a valid JSON object in this exact format:
+Respond with JSON in this format:
 {
   "action_items": [
     {
-      "task": "string - Clear description of the task",
-      "assignee": "string or null - Person responsible",
-      "due_date": "string or null - ISO date string",
+      "task": "string",
+      "assignee": "string or null",
+      "due_date": "ISO date string or null",
       "priority": "high" | "medium" | "low",
-      "context": "string - Additional context"
+      "context": "optional additional context"
     }
   ]
-}`;
+}
 
-    const userPrompt = `Extract action items from this meeting transcript.
+MAXIMUM 10 action items. Select the most important if there are more.`;
 
-Meeting Context:
-- Participants: ${participants.length > 0 ? participants.join(", ") : "Not specified"}
-- Meeting Summary: ${summary.overview}
+    const userPrompt = `Extract action items from this meeting.
 
-Key Decisions Made:
-${summary.decisions.map((d, i) => `${i + 1}. ${d}`).join("\n")}
+Meeting Summary:
+${JSON.stringify(summary, null, 2)}
 
-Identified Next Steps:
-${summary.next_steps.map((s, i) => `${i + 1}. ${s}`).join("\n")}
-
-Full Transcript:
+Transcript:
 ${transcript}
 
-Extract specific action items with clear ownership and timelines where mentioned.
-Remember to respond with valid JSON only.`;
+Participants: ${participants.join(", ") || "Unknown"}`;
 
     try {
-      const response = await this.callOpenAI<{ action_items: ActionItem[] }>({
+      const response = await this.callOpenAI<ActionItemsResponse>({
         messages: [
           { role: "system", content: systemPrompt },
           { role: "user", content: userPrompt },
         ],
         temperature: 0.2,
-        max_tokens: 1500,
+        max_tokens: 1000,
       });
 
       const result = actionItemsResponseSchema.parse(response);
       return result.action_items.map((item, index) => ({
-        id: `${Date.now()}_${index}`,
+        id: `action-${Date.now()}-${index}`,
         task: item.task,
         assignee: item.assignee,
         due_date: item.due_date,
