@@ -140,6 +140,12 @@ export function MeetingCard({ meeting, onView, onEdit, onDelete, onShare }: Meet
 
   const progress = duration > 0 ? (currentTime / duration) * 100 : 0;
 
+  const formatTime = (seconds: number) => {
+    const mins = Math.floor(seconds / 60);
+    const secs = Math.floor(seconds % 60);
+    return `${mins}:${secs.toString().padStart(2, "0")}`;
+  };
+
   return (
     <Card
       className="cursor-pointer transition-all duration-300 hover:border-white/20 hover:shadow-2xl group relative"
@@ -227,34 +233,40 @@ export function MeetingCard({ meeting, onView, onEdit, onDelete, onShare }: Meet
         </div>
 
         {meeting.audio_url && (
-          <div className="flex items-center gap-2" onClick={(e) => e.stopPropagation()}>
-            <Button
-              size="sm"
-              variant="ghost"
-              onClick={handlePlayPause}
-              className="w-8 h-8 p-0 hover:bg-white/10 hover:text-cyan-400 transition-colors"
-            >
-              {isPlaying ? <Pause className="w-4 h-4" /> : <Play className="w-4 h-4" />}
-            </Button>
+          <div className="space-y-1.5">
+            <div className="flex items-center gap-2" onClick={(e) => e.stopPropagation()}>
+              <Button
+                size="sm"
+                variant="ghost"
+                onClick={handlePlayPause}
+                className="w-8 h-8 p-0 hover:bg-white/10 hover:text-cyan-400 transition-colors"
+              >
+                {isPlaying ? <Pause className="w-4 h-4" /> : <Play className="w-4 h-4" />}
+              </Button>
 
-            <div
-              ref={progressRef}
-              className="flex-1 h-2 bg-white/10 rounded-full relative overflow-hidden cursor-pointer group/progress hover:h-3 transition-all"
-              onClick={handleProgressClick}
-              onMouseDown={handleProgressMouseDown}
-            >
               <div
-                className="absolute left-0 top-0 h-full bg-gradient-to-r from-purple-500 to-cyan-500 transition-all duration-200 pointer-events-none"
-                style={{ width: `${progress}%` }}
-              />
-              <div
-                className={cn(
-                  "absolute top-1/2 -translate-y-1/2 w-3 h-3 bg-white rounded-full shadow-lg transition-all duration-200 pointer-events-none",
-                  "opacity-0 group-hover/progress:opacity-100",
-                  isDragging && "opacity-100"
-                )}
-                style={{ left: `${progress}%`, transform: "translateX(-50%) translateY(-50%)" }}
-              />
+                ref={progressRef}
+                className="flex-1 h-2 bg-white/10 rounded-full relative overflow-hidden cursor-pointer group/progress hover:h-3 transition-all"
+                onClick={handleProgressClick}
+                onMouseDown={handleProgressMouseDown}
+              >
+                <div
+                  className="absolute left-0 top-0 h-full bg-gradient-to-r from-purple-500 to-cyan-500 transition-all duration-200 pointer-events-none"
+                  style={{ width: `${progress}%` }}
+                />
+                <div
+                  className={cn(
+                    "absolute top-1/2 -translate-y-1/2 w-3 h-3 bg-white rounded-full shadow-lg transition-all duration-200 pointer-events-none",
+                    "opacity-0 group-hover/progress:opacity-100",
+                    isDragging && "opacity-100"
+                  )}
+                  style={{ left: `${progress}%`, transform: "translateX(-50%) translateY(-50%)" }}
+                />
+              </div>
+
+              <span className="text-xs text-white/40 min-w-[65px] text-right">
+                {formatTime(currentTime)} / {formatTime(duration)}
+              </span>
             </div>
 
             <audio
