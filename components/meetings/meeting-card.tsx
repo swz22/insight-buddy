@@ -112,29 +112,41 @@ export function MeetingCard({ meeting, onView, onEdit, onDelete, onShare }: Meet
                 size="sm"
                 variant="ghost"
                 onClick={(e) => e.stopPropagation()}
-                className="w-8 h-8 p-0 text-white/40 hover:text-white/90 hover:bg-white/10"
+                className="w-7 h-7 p-0 text-white/30 hover:text-white/60 hover:bg-white/[0.05] transition-all duration-200"
               >
-                <MoreVertical className="w-4 h-4" />
+                <MoreVertical className="w-3.5 h-3.5" />
               </Button>
             </DropdownMenuTrigger>
             <DropdownMenuContent align="end" className="w-48 bg-black/90 backdrop-blur-xl border-white/10">
-              <DropdownMenuItem onClick={handleEdit} className="text-white/90 hover:text-white hover:bg-white/10">
-                <Edit2 className="w-4 h-4 mr-2" />
+              <DropdownMenuItem
+                onClick={handleEdit}
+                className="text-white/70 hover:text-white hover:bg-white/[0.05] cursor-pointer"
+              >
+                <Edit2 className="w-3.5 h-3.5 mr-2" />
                 Edit
               </DropdownMenuItem>
-              <DropdownMenuItem onClick={handleShare} className="text-white/90 hover:text-white hover:bg-white/10">
-                <Share2 className="w-4 h-4 mr-2" />
+              <DropdownMenuItem
+                onClick={handleShare}
+                className="text-white/70 hover:text-white hover:bg-white/[0.05] cursor-pointer"
+              >
+                <Share2 className="w-3.5 h-3.5 mr-2" />
                 Share
               </DropdownMenuItem>
               {meeting.audio_url && (
-                <DropdownMenuItem onClick={handleDownload} className="text-white/90 hover:text-white hover:bg-white/10">
-                  <Download className="w-4 h-4 mr-2" />
+                <DropdownMenuItem
+                  onClick={handleDownload}
+                  className="text-white/70 hover:text-white hover:bg-white/[0.05] cursor-pointer"
+                >
+                  <Download className="w-3.5 h-3.5 mr-2" />
                   Download
                 </DropdownMenuItem>
               )}
               <DropdownMenuSeparator className="bg-white/10" />
-              <DropdownMenuItem onClick={handleDelete} className="text-red-400 hover:text-red-300 hover:bg-red-500/10">
-                <Trash2 className="w-4 h-4 mr-2" />
+              <DropdownMenuItem
+                onClick={handleDelete}
+                className="text-red-400/80 hover:text-red-400 hover:bg-red-500/10 cursor-pointer"
+              >
+                <Trash2 className="w-3.5 h-3.5 mr-2" />
                 Delete
               </DropdownMenuItem>
             </DropdownMenuContent>
