@@ -1,6 +1,7 @@
 import { createClient } from "@/lib/supabase/server";
 import { createServiceRoleClient } from "@/lib/supabase/service";
 import { apiError, apiSuccess } from "@/lib/api/response";
+import { TranslationService } from "@/lib/services/translation";
 import { z } from "zod";
 
 export const dynamic = "force-dynamic";
@@ -55,6 +56,7 @@ export async function POST(request: Request, { params: paramsPromise }: RoutePar
       return apiError("No transcript available for translation", 400, "NO_TRANSCRIPT");
     }
 
+    // Check for existing translation
     const existingTranslation = meeting.translations?.[targetLanguage];
     if (existingTranslation && !forceRetranslate) {
       return apiSuccess({
@@ -63,11 +65,62 @@ export async function POST(request: Request, { params: paramsPromise }: RoutePar
       });
     }
 
-    if (!process.env.OPENAI_API_KEY) {
+    const openaiKey = process.env.OPENAI_API_KEY;
+    if (!openaiKey) {
       return apiError("Translation service not configured", 503, "SERVICE_UNAVAILABLE");
     }
 
-    return apiError("Translation temporarily unavailable", 503, "SERVICE_UNAVAILABLE");
+    try {
+      const translationService = new TranslationService(openaiKey);
+
+      // Detect source language if not specified
+      const sourceLanguage = meeting.language || "en";
+
+      // Translate the meeting content
+      const translatedContent = await translationService.translateMeetingContent(
+        {
+          title: meeting.title,
+          description: meeting.description,
+          transcript: meeting.transcript,
+          summary: meeting.summary,
+        },
+        targetLanguage,
+        sourceLanguage
+      );
+
+      // Save the translation
+      const updatedTranslations = {
+        ...(meeting.translations || {}),
+        [targetLanguage]: translatedContent,
+      };
+
+      const { error: updateError } = await serviceSupabase
+        .from("meetings")
+        .update({
+          translations: updatedTranslations,
+          updated_at: new Date().toISOString(),
+        })
+        .eq("id", params.id);
+
+      if (updateError) {
+        console.error("Failed to save translation:", updateError);
+        return apiError("Failed to save translation", 500, "UPDATE_ERROR");
+      }
+
+      return apiSuccess({
+        translation: translatedContent,
+        cached: false,
+        message: `Meeting successfully translated to ${targetLanguage}`,
+      });
+    } catch (error) {
+      console.error("Translation processing failed:", error);
+      return apiError(
+        "Failed to translate meeting",
+        500,
+        "TRANSLATION_ERROR",
+        error instanceof Error ? error.message : undefined
+      );
+    }
   } catch (error) {
     console.error("Translation error:", error);
     return apiError(
