@@ -31,34 +31,55 @@ export function generateTextContent(meeting: Meeting, sections: ExportSections, 
   if (sections.summary && meeting.summary) {
     parts.push("SUMMARY");
     parts.push("-".repeat(40));
-    parts.push(`Overview: ${meeting.summary.overview}`);
-    parts.push("");
-    parts.push("Key Points:");
-    meeting.summary.key_points.forEach((point: string, i: number) => {
-      parts.push(`${i + 1}. ${point}`);
-    });
-    parts.push("");
-    parts.push("Decisions:");
-    meeting.summary.decisions.forEach((decision: string, i: number) => {
-      parts.push(`${i + 1}. ${decision}`);
-    });
-    parts.push("");
-    parts.push("Next Steps:");
-    meeting.summary.next_steps.forEach((step: string, i: number) => {
-      parts.push(`${i + 1}. ${step}`);
-    });
+
+    if (typeof meeting.summary === "string") {
+      parts.push(meeting.summary);
+    } else if (meeting.summary && typeof meeting.summary === "object") {
+      const summaryObj = meeting.summary as any;
+
+      if (summaryObj.overview) {
+        parts.push(`Overview: ${summaryObj.overview}`);
+        parts.push("");
+      }
+
+      if (summaryObj.key_points && Array.isArray(summaryObj.key_points)) {
+        parts.push("Key Points:");
+        summaryObj.key_points.forEach((point: string, i: number) => {
+          parts.push(`${i + 1}. ${point}`);
+        });
+        parts.push("");
+      }
+
+      if (summaryObj.decisions && Array.isArray(summaryObj.decisions)) {
+        parts.push("Decisions:");
+        summaryObj.decisions.forEach((decision: string, i: number) => {
+          parts.push(`${i + 1}. ${decision}`);
+        });
+        parts.push("");
+      }
+
+      if (summaryObj.next_steps && Array.isArray(summaryObj.next_steps)) {
+        parts.push("Next Steps:");
+        summaryObj.next_steps.forEach((step: string, i: number) => {
+          parts.push(`${i + 1}. ${step}`);
+        });
+        parts.push("");
+      }
+    }
     parts.push("");
   }
 
-  if (sections.actionItems && meeting.action_items) {
+  if (sections.actionItems && meeting.action_items && Array.isArray(meeting.action_items)) {
     parts.push("ACTION ITEMS");
     parts.push("-".repeat(40));
     meeting.action_items.forEach((item: any, i: number) => {
-      parts.push(`${i + 1}. ${item.task}`);
+      parts.push(`${i + 1}. ${item.task || item}`);
       if (item.assignee) parts.push(`   Assignee: ${item.assignee}`);
       if (item.due_date) parts.push(`   Due: ${format(new Date(item.due_date), "PPP")}`);
-      parts.push(`   Priority: ${item.priority}`);
-      parts.push(`   Status: ${item.completed ? "Completed" : "Pending"}`);
+      if (item.priority) parts.push(`   Priority: ${item.priority}`);
+      if (typeof item.completed !== "undefined") {
+        parts.push(`   Status: ${item.completed ? "Completed" : "Pending"}`);
+      }
       parts.push("");
     });
   }

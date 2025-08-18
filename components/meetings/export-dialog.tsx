@@ -81,15 +81,18 @@ export function ExportDialog({ meeting, userEmail, insights, isOpen, onClose }: 
           throw new Error("Please enter a valid email address");
         }
 
-        const response = await fetch(`/api/meetings/${meeting.id}/export`, {
+        const response = await fetch("/api/meetings/export/email", {
           method: "POST",
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({
+            meetingId: meeting.id,
+            recipientEmails: [recipientEmail],
             format: selectedFormat,
             sections,
-            delivery: "email",
-            recipientEmail,
             customMessage,
+            exportedBy: {
+              email: userEmail,
+            },
           }),
         });
 
