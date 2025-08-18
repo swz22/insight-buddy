@@ -1,8 +1,6 @@
 // @ts-nocheck
 /* eslint-disable */
-
-// Import using the import map defined in deno.json
-import { createClient } from "@supabase/supabase-js";
+import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 
 const RESEND_API_KEY = Deno.env.get("RESEND_API_KEY");
 const SUPABASE_URL = Deno.env.get("SUPABASE_URL");
@@ -123,19 +121,15 @@ const corsHeaders = {
 
 Deno.serve(async (req) => {
   if (req.method === "OPTIONS") {
-    return new Response("ok", { headers: corsHeaders });
+    return new Response("ok", {
+      headers: corsHeaders,
+    });
   }
 
   try {
     const supabase = createClient(SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY);
-
     const body = await req.json();
-
-    const fileResponse = await fetch(body.fileUrl, {
-      headers: {
-        Authorization: `Bearer ${SUPABASE_SERVICE_ROLE_KEY}`,
-      },
-    });
+    const fileResponse = await fetch(body.fileUrl);
 
     if (!fileResponse.ok) {
       throw new Error("Failed to fetch export file");
@@ -161,7 +155,7 @@ Deno.serve(async (req) => {
       });
 
       const emailData = {
-        from: "Insight Buddy <noreply@insightbuddy.app>",
+        from: "Insight Buddy <onboarding@resend.dev>",
         to: [recipientEmail],
         subject: `Meeting Export: ${body.meeting.title}`,
         html: emailHtml,
@@ -204,7 +198,10 @@ Deno.serve(async (req) => {
         message: `Export sent to ${body.recipientEmails.length} recipient(s)`,
       }),
       {
-        headers: { ...corsHeaders, "Content-Type": "application/json" },
+        headers: {
+          ...corsHeaders,
+          "Content-Type": "application/json",
+        },
         status: 200,
       }
     );
@@ -216,7 +213,10 @@ Deno.serve(async (req) => {
         error: error.message || "Failed to send email",
       }),
       {
-        headers: { ...corsHeaders, "Content-Type": "application/json" },
+        headers: {
+          ...corsHeaders,
+          "Content-Type": "application/json",
+        },
         status: 500,
       }
     );
