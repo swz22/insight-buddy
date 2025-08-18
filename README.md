@@ -7,7 +7,7 @@
 
 <p align="center">
   <a href="https://skillicons.dev">
-    <img src="https://skillicons.dev/icons?i=nextjs,typescript,tailwind,supabase"/>
+    <img src="https://skillicons.dev/icons?i=nextjs,typescript,tailwind,supabase,vercel"/>
   </a>
 </p>
 
