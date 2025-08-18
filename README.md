@@ -1,36 +1,67 @@
-This is a [Next.js](https://nextjs.org) project bootstrapped with [`create-next-app`](https://github.com/vercel/next.js/tree/canary/packages/create-next-app).
+<h1 align="center">
+  <br>
+  <a href="https://insight-buddy-two.vercel.app/">Insight Buddy</a>
+  <br>
+</h1>
+<h4 align="center">AI-Powered Meeting Intelligence Platform</h4>
 
-## Getting Started
+<p align="center">
+  <a href="https://skillicons.dev">
+    <img src="https://skillicons.dev/icons?i=nextjs,typescript,tailwind,supabase"/>
+  </a>
+</p>
 
-First, run the development server:
+<h4 align="center">Transform meetings into actionable insights with AI transcription, summaries, and real-time collaboration!</h4>
+<p align="center">
+  <a href="https://insight-buddy-two.vercel.app/">Click here to view a live demo!</a>
+</p>
+<p align="center">
+  <a href="#key-features">Key Features</a> •
+  <a href="#tech-stack">Tech Stack</a> •
+  <a href="#installation">Installation</a> •
+</p>
+
+## Key Features
+
+### 🤖 AI-Powered Intelligence
+- **Automatic Transcription** - Speech-to-text with speaker detection via AssemblyAI
+- **Smart Summaries** - AI-generated meeting overviews with key decisions
+- **Action Item Extraction** - Intelligent task detection with priorities and assignees
+- **Meeting Analytics** - Speaker metrics, sentiment analysis, and engagement scores
+
+### 👥 Real-time Collaboration
+- **Live Presence** - See who's viewing in real-time
+- **Shared Annotations** - Collaborative highlights and comments
+- **Secure Sharing** - Password-protected links with expiration
+- **Export Options** - PDF, DOCX, or TXT with email delivery
+
+### ⚡ Modern Features
+- **Multi-format Support** - Audio/video upload with drag-and-drop
+- **Audio Visualization** - Interactive waveform player
+- **Advanced Search** - Filter by title, participants, date, content
+- **Authentication** - Email, Google OAuth, Anonymous sign-in
+
+## Tech Stack
+
+**Frontend:** Next.js 15, TypeScript, Tailwind CSS 4, Framer Motion, shadcn/ui  
+**Backend:** Supabase (Postgres, Auth, Realtime, Storage)  
+**AI Services:** AssemblyAI (transcription), OpenAI GPT-3.5 (summaries)  
+**State:** TanStack Query, Zustand, React Hook Form + Zod  
+**Audio:** WaveSurfer.js  
+
+## Installation
 
 ```bash
+# Clone repository
+git clone https://github.com/yourusername/insight-buddy.git
+cd insight-buddy
+
+# Install dependencies
+npm install
+
+# Setup environment variables
+cp .env.example .env.local
+
+# Run development server
 npm run dev
-# or
-yarn dev
-# or
-pnpm dev
-# or
-bun dev
 ```
-
-Open [http://localhost:3000](http://localhost:3000) with your browser to see the result.
-
-You can start editing the page by modifying `app/page.js`. The page auto-updates as you edit the file.
-
-This project uses [`next/font`](https://nextjs.org/docs/app/building-your-application/optimizing/fonts) to automatically optimize and load [Geist](https://vercel.com/font), a new font family for Vercel.
-
-## Learn More
-
-To learn more about Next.js, take a look at the following resources:
-
-- [Next.js Documentation](https://nextjs.org/docs) - learn about Next.js features and API.
-- [Learn Next.js](https://nextjs.org/learn) - an interactive Next.js tutorial.
-
-You can check out [the Next.js GitHub repository](https://github.com/vercel/next.js) - your feedback and contributions are welcome!
-
-## Deploy on Vercel
-
-The easiest way to deploy your Next.js app is to use the [Vercel Platform](https://vercel.com/new?utm_medium=default-template&filter=next.js&utm_source=create-next-app&utm_campaign=create-next-app-readme) from the creators of Next.js.
-
-Check out our [Next.js deployment documentation](https://nextjs.org/docs/app/building-your-application/deploying) for more details.
