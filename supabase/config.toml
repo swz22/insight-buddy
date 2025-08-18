@@ -58,7 +58,21 @@ file_size_limit = "50MiB"
 [storage.buckets.meeting-recordings]
 public = false
 file_size_limit = "500MB"
-allowed_mime_types = ["audio/mpeg", "audio/mp3", "audio/wav", "audio/x-wav", "audio/m4a", "audio/x-m4a", "audio/webm", "video/mp4", "video/webm", "video/quicktime"]
+allowed_mime_types = [
+  "audio/mpeg", 
+  "audio/mp3", 
+  "audio/wav", 
+  "audio/x-wav", 
+  "audio/m4a", 
+  "audio/x-m4a", 
+  "audio/webm", 
+  "video/mp4", 
+  "video/webm", 
+  "video/quicktime",
+  "application/pdf",
+  "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+  "text/plain"
+]
 
 [auth]
 enabled = true
@@ -100,60 +114,3 @@ max_frequency = "5s"
 [auth.sms.twilio]
 enabled = false
 account_sid = ""
-message_service_sid = ""
-auth_token = "env(SUPABASE_AUTH_SMS_TWILIO_AUTH_TOKEN)"
-
-[auth.mfa]
-max_enrolled_factors = 10
-
-[auth.mfa.totp]
-enroll_enabled = false
-verify_enabled = false
-
-[auth.mfa.phone]
-enroll_enabled = false
-verify_enabled = false
-otp_length = 6
-template = "Your code is {{ .Code }}"
-max_frequency = "5s"
-
-[auth.external.apple]
-enabled = false
-client_id = ""
-secret = "env(SUPABASE_AUTH_EXTERNAL_APPLE_SECRET)"
-redirect_uri = ""
-url = ""
-skip_nonce_check = false
-
-[auth.web3.solana]
-enabled = false
-
-[auth.third_party.firebase]
-enabled = false
-
-[auth.third_party.auth0]
-enabled = false
-
-[auth.third_party.aws_cognito]
-enabled = false
-
-[auth.third_party.clerk]
-enabled = false
-
-[edge_runtime]
-enabled = true
-policy = "oneshot"
-inspector_port = 8083
-deno_version = 1
-
-[analytics]
-enabled = true
-port = 54327
-backend = "postgres"
-
-[experimental]
-orioledb_version = ""
-s3_host = "env(S3_HOST)"
-s3_region = "env(S3_REGION)"
-s3_access_key = "env(S3_ACCESS_KEY)"
-s3_secret_key = "env(S3_SECRET_KEY)"
