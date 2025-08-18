@@ -71,7 +71,7 @@ export async function POST(request: Request) {
       meeting,
       validation.data.format,
       validation.data.sections,
-      validation.data.exportedBy.email,
+      user.email || "user@example.com",
       insights
     );
 
@@ -80,19 +80,7 @@ export async function POST(request: Request) {
     }`;
 
     try {
-      await exportService.sendEmailExport(
-        {
-          meetingId: validation.data.meetingId,
-          recipientEmails: validation.data.recipientEmails,
-          format: validation.data.format,
-          sections: validation.data.sections,
-          customMessage: validation.data.customMessage,
-          exportedBy: validation.data.exportedBy,
-        },
-        blob,
-        filename
-      );
-
+      await exportService.sendEmailExport(validation.data, blob, filename, user.id);
       return apiSuccess({ success: true, message: "Export sent successfully" });
     } catch (emailError) {
       console.error("Email sending error:", emailError);

@@ -88,7 +88,7 @@ export class ExportService {
         new Paragraph({
           children: [
             new TextRun({ text: "Participants: ", bold: true }),
-            new TextRun(meeting.participants?.join(", ") || "N/A"),
+            new TextRun((meeting.participants || []).join(", ") || "N/A"),
           ],
           spacing: { after: 300 },
         })
@@ -101,33 +101,82 @@ export class ExportService {
           text: "Summary",
           heading: HeadingLevel.HEADING_2,
           spacing: { before: 400, after: 200 },
-        }),
-        new Paragraph({
-          text: meeting.summary.overview,
-          spacing: { after: 300 },
         })
       );
 
-      if (meeting.summary.key_points.length > 0) {
+      if (typeof meeting.summary === "string") {
         children.push(
           new Paragraph({
-            text: "Key Points",
-            heading: HeadingLevel.HEADING_3,
-            spacing: { before: 300, after: 150 },
+            text: meeting.summary,
+            spacing: { after: 300 },
           })
         );
-        meeting.summary.key_points.forEach((point: string) => {
+      } else if (meeting.summary && typeof meeting.summary === "object") {
+        const summaryObj = meeting.summary as any;
+
+        if (summaryObj.overview) {
           children.push(
             new Paragraph({
-              text: `• ${point}`,
+              children: [new TextRun({ text: "Overview: ", bold: true }), new TextRun(summaryObj.overview)],
               spacing: { after: 120 },
             })
           );
-        });
+        }
+
+        if (summaryObj.key_points && Array.isArray(summaryObj.key_points)) {
+          children.push(
+            new Paragraph({
+              children: [new TextRun({ text: "Key Points:", bold: true })],
+              spacing: { after: 60 },
+            })
+          );
+          summaryObj.key_points.forEach((point: string, i: number) => {
+            children.push(
+              new Paragraph({
+                text: `${i + 1}. ${point}`,
+                spacing: { after: 60 },
+              })
+            );
+          });
+        }
+
+        if (summaryObj.decisions && Array.isArray(summaryObj.decisions)) {
+          children.push(
+            new Paragraph({
+              children: [new TextRun({ text: "Decisions:", bold: true })],
+              spacing: { before: 120, after: 60 },
+            })
+          );
+          summaryObj.decisions.forEach((decision: string, i: number) => {
+            children.push(
+              new Paragraph({
+                text: `${i + 1}. ${decision}`,
+                spacing: { after: 60 },
+              })
+            );
+          });
+        }
+
+        if (summaryObj.next_steps && Array.isArray(summaryObj.next_steps)) {
+          children.push(
+            new Paragraph({
+              children: [new TextRun({ text: "Next Steps:", bold: true })],
+              spacing: { before: 120, after: 60 },
+            })
+          );
+          summaryObj.next_steps.forEach((step: string, i: number) => {
+            children.push(
+              new Paragraph({
+                text: `${i + 1}. ${step}`,
+                spacing: { after: 60 },
+              })
+            );
+          });
+        }
       }
     }
 
-    if (sections.actionItems && meeting.action_items) {
+    if (sections.actionItems && meeting.action_items && meeting.action_items.length > 0) {
       children.push(
         new Paragraph({
           text: "Action Items",
@@ -136,10 +185,10 @@ export class ExportService {
         })
       );
 
-      meeting.action_items.forEach((item: any, i: number) => {
+      meeting.action_items.forEach((item: any) => {
         children.push(
           new Paragraph({
-            children: [new TextRun({ text: `${i + 1}. ${item.task}`, bold: true })],
+            children: [new TextRun({ text: `• ${item.task}`, bold: true })],
             spacing: { after: 60 },
           })
         );
@@ -170,7 +219,7 @@ export class ExportService {
           spacing: { before: 400, after: 200 },
         }),
         new Paragraph({
-          text: meeting.transcript,
+          text: meeting.transcript || "",
           spacing: { after: 300 },
         })
       );
@@ -221,18 +270,69 @@ export class ExportService {
     return text;
   }
 
-  async sendEmailExport(params: EmailExportParams, exportBlob: Blob, filename: string): Promise<void> {
-    const formData = new FormData();
-    formData.append("file", exportBlob, filename);
-    formData.append("params", JSON.stringify(params));
+  async sendEmailExport(params: EmailExportParams, exportBlob: Blob, filename: string, userId: string): Promise<void> {
+    const { createServiceRoleClient } = await import("@/lib/supabase/service");
+    const supabase = createServiceRoleClient();
 
-    const response = await fetch("/api/meetings/export/email", {
-      method: "POST",
-      body: formData,
+    const fileExt = filename.split(".").pop() || "pdf";
+    const filePath = `${userId}/exports/${params.meetingId}/${Date.now()}-${filename}`;
+
+    const { data: uploadData, error: uploadError } = await supabase.storage
+      .from("meeting-recordings")
+      .upload(filePath, exportBlob, {
+        contentType: exportBlob.type,
+        upsert: false,
+      });
+
+    if (uploadError) {
+      throw new Error(`Failed to upload file: ${uploadError.message}`);
+    }
+
+    const { data: signedUrlData, error: signedUrlError } = await supabase.storage
+      .from("meeting-recordings")
+      .createSignedUrl(filePath, 3600);
+
+    if (signedUrlError || !signedUrlData?.signedUrl) {
+      await supabase.storage.from("meeting-recordings").remove([filePath]);
+      throw new Error(`Failed to create signed URL: ${signedUrlError?.message || "Unknown error"}`);
+    }
+
+    const { data: meeting } = await supabase
+      .from("meetings")
+      .select("title, recorded_at, duration, participants")
+      .eq("id", params.meetingId)
+      .single();
+
+    if (!meeting) {
+      await supabase.storage.from("meeting-recordings").remove([filePath]);
+      throw new Error("Meeting not found");
+    }
+
+    const { data, error } = await supabase.functions.invoke("send-meeting-export", {
+      body: {
+        ...params,
+        fileUrl: signedUrlData.signedUrl,
+        fileName: filename,
+        meeting: {
+          title: meeting.title || "Untitled Meeting",
+          recorded_at: meeting.recorded_at || new Date().toISOString(),
+          duration: meeting.duration || 0,
+          participants: meeting.participants || [],
+        },
+      },
     });
 
-    if (!response.ok) {
-      throw new Error("Failed to send email");
+    if (error) {
+      await supabase.storage.from("meeting-recordings").remove([filePath]);
+      throw new Error(`Failed to send email: ${error.message}`);
     }
+
+    setTimeout(async () => {
+      try {
+        await supabase.storage.from("meeting-recordings").remove([filePath]);
+      } catch (cleanupError) {
+        console.error("Failed to clean up export file:", cleanupError);
+      }
+    }, 60000);
   }
 }
