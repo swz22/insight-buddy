@@ -13,11 +13,11 @@ import {
   Share2,
   Loader2,
   BarChart3,
-  Sparkles,
-  Bot,
   Download,
   Edit2,
   FileDown,
+  Bot,
+  Sparkles,
 } from "lucide-react";
 import Link from "next/link";
 import { Button } from "@/components/ui/button";
@@ -165,6 +165,32 @@ export default function MeetingPage() {
     }
   };
 
+  const handleRegenerateInsights = async () => {
+    if (!meeting.transcript) {
+      toast.error("Transcript required for insights generation");
+      return;
+    }
+
+    setIsRegeneratingInsights(true);
+    try {
+      const response = await fetch(`/api/meetings/${meetingId}/insights`, {
+        method: "POST",
+      });
+
+      if (!response.ok) {
+        throw new Error("Failed to regenerate insights");
+      }
+
+      toast.success("Insights regenerated successfully!");
+      window.location.reload();
+    } catch (error) {
+      console.error("Insights regeneration error:", error);
+      toast.error("Failed to regenerate insights");
+    } finally {
+      setIsRegeneratingInsights(false);
+    }
+  };
+
   const handleTranslate = async (targetLanguage: string) => {
     try {
       await translate(targetLanguage);
@@ -200,6 +226,32 @@ export default function MeetingPage() {
       toast.error("Failed to regenerate transcript");
     } finally {
       setIsRegeneratingTranscript(false);
+    }
+  };
+
+  const handleGenerateSummary = async () => {
+    if (!meeting.transcript) {
+      toast.error("Transcript required for summary generation");
+      return;
+    }
+
+    setIsRegeneratingSummary(true);
+    try {
+      const response = await fetch(`/api/meetings/${meetingId}/summarize`, {
+        method: "POST",
+      });
+
+      if (!response.ok) {
+        throw new Error("Failed to generate summary");
+      }
+
+      toast.success("Summary and action items generated successfully!");
+      window.location.reload();
+    } catch (error) {
+      console.error("Summary generation error:", error);
+      toast.error("Failed to generate summary");
+    } finally {
+      setIsRegeneratingSummary(false);
     }
   };
 
@@ -252,32 +304,6 @@ export default function MeetingPage() {
       toast.error("Failed to regenerate action items");
     } finally {
       setIsRegeneratingActions(false);
-    }
-  };
-
-  const handleRegenerateInsights = async () => {
-    if (!meeting.transcript) {
-      toast.error("Transcript required for insights generation");
-      return;
-    }
-
-    setIsRegeneratingInsights(true);
-    try {
-      const response = await fetch(`/api/meetings/${meetingId}/insights`, {
-        method: "POST",
-      });
-
-      if (!response.ok) {
-        throw new Error("Failed to regenerate insights");
-      }
-
-      toast.success("Insights regenerated successfully!");
-      window.location.reload();
-    } catch (error) {
-      console.error("Insights regeneration error:", error);
-      toast.error("Failed to regenerate insights");
-    } finally {
-      setIsRegeneratingInsights(false);
     }
   };
 
@@ -355,21 +381,13 @@ export default function MeetingPage() {
               <FileDown className="w-4 h-4 mr-2" />
               Export
             </Button>
-            {meeting.audio_url && (
-              <Button variant="glass" size="sm" asChild className="hover:border-cyan-400/60">
-                <a href={meeting.audio_url} download>
-                  <Download className="w-4 h-4 mr-2" />
-                  Audio
-                </a>
-              </Button>
-            )}
           </div>
         </div>
       </div>
 
-      <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mb-8">
-        <Card className="bg-white/[0.02] backdrop-blur-sm border-white/10">
-          <CardContent className="p-4">
+      <Card className="bg-white/[0.02] border-white/10 mb-6">
+        <CardContent className="p-6">
+          <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mb-6">
             <div className="flex items-center gap-3">
               <Calendar className="w-5 h-5 text-purple-400" />
               <div>
@@ -377,11 +395,6 @@ export default function MeetingPage() {
                 <p className="font-medium">{formatDate(meeting.recorded_at)}</p>
               </div>
             </div>
-          </CardContent>
-        </Card>
-
-        <Card className="bg-white/[0.02] backdrop-blur-sm border-white/10">
-          <CardContent className="p-4">
             <div className="flex items-center gap-3">
               <Clock className="w-5 h-5 text-cyan-400" />
               <div>
@@ -389,90 +402,61 @@ export default function MeetingPage() {
                 <p className="font-medium">{formatDuration(meeting.duration)}</p>
               </div>
             </div>
-          </CardContent>
-        </Card>
-
-        <Card className="bg-white/[0.02] backdrop-blur-sm border-white/10">
-          <CardContent className="p-4">
             <div className="flex items-center gap-3">
               <Users className="w-5 h-5 text-blue-400" />
               <div>
-                <p className="text-sm text-white/60">Status</p>
-                <p className="font-medium">
-                  {isTranscribing ? "Transcribing..." : meeting.transcript ? "Complete" : "Pending"}
-                </p>
+                <p className="text-sm text-white/60">Participants</p>
+                <p className="font-medium">{meeting.participants?.length || 0}</p>
               </div>
             </div>
-          </CardContent>
-        </Card>
-      </div>
-
-      {meeting.audio_url && (
-        <Card className="bg-white/[0.02] backdrop-blur-sm border-white/10">
-          <CardContent className="p-6">
-            <AudioPlayer audioUrl={meeting.audio_url} />
-          </CardContent>
-        </Card>
-      )}
-
-      <Card className="bg-white/[0.02] backdrop-blur-sm border-white/10">
-        <CardHeader>
-          <div className="flex gap-2">
-            <Button
-              variant={activeTab === "transcript" ? "glow" : "glass"}
-              size="sm"
-              onClick={() => setActiveTab("transcript")}
-              className={cn("transition-all", activeTab === "transcript" ? "shadow-lg" : "hover:border-white/30")}
-            >
-              <FileText className="w-4 h-4 mr-2" />
-              Transcript
-            </Button>
-            <Button
-              variant={activeTab === "summary" ? "glow" : "glass"}
-              size="sm"
-              onClick={() => setActiveTab("summary")}
-              className={cn("transition-all", activeTab === "summary" ? "shadow-lg" : "hover:border-white/30")}
-            >
-              <Lightbulb className="w-4 h-4 mr-2" />
-              Summary
-            </Button>
-            <Button
-              variant={activeTab === "actions" ? "glow" : "glass"}
-              size="sm"
-              onClick={() => setActiveTab("actions")}
-              className={cn("transition-all", activeTab === "actions" ? "shadow-lg" : "hover:border-white/30")}
-            >
-              <ListChecks className="w-4 h-4 mr-2" />
-              Action Items
-            </Button>
-            <Button
-              variant={activeTab === "insights" ? "glow" : "glass"}
-              size="sm"
-              onClick={() => setActiveTab("insights")}
-              className={cn("transition-all", activeTab === "insights" ? "shadow-lg" : "hover:border-white/30")}
-            >
-              <BarChart3 className="w-4 h-4 mr-2" />
-              Insights
-            </Button>
-
-            {meeting.transcript && availableLanguages.length > 0 && (
-              <div className="ml-auto">
-                <LanguageSelector
-                  selectedLanguage={selectedLanguage}
-                  availableLanguages={availableLanguages}
-                  onLanguageChange={handleTranslate}
-                  isLoading={isTranslating}
-                />
-              </div>
-            )}
           </div>
-        </CardHeader>
-        <CardContent>
+
+          {meeting.audio_url && (
+            <div className="mb-6">
+              <AudioPlayer audioUrl={meeting.audio_url} />
+            </div>
+          )}
+
+          {meeting.transcript && availableLanguages.length > 0 && (
+            <div className="flex justify-end mb-4">
+              <LanguageSelector
+                selectedLanguage={selectedLanguage}
+                availableLanguages={availableLanguages}
+                onLanguageChange={handleTranslate}
+                isLoading={isTranslating}
+              />
+            </div>
+          )}
+
+          <div className="flex flex-wrap gap-2 mb-6 border-b border-white/10">
+            {[
+              { id: "transcript" as const, label: "Transcript", icon: FileText },
+              { id: "summary" as const, label: "Summary", icon: Lightbulb },
+              { id: "actions" as const, label: "Action Items", icon: ListChecks },
+              { id: "insights" as const, label: "Insights", icon: BarChart3 },
+            ].map((tab) => (
+              <button
+                key={tab.id}
+                onClick={() => setActiveTab(tab.id)}
+                className={cn(
+                  "flex items-center gap-2 px-4 py-2 text-sm font-medium transition-all",
+                  "border-b-2 -mb-[2px]",
+                  activeTab === tab.id
+                    ? "text-white border-purple-400"
+                    : "text-white/60 border-transparent hover:text-white/80"
+                )}
+              >
+                <tab.icon className="w-4 h-4" />
+                {tab.label}
+              </button>
+            ))}
+          </div>
+
           {activeTab === "transcript" && (
             <div className="space-y-4">
               <div className="flex justify-between items-center">
                 <h3 className="text-lg font-semibold">Transcript</h3>
-                {meeting.transcript && !isRegeneratingTranscript && !isTranscribing && (
+                {meeting.transcript && !isRegeneratingTranscript && (
                   <Button
                     variant="glass"
                     size="sm"
@@ -488,7 +472,7 @@ export default function MeetingPage() {
                     ) : (
                       <>
                         <Sparkles className="w-4 h-4 mr-2" />
-                        Regenerate
+                        Regenerate Transcript
                       </>
                     )}
                   </Button>
@@ -526,19 +510,24 @@ export default function MeetingPage() {
                   <Button
                     variant="glass"
                     size="sm"
-                    onClick={handleRegenerateSummary}
+                    onClick={meeting.summary ? handleRegenerateSummary : handleGenerateSummary}
                     disabled={isRegeneratingSummary}
                     className="hover:border-green-400/60"
                   >
                     {isRegeneratingSummary ? (
                       <>
                         <Loader2 className="w-4 h-4 mr-2 animate-spin" />
-                        Regenerating...
+                        {meeting.summary ? "Regenerating..." : "Generating..."}
                       </>
-                    ) : (
+                    ) : meeting.summary ? (
                       <>
                         <Sparkles className="w-4 h-4 mr-2" />
                         Regenerate
+                      </>
+                    ) : (
+                      <>
+                        <Bot className="w-4 h-4 mr-2" />
+                        Generate Summary
                       </>
                     )}
                   </Button>
@@ -552,44 +541,50 @@ export default function MeetingPage() {
                     <p className="text-white/80">{displayedContent.summary?.overview || meeting.summary.overview}</p>
                   </div>
 
-                  {(displayedContent.summary?.key_points?.length ?? 0) > 0 && (
+                  {(displayedContent.summary?.key_points?.length ?? meeting.summary.key_points?.length) > 0 && (
                     <div>
                       <h4 className="text-sm font-medium text-white/70 mb-2">Key Points</h4>
                       <ul className="space-y-2">
-                        {(displayedContent.summary?.key_points || []).map((point: string, i: number) => (
-                          <li key={i} className="flex items-start gap-2">
-                            <span className="text-purple-400 mt-0.5">•</span>
-                            <span className="text-white/80">{point}</span>
-                          </li>
-                        ))}
+                        {(displayedContent.summary?.key_points || meeting.summary.key_points).map(
+                          (point: string, i: number) => (
+                            <li key={i} className="flex items-start gap-2">
+                              <span className="text-purple-400 mt-1">•</span>
+                              <span className="text-white/80">{point}</span>
+                            </li>
+                          )
+                        )}
                       </ul>
                     </div>
                   )}
 
-                  {(displayedContent.summary?.decisions?.length ?? 0) > 0 && (
+                  {(displayedContent.summary?.decisions?.length ?? meeting.summary.decisions?.length) > 0 && (
                     <div>
                       <h4 className="text-sm font-medium text-white/70 mb-2">Decisions</h4>
                       <ul className="space-y-2">
-                        {(displayedContent.summary?.decisions || []).map((decision: string, i: number) => (
-                          <li key={i} className="flex items-start gap-2">
-                            <span className="text-cyan-400 mt-0.5">→</span>
-                            <span className="text-white/80">{decision}</span>
-                          </li>
-                        ))}
+                        {(displayedContent.summary?.decisions || meeting.summary.decisions).map(
+                          (decision: string, i: number) => (
+                            <li key={i} className="flex items-start gap-2">
+                              <span className="text-green-400 mt-1">✓</span>
+                              <span className="text-white/80">{decision}</span>
+                            </li>
+                          )
+                        )}
                       </ul>
                     </div>
                   )}
 
-                  {(displayedContent.summary?.next_steps?.length ?? 0) > 0 && (
+                  {(displayedContent.summary?.next_steps?.length ?? meeting.summary.next_steps?.length) > 0 && (
                     <div>
                       <h4 className="text-sm font-medium text-white/70 mb-2">Next Steps</h4>
                       <ul className="space-y-2">
-                        {(displayedContent.summary?.next_steps || []).map((step: string, i: number) => (
-                          <li key={i} className="flex items-start gap-2">
-                            <span className="text-green-400 mt-0.5">✓</span>
-                            <span className="text-white/80">{step}</span>
-                          </li>
-                        ))}
+                        {(displayedContent.summary?.next_steps || meeting.summary.next_steps).map(
+                          (step: string, i: number) => (
+                            <li key={i} className="flex items-start gap-2">
+                              <span className="text-blue-400 mt-1">→</span>
+                              <span className="text-white/80">{step}</span>
+                            </li>
+                          )
+                        )}
                       </ul>
                     </div>
                   )}
@@ -597,11 +592,18 @@ export default function MeetingPage() {
               ) : (
                 <div className="text-center py-12">
                   <Lightbulb className="w-12 h-12 text-white/20 mx-auto mb-4" />
-                  <p className="text-white/50 italic">
-                    {meeting.transcript
-                      ? "Summary will be generated after transcription"
-                      : "Summary requires a transcript"}
-                  </p>
+                  <p className="text-white/50 italic">Generate a summary to see key takeaways from this meeting</p>
+                  {meeting.transcript && !isRegeneratingSummary && (
+                    <Button
+                      variant="glow"
+                      onClick={handleGenerateSummary}
+                      disabled={isRegeneratingSummary}
+                      className="mt-4 shadow-lg"
+                    >
+                      <Bot className="w-4 h-4 mr-2" />
+                      Generate Summary
+                    </Button>
+                  )}
                 </div>
               )}
             </div>
@@ -611,27 +613,30 @@ export default function MeetingPage() {
             <div className="space-y-4">
               <div className="flex justify-between items-center">
                 <h3 className="text-lg font-semibold">Action Items</h3>
-                {meeting.summary && !isRegeneratingActions && (
-                  <Button
-                    variant="glass"
-                    size="sm"
-                    onClick={handleRegenerateActions}
-                    disabled={isRegeneratingActions}
-                    className="hover:border-green-400/60"
-                  >
-                    {isRegeneratingActions ? (
-                      <>
-                        <Loader2 className="w-4 h-4 mr-2 animate-spin" />
-                        Regenerating...
-                      </>
-                    ) : (
-                      <>
-                        <Sparkles className="w-4 h-4 mr-2" />
-                        Regenerate
-                      </>
-                    )}
-                  </Button>
-                )}
+                {meeting.summary &&
+                  meeting.action_items &&
+                  meeting.action_items.length > 0 &&
+                  !isRegeneratingActions && (
+                    <Button
+                      variant="glass"
+                      size="sm"
+                      onClick={handleRegenerateActions}
+                      disabled={isRegeneratingActions}
+                      className="hover:border-green-400/60"
+                    >
+                      {isRegeneratingActions ? (
+                        <>
+                          <Loader2 className="w-4 h-4 mr-2 animate-spin" />
+                          Regenerating...
+                        </>
+                      ) : (
+                        <>
+                          <Sparkles className="w-4 h-4 mr-2" />
+                          Regenerate
+                        </>
+                      )}
+                    </Button>
+                  )}
               </div>
 
               {meeting.action_items && meeting.action_items.length > 0 ? (
@@ -686,8 +691,16 @@ export default function MeetingPage() {
                 <div className="text-center py-12">
                   <ListChecks className="w-12 h-12 text-white/20 mx-auto mb-4" />
                   <p className="text-white/50 italic">
-                    Action items will be extracted after AI processing is complete.
+                    {!meeting.summary
+                      ? "Action items are extracted when you generate the summary"
+                      : "No action items found in this meeting"}
                   </p>
+                  {meeting.transcript && !meeting.summary && (
+                    <Button variant="glow" onClick={handleGenerateSummary} className="mt-4 shadow-lg">
+                      <Bot className="w-4 h-4 mr-2" />
+                      Generate Summary & Actions
+                    </Button>
+                  )}
                 </div>
               )}
             </div>
@@ -697,7 +710,7 @@ export default function MeetingPage() {
             <div className="space-y-6">
               <div className="flex justify-between items-center">
                 <h3 className="text-lg font-semibold">Meeting Insights</h3>
-                {meeting.transcript && !isGeneratingInsights && (
+                {meeting.transcript && !isGeneratingInsights && !isRegeneratingInsights && (
                   <Button
                     variant="glass"
                     size="sm"
@@ -708,12 +721,17 @@ export default function MeetingPage() {
                     {isGeneratingInsights || isRegeneratingInsights ? (
                       <>
                         <Loader2 className="w-4 h-4 mr-2 animate-spin" />
-                        Regenerating...
+                        {dbInsights ? "Regenerating..." : "Generating..."}
                       </>
-                    ) : (
+                    ) : dbInsights ? (
                       <>
                         <Sparkles className="w-4 h-4 mr-2" />
                         Regenerate Insights
+                      </>
+                    ) : (
+                      <>
+                        <Bot className="w-4 h-4 mr-2" />
+                        Generate Insights
                       </>
                     )}
                   </Button>
@@ -733,9 +751,14 @@ export default function MeetingPage() {
               ) : (
                 <div className="text-center py-12">
                   <BarChart3 className="w-12 h-12 text-white/20 mx-auto mb-4" />
-                  <p className="text-white/50 italic mb-4">Generate insights to see detailed analytics</p>
+                  <p className="text-white/50 italic mb-4">Generate insights to see detailed analytics and metrics</p>
                   {meeting.transcript && !isGeneratingInsights && (
-                    <Button variant="glow" onClick={handleGenerateInsights} className="shadow-lg">
+                    <Button
+                      variant="glow"
+                      onClick={handleGenerateInsights}
+                      disabled={isGeneratingInsights}
+                      className="shadow-lg"
+                    >
                       <Bot className="w-4 h-4 mr-2" />
                       Generate Insights
                     </Button>
