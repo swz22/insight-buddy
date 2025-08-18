@@ -18,6 +18,8 @@ import {
   FileDown,
   Bot,
   Sparkles,
+  CheckCircle2,
+  Circle,
 } from "lucide-react";
 import Link from "next/link";
 import { Button } from "@/components/ui/button";
@@ -43,6 +45,7 @@ import { useToast } from "@/hooks/use-toast";
 import { format } from "date-fns";
 import type { SpeakerMetrics } from "@/types/meeting-insights";
 import { useAuth } from "@/hooks/use-auth";
+import { motion } from "framer-motion";
 
 interface DatabaseInsights {
   id: string;
@@ -110,15 +113,15 @@ export default function MeetingPage() {
   const [isGeneratingInsights, setIsGeneratingInsights] = useState(false);
   const [isRegeneratingTranscript, setIsRegeneratingTranscript] = useState(false);
   const [isRegeneratingSummary, setIsRegeneratingSummary] = useState(false);
-  const [isRegeneratingActions, setIsRegeneratingActions] = useState(false);
   const [isRegeneratingInsights, setIsRegeneratingInsights] = useState(false);
+  const [isBatchGenerating, setIsBatchGenerating] = useState(false);
+  const [batchGenerationStep, setBatchGenerationStep] = useState<"summary" | "insights" | null>(null);
 
   const { selectedLanguage, translate, availableLanguages, isTranslating } = useTranslation({
     meetingId,
     enabled: !!meeting && !!meeting.transcript,
   });
 
-  // Generation status steps
   const getGenerationSteps = () => {
     const steps = [];
 
@@ -219,6 +222,56 @@ export default function MeetingPage() {
       toast.error("Failed to generate insights");
     } finally {
       setIsGeneratingInsights(false);
+    }
+  };
+
+  const handleGenerateAll = async () => {
+    if (!meeting.transcript) {
+      toast.error("Transcript required for batch generation");
+      return;
+    }
+
+    setIsBatchGenerating(true);
+    let summarySuccess = false;
+
+    try {
+      if (!meeting.summary) {
+        setBatchGenerationStep("summary");
+        const summaryResponse = await fetch(`/api/meetings/${meetingId}/summarize`, {
+          method: "POST",
+        });
+
+        if (!summaryResponse.ok) {
+          throw new Error("Failed to generate summary");
+        }
+        summarySuccess = true;
+        toast.success("Summary and action items generated!");
+      }
+
+      if (!dbInsights) {
+        setBatchGenerationStep("insights");
+        const insightsResponse = await fetch(`/api/meetings/${meetingId}/insights`, {
+          method: "POST",
+        });
+
+        if (!insightsResponse.ok) {
+          throw new Error("Failed to generate insights");
+        }
+        toast.success("Insights generated!");
+      }
+
+      toast.success("All content generated successfully!");
+      window.location.reload();
+    } catch (error) {
+      console.error("Batch generation error:", error);
+      if (!summarySuccess) {
+        toast.error("Failed to generate summary. Please try again.");
+      } else {
+        toast.error("Summary generated, but insights generation failed.");
+      }
+    } finally {
+      setIsBatchGenerating(false);
+      setBatchGenerationStep(null);
     }
   };
 
@@ -328,39 +381,13 @@ export default function MeetingPage() {
         throw new Error("Failed to regenerate summary");
       }
 
-      toast.success("Summary regenerated successfully!");
+      toast.success("Summary and action items regenerated successfully!");
       window.location.reload();
     } catch (error) {
       console.error("Summary regeneration error:", error);
       toast.error("Failed to regenerate summary");
     } finally {
       setIsRegeneratingSummary(false);
-    }
-  };
-
-  const handleRegenerateActions = async () => {
-    if (!meeting.summary) {
-      toast.error("Summary required for action items generation");
-      return;
-    }
-
-    setIsRegeneratingActions(true);
-    try {
-      const response = await fetch(`/api/meetings/${meetingId}/action-items`, {
-        method: "POST",
-      });
-
-      if (!response.ok) {
-        throw new Error("Failed to regenerate action items");
-      }
-
-      toast.success("Action items regenerated successfully!");
-      window.location.reload();
-    } catch (error) {
-      console.error("Action items regeneration error:", error);
-      toast.error("Failed to regenerate action items");
-    } finally {
-      setIsRegeneratingActions(false);
     }
   };
 
@@ -397,82 +424,147 @@ export default function MeetingPage() {
   const generationSteps = getGenerationSteps();
 
   return (
-    <div className="container mx-auto px-4 py-8 max-w-5xl">
-      <div className="mb-8">
-        <Link
-          href="/dashboard"
-          className="inline-flex items-center text-white/60 hover:text-white/90 transition-colors group mb-4"
-        >
-          <ArrowLeft className="w-4 h-4 mr-2 group-hover:-translate-x-1 transition-transform" />
-          Back to meetings
-        </Link>
+    <div className="container mx-auto px-4 py-6 animate-fade-in">
+      {isBatchGenerating && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/80 backdrop-blur-sm">
+          <motion.div
+            initial={{ opacity: 0, scale: 0.95 }}
+            animate={{ opacity: 1, scale: 1 }}
+            className="bg-black/90 border border-white/10 rounded-xl p-8 max-w-md w-full mx-4"
+          >
+            <h3 className="text-xl font-semibold mb-6 text-white">Generating Meeting Content</h3>
 
-        <div className="flex items-start justify-between">
-          <div>
-            <h1 className="text-3xl font-bold font-display mb-2">{displayedContent.title}</h1>
-            {displayedContent.description && <p className="text-white/60">{displayedContent.description}</p>}
-          </div>
-          <div className="flex gap-2">
-            <Button
-              variant="glass"
-              size="sm"
-              onClick={() => setShowShareDialog(true)}
-              className="hover:border-cyan-400/60"
-            >
-              <Share2 className="w-4 h-4 mr-2" />
-              Share
-            </Button>
-            <Button
-              variant="glass"
-              size="sm"
-              onClick={() => setShowEditDialog(true)}
-              className="hover:border-purple-400/60"
-            >
-              <Edit2 className="w-4 h-4 mr-2" />
-              Edit
-            </Button>
-            <Button
-              variant="glass"
-              size="sm"
-              onClick={() => setShowExportDialog(true)}
-              className="hover:border-green-400/60"
-            >
-              <FileDown className="w-4 h-4 mr-2" />
-              Export
-            </Button>
-          </div>
-        </div>
-      </div>
+            <div className="space-y-4">
+              <div className="flex items-center gap-3">
+                <Loader2 className="w-5 h-5 animate-spin text-purple-400" />
+                <span className="text-white/80">
+                  {batchGenerationStep === "summary"
+                    ? "Analyzing meeting and extracting action items..."
+                    : "Generating detailed analytics and insights..."}
+                </span>
+              </div>
 
-      <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
-        {/* Main content area */}
-        <div className="lg:col-span-2">
-          <Card className="bg-white/[0.02] border-white/10">
-            <CardContent className="p-6">
-              <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mb-6">
+              <div className="space-y-3 mt-6">
                 <div className="flex items-center gap-3">
-                  <Calendar className="w-5 h-5 text-purple-400" />
-                  <div>
-                    <p className="text-sm text-white/60">Recorded</p>
-                    <p className="font-medium">{formatDate(meeting.recorded_at)}</p>
-                  </div>
+                  {!meeting.summary ? (
+                    batchGenerationStep === "summary" ? (
+                      <Loader2 className="w-4 h-4 animate-spin text-cyan-400" />
+                    ) : (
+                      <Circle className="w-4 h-4 text-white/20" />
+                    )
+                  ) : (
+                    <CheckCircle2 className="w-4 h-4 text-green-400" />
+                  )}
+                  <span
+                    className={cn(
+                      "text-sm",
+                      meeting.summary
+                        ? "text-green-400"
+                        : batchGenerationStep === "summary"
+                        ? "text-cyan-400"
+                        : "text-white/40"
+                    )}
+                  >
+                    Summary & Action Items
+                  </span>
                 </div>
+
                 <div className="flex items-center gap-3">
-                  <Clock className="w-5 h-5 text-cyan-400" />
-                  <div>
-                    <p className="text-sm text-white/60">Duration</p>
-                    <p className="font-medium">{formatDuration(meeting.duration)}</p>
-                  </div>
-                </div>
-                <div className="flex items-center gap-3">
-                  <Users className="w-5 h-5 text-blue-400" />
-                  <div>
-                    <p className="text-sm text-white/60">Participants</p>
-                    <p className="font-medium">{meeting.participants?.length || 0}</p>
-                  </div>
+                  {!dbInsights ? (
+                    batchGenerationStep === "insights" ? (
+                      <Loader2 className="w-4 h-4 animate-spin text-cyan-400" />
+                    ) : (
+                      <Circle className="w-4 h-4 text-white/20" />
+                    )
+                  ) : (
+                    <CheckCircle2 className="w-4 h-4 text-green-400" />
+                  )}
+                  <span
+                    className={cn(
+                      "text-sm",
+                      dbInsights
+                        ? "text-green-400"
+                        : batchGenerationStep === "insights"
+                        ? "text-cyan-400"
+                        : "text-white/40"
+                    )}
+                  >
+                    Analytics & Insights
+                  </span>
                 </div>
               </div>
 
+              <p className="text-xs text-white/50 mt-6">This may take a minute...</p>
+            </div>
+          </motion.div>
+        </div>
+      )}
+
+      <Link
+        href="/dashboard"
+        className="inline-flex items-center text-white/60 hover:text-white/90 transition-colors group mb-6"
+      >
+        <ArrowLeft className="w-4 h-4 mr-2 group-hover:-translate-x-1 transition-transform" />
+        Back to meetings
+      </Link>
+
+      <div className="grid grid-cols-1 lg:grid-cols-4 gap-6">
+        <div className="lg:col-span-3">
+          <Card className="bg-white/[0.02] border-white/10">
+            <CardHeader>
+              <div className="flex flex-col sm:flex-row sm:items-start sm:justify-between gap-4">
+                <div className="flex-1">
+                  <CardTitle className="text-2xl sm:text-3xl gradient-text mb-2">{displayedContent.title}</CardTitle>
+                  {displayedContent.description && (
+                    <CardDescription className="text-base text-white/60">
+                      {displayedContent.description}
+                    </CardDescription>
+                  )}
+                </div>
+                <div className="flex flex-wrap gap-2">
+                  {meeting.transcript && (!meeting.summary || !dbInsights) && (
+                    <Button
+                      variant="glow"
+                      size="sm"
+                      onClick={handleGenerateAll}
+                      disabled={
+                        isBatchGenerating || isRegeneratingSummary || isGeneratingInsights || isRegeneratingInsights
+                      }
+                      className="shadow-lg"
+                    >
+                      <Sparkles className="w-4 h-4 mr-2" />
+                      Generate All
+                    </Button>
+                  )}
+                  <Button variant="glass" size="sm" onClick={() => setShowShareDialog(true)}>
+                    <Share2 className="w-4 h-4" />
+                  </Button>
+                  <Button variant="glass" size="sm" onClick={() => setShowEditDialog(true)}>
+                    <Edit2 className="w-4 h-4" />
+                  </Button>
+                  <Button variant="glass" size="sm" onClick={() => setShowExportDialog(true)}>
+                    <FileDown className="w-4 h-4" />
+                  </Button>
+                </div>
+              </div>
+
+              <div className="flex flex-wrap gap-4 text-sm text-white/60 mt-4">
+                <div className="flex items-center gap-2">
+                  <Calendar className="w-4 h-4" />
+                  <span>{formatDate(meeting.recorded_at)}</span>
+                </div>
+                <div className="flex items-center gap-2">
+                  <Clock className="w-4 h-4" />
+                  <span>{formatDuration(meeting.duration)}</span>
+                </div>
+                <div className="flex items-center gap-2">
+                  <Users className="w-4 h-4" />
+                  <span>{meeting.participants?.length || 0}</span>
+                </div>
+              </div>
+            </CardHeader>
+
+            <CardContent>
               {meeting.audio_url && (
                 <div className="mb-6">
                   <AudioPlayer audioUrl={meeting.audio_url} />
@@ -571,6 +663,13 @@ export default function MeetingPage() {
 
                   {meeting.summary ? (
                     <div className="space-y-6">
+                      <div className="p-3 bg-purple-500/10 border border-purple-500/20 rounded-lg">
+                        <p className="text-sm text-purple-300 flex items-center gap-2">
+                          <Sparkles className="w-4 h-4" />
+                          Action items are automatically extracted with the summary
+                        </p>
+                      </div>
+
                       <div>
                         <h4 className="text-sm font-medium text-white/70 mb-2">Overview</h4>
                         <p className="text-white/80">
@@ -650,19 +749,6 @@ export default function MeetingPage() {
                 <div className="space-y-4">
                   <div className="flex justify-between items-center">
                     <h3 className="text-lg font-semibold">Action Items</h3>
-                    {meeting.summary &&
-                      meeting.action_items &&
-                      meeting.action_items.length > 0 &&
-                      !isRegeneratingActions && (
-                        <AIGenerateButton
-                          hasData={true}
-                          isLoading={isRegeneratingActions}
-                          onGenerate={() => {}}
-                          onRegenerate={handleRegenerateActions}
-                          feature="actions"
-                          disabled={isRegeneratingActions}
-                        />
-                      )}
                   </div>
 
                   {meeting.action_items && meeting.action_items.length > 0 ? (
@@ -672,47 +758,48 @@ export default function MeetingPage() {
                         className={cn(
                           "p-4 rounded-lg border transition-all",
                           item.completed
-                            ? "bg-white/[0.02] border-white/10 opacity-60"
-                            : "bg-white/[0.03] border-white/20 hover:border-white/30"
+                            ? "bg-green-500/5 border-green-500/20"
+                            : "bg-white/[0.02] border-white/10 hover:bg-white/[0.04]"
                         )}
                       >
-                        <div className="flex items-start justify-between">
-                          <div className="flex-1 space-y-2">
-                            <p
-                              className={cn(
-                                "font-medium",
-                                item.completed ? "text-white/50 line-through" : "text-white/90"
-                              )}
-                            >
+                        <div className="flex items-start gap-3">
+                          <div
+                            className={cn(
+                              "w-5 h-5 rounded-full border-2 mt-0.5 flex-shrink-0",
+                              item.completed ? "bg-green-500 border-green-500" : "border-white/30"
+                            )}
+                          />
+                          <div className="flex-1">
+                            <p className={cn("font-medium", item.completed && "line-through opacity-60")}>
                               {item.task}
                             </p>
-                            <div className="flex gap-4 text-sm">
+                            <div className="flex flex-wrap gap-4 text-sm text-white/60 mt-2">
                               {item.assignee && (
-                                <div className="flex items-center gap-1.5 text-white/50">
-                                  <Users className="w-3.5 h-3.5" />
-                                  <span>{item.assignee}</span>
-                                </div>
+                                <span className="flex items-center gap-1">
+                                  <Users className="w-3 h-3" />
+                                  {item.assignee}
+                                </span>
                               )}
                               {item.due_date && (
-                                <div className="flex items-center gap-1.5 text-white/50">
-                                  <Calendar className="w-3.5 h-3.5" />
-                                  <span>{format(new Date(item.due_date), "PPP")}</span>
-                                </div>
+                                <span className="flex items-center gap-1">
+                                  <Calendar className="w-3 h-3" />
+                                  {formatDate(item.due_date)}
+                                </span>
                               )}
+                              <span
+                                className={cn(
+                                  "px-2 py-0.5 rounded text-xs",
+                                  item.priority === "high"
+                                    ? "bg-red-500/20 text-red-400"
+                                    : item.priority === "medium"
+                                    ? "bg-yellow-500/20 text-yellow-400"
+                                    : "bg-green-500/20 text-green-400"
+                                )}
+                              >
+                                {item.priority || "low"} priority
+                              </span>
                             </div>
                           </div>
-                          <span
-                            className={cn(
-                              "px-2.5 py-1 text-xs rounded-full font-medium",
-                              item.priority === "high"
-                                ? "bg-red-500/20 text-red-400 border border-red-500/30"
-                                : item.priority === "medium"
-                                ? "bg-yellow-500/20 text-yellow-400 border border-yellow-500/30"
-                                : "bg-green-500/20 text-green-400 border border-green-500/30"
-                            )}
-                          >
-                            {item.priority}
-                          </span>
                         </div>
                       </div>
                     ))
@@ -720,9 +807,9 @@ export default function MeetingPage() {
                     <div className="text-center py-12">
                       <ListChecks className="w-12 h-12 text-white/20 mx-auto mb-4" />
                       <p className="text-white/50 italic">
-                        {!meeting.summary
-                          ? "Action items are extracted when you generate the summary"
-                          : "No action items found in this meeting"}
+                        {meeting.summary
+                          ? "No action items found in this meeting"
+                          : "Action items are automatically extracted when you generate the summary"}
                       </p>
                       {meeting.transcript && !meeting.summary && (
                         <Button variant="glow" onClick={handleGenerateSummary} className="mt-4 shadow-lg">
@@ -786,7 +873,6 @@ export default function MeetingPage() {
           </Card>
         </div>
 
-        {/* Sidebar with generation status */}
         <div className="lg:col-span-1">
           {generationSteps.length > 0 && <GenerationStatus steps={generationSteps} className="sticky top-4" />}
         </div>
