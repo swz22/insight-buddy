@@ -3,7 +3,7 @@
 import Link from "next/link";
 import { ReactNode } from "react";
 import { usePathname } from "next/navigation";
-import { LogOut, BarChart3, Upload, Home } from "lucide-react";
+import { LogOut, BarChart3, Upload, Home, HelpCircle } from "lucide-react";
 import { cn } from "@/lib/utils";
 
 interface DashboardLayoutProps {
@@ -12,6 +12,7 @@ interface DashboardLayoutProps {
 
 export default function DashboardLayout({ children }: DashboardLayoutProps) {
   const pathname = usePathname();
+  
   const isMeetingDetailPage = pathname.includes("/dashboard/meetings/") && pathname.split("/").length > 3;
   const navbarMaxWidth = isMeetingDetailPage ? "max-w-[1600px]" : "max-w-7xl";
 
@@ -72,6 +73,13 @@ export default function DashboardLayout({ children }: DashboardLayoutProps) {
                     </Link>
                   );
                 })}
+
+                <Link
+                  href="/dashboard/help"
+                  className="flex items-center gap-2 px-3 py-2 text-sm text-white/60 hover:text-white hover:bg-white/[0.06] rounded-lg transition-all duration-200"
+                >
+                  <HelpCircle className="w-4 h-4" />
+                </Link>
 
                 <form action="/api/auth/signout" method="post">
                   <button

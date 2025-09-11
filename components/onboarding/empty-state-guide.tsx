@@ -1,12 +1,15 @@
 "use client";
 
-import { Upload, Sparkles, FileText, Target, ArrowRight } from "lucide-react";
+import { Upload, Sparkles, FileText, Target, ArrowRight, PlayCircle } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
 import Link from "next/link";
+import { useRouter } from "next/navigation";
 import { motion } from "framer-motion";
 
 export function EmptyStateGuide() {
+  const router = useRouter();
+
   const steps = [
     {
       icon: Upload,
@@ -33,6 +36,10 @@ export function EmptyStateGuide() {
       color: "from-green-500 to-green-600",
     },
   ];
+
+  const handleViewDemo = () => {
+    router.push(`/dashboard/demo`);
+  };
 
   return (
     <div className="max-w-4xl mx-auto py-12">
@@ -90,9 +97,9 @@ export function EmptyStateGuide() {
               Upload Your First Meeting
             </Button>
           </Link>
-          <Button variant="outline" size="lg" className="gap-2" disabled>
-            <Sparkles className="w-5 h-5" />
-            Try Demo (Coming Soon)
+          <Button variant="outline" size="lg" className="gap-2" onClick={handleViewDemo}>
+            <PlayCircle className="w-5 h-5" />
+            Try Demo Meeting
           </Button>
         </div>
         <p className="text-sm text-white/40">
