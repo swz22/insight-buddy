@@ -12,6 +12,8 @@ interface DashboardLayoutProps {
 
 export default function DashboardLayout({ children }: DashboardLayoutProps) {
   const pathname = usePathname();
+  const isMeetingDetailPage = pathname.includes("/dashboard/meetings/") && pathname.split("/").length > 3;
+  const navbarMaxWidth = isMeetingDetailPage ? "max-w-[1600px]" : "max-w-7xl";
 
   const navItems = [
     { href: "/dashboard", label: "Dashboard", icon: Home },
@@ -35,7 +37,7 @@ export default function DashboardLayout({ children }: DashboardLayoutProps) {
         </div>
 
         <nav className="relative z-20 bg-black/60 backdrop-blur-xl border-b border-white/10">
-          <div className="max-w-7xl mx-auto">
+          <div className={cn(navbarMaxWidth, "mx-auto transition-all duration-300")}>
             <div className="flex items-center justify-between px-4 sm:px-6 lg:px-8 py-4">
               <Link href="/dashboard" className="flex items-center gap-3 group">
                 <div className="relative">
@@ -84,7 +86,7 @@ export default function DashboardLayout({ children }: DashboardLayoutProps) {
             </div>
           </div>
 
-          <div className="flex md:hidden px-4 pb-3 gap-2">
+          <div className={cn("flex md:hidden px-4 pb-3 gap-2", navbarMaxWidth, "mx-auto")}>
             {navItems.map((item) => {
               const Icon = item.icon;
               const isActive = pathname === item.href;
