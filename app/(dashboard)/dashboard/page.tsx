@@ -1,21 +1,34 @@
-import { createClient } from "@/lib/supabase/server";
-import { redirect } from "next/navigation";
+"use client";
+
+import { useAuth } from "@/hooks/use-auth";
 import { MeetingsList } from "@/components/meetings/meetings-list";
+import { Skeleton } from "@/components/ui/skeleton";
 
-export default async function DashboardPage() {
-  const supabase = await createClient();
+export default function DashboardPage() {
+  const { user, isLoading } = useAuth();
 
-  const {
-    data: { user },
-  } = await supabase.auth.getUser();
+  if (isLoading) {
+    return (
+      <div className="min-h-screen bg-black">
+        <div className="max-w-7xl mx-auto py-12 px-4 sm:px-6 lg:px-8">
+          <Skeleton className="h-10 w-48 mb-8" />
+          <div className="space-y-4">
+            <Skeleton className="h-32 w-full" />
+            <Skeleton className="h-32 w-full" />
+            <Skeleton className="h-32 w-full" />
+          </div>
+        </div>
+      </div>
+    );
+  }
 
   if (!user) {
-    redirect("/login");
+    return null;
   }
 
   return (
-    <div className="max-w-7xl mx-auto py-6 sm:px-6 lg:px-8">
-      <div className="px-4 sm:px-0">
+    <div className="min-h-screen bg-black">
+      <div className="max-w-7xl mx-auto py-12 px-4 sm:px-6 lg:px-8">
         <MeetingsList userEmail={user.email || ""} />
       </div>
     </div>

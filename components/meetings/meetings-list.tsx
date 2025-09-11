@@ -73,110 +73,64 @@ export function MeetingsList({ userEmail }: MeetingsListProps) {
     );
   };
 
-  if (isLoading) {
-    return (
-      <div className="space-y-6 animate-fade-in">
-        <div className="flex items-center justify-between">
-          <div>
-            <h1 className="text-4xl font-bold font-display text-white">
-              Your <span className="gradient-text">Meetings</span>
-            </h1>
-            <p className="text-white/60 mt-2">Welcome back, {userEmail}</p>
-          </div>
-        </div>
-        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-          {[1, 2, 3].map((i) => (
-            <SkeletonCard key={i} />
-          ))}
-        </div>
-      </div>
-    );
-  }
-
   if (error) {
     return (
-      <Card className="p-8 text-center">
-        <CardContent>
-          <p className="text-red-400 mb-4">Failed to load meetings</p>
-          <Button onClick={() => window.location.reload()}>Retry</Button>
+      <Card className="bg-red-500/10 border-red-500/20">
+        <CardContent className="p-6">
+          <p className="text-red-400">Failed to load meetings</p>
         </CardContent>
       </Card>
     );
   }
 
-  if (!meetings || meetings.length === 0) {
-    return (
-      <div className="space-y-6 animate-fade-in">
-        <div className="text-center">
-          <h1 className="text-4xl font-bold font-display text-white mb-2">
-            Your <span className="gradient-text">Meetings</span>
-          </h1>
-          <p className="text-white/60">Welcome back, {userEmail}</p>
-        </div>
-        <EmptyStateGuide />
-      </div>
-    );
-  }
-
   return (
-    <div className="space-y-6 animate-fade-in">
-      <div className="flex items-center justify-between">
-        <div>
-          <h1 className="text-4xl font-bold font-display text-white">
-            Your <span className="gradient-text">Meetings</span>
-          </h1>
-          <p className="text-white/60 mt-2">Welcome back, {userEmail}</p>
-        </div>
-        <Link href="/dashboard/upload">
-          <Button variant="glow" className="gap-2">
-            <Plus className="w-4 h-4" />
-            New Meeting
-          </Button>
-        </Link>
+    <div className="space-y-8">
+      <div>
+        <h1 className="text-4xl font-bold font-display text-white mb-2">
+          Your <span className="gradient-text">Meetings</span>
+        </h1>
+        <p className="text-white/60">Welcome back, {userEmail}</p>
       </div>
 
-      <MeetingFilters
-        searchTerm={searchTerm}
-        onSearchChange={setSearchTerm}
-        dateRange={dateRange}
-        onDateRangeChange={setDateRange}
-        onClearFilters={clearFilters}
-        hasActiveFilters={hasActiveFilters}
-      />
+      {isLoading ? (
+        <div className="space-y-4">
+          <SkeletonCard />
+          <SkeletonCard />
+          <SkeletonCard />
+        </div>
+      ) : !meetings || meetings.length === 0 ? (
+        <EmptyStateGuide />
+      ) : (
+        <>
+          <MeetingFilters
+            searchTerm={searchTerm}
+            onSearchChange={setSearchTerm}
+            dateRange={dateRange}
+            onDateRangeChange={setDateRange}
+            hasActiveFilters={hasActiveFilters}
+            onClearFilters={clearFilters}
+          />
 
-      {filteredMeetings.length === 0 ? (
-        <Card className="p-12 text-center">
-          <CardContent>
-            <FileText className="w-12 h-12 text-white/20 mx-auto mb-4" />
-            <p className="text-white/60 mb-4">No meetings found matching your filters</p>
-            {hasActiveFilters && (
-              <Button variant="outline" onClick={clearFilters}>
-                Clear Filters
-              </Button>
-            )}
-          </CardContent>
-        </Card>
-      ) : filteredMeetings.length <= 9 ? (
-        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-          {filteredMeetings.map((meeting) => (
-            <MeetingCard
-              key={meeting.id}
-              meeting={meeting}
+          {filteredMeetings.length === 0 ? (
+            <Card className="bg-white/[0.02] border-white/10">
+              <CardContent className="p-12 text-center">
+                <FileText className="w-12 h-12 text-white/20 mx-auto mb-4" />
+                <p className="text-white/60 mb-2">No meetings match your filters</p>
+                <Button variant="ghost" size="sm" onClick={clearFilters}>
+                  Clear filters
+                </Button>
+              </CardContent>
+            </Card>
+          ) : (
+            <VirtualMeetingsList
+              meetings={filteredMeetings}
               onView={handleView}
               onEdit={handleEdit}
               onDelete={handleDelete}
               onShare={handleShare}
             />
-          ))}
-        </div>
-      ) : (
-        <VirtualMeetingsList
-          meetings={filteredMeetings}
-          onView={handleView}
-          onEdit={handleEdit}
-          onDelete={handleDelete}
-          onShare={handleShare}
-        />
+          )}
+        </>
       )}
 
       {editingMeeting && (
@@ -187,10 +141,6 @@ export function MeetingsList({ userEmail }: MeetingsListProps) {
           onUpdate={handleUpdate}
         />
       )}
-
-      <div className="text-center text-sm text-white/40 pt-4">
-        {filteredMeetings.length} of {meetings.length} meetings
-      </div>
     </div>
   );
 }
