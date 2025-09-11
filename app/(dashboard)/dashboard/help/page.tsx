@@ -1,6 +1,6 @@
 "use client";
 
-import { ArrowLeft, Upload, FileText, Target, Sparkles } from "lucide-react";
+import { ArrowLeft, Upload, FileText, Target, Sparkles, Users, Lock, MessageCircle, Eye } from "lucide-react";
 import Link from "next/link";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 
@@ -103,6 +103,50 @@ export default function HelpPage() {
 
         <Card className="shadow-xl">
           <CardHeader>
+            <CardTitle>Collaboration Features</CardTitle>
+          </CardHeader>
+          <CardContent className="space-y-4">
+            <div className="flex gap-4">
+              <div className="w-10 h-10 rounded-lg bg-gradient-to-br from-pink-500/20 to-purple-500/20 flex items-center justify-center flex-shrink-0">
+                <Lock className="w-5 h-5 text-pink-400" />
+              </div>
+              <div>
+                <h4 className="font-medium mb-1">Secure Sharing</h4>
+                <p className="text-sm text-white/60">Share meetings with password-protected links. Set expiration dates for temporary access.</p>
+              </div>
+            </div>
+            <div className="flex gap-4">
+              <div className="w-10 h-10 rounded-lg bg-gradient-to-br from-pink-500/20 to-purple-500/20 flex items-center justify-center flex-shrink-0">
+                <Eye className="w-5 h-5 text-pink-400" />
+              </div>
+              <div>
+                <h4 className="font-medium mb-1">Real-time Presence</h4>
+                <p className="text-sm text-white/60">See who's viewing the meeting in real-time with live presence indicators.</p>
+              </div>
+            </div>
+            <div className="flex gap-4">
+              <div className="w-10 h-10 rounded-lg bg-gradient-to-br from-pink-500/20 to-purple-500/20 flex items-center justify-center flex-shrink-0">
+                <MessageCircle className="w-5 h-5 text-pink-400" />
+              </div>
+              <div>
+                <h4 className="font-medium mb-1">Collaborative Annotations</h4>
+                <p className="text-sm text-white/60">Highlight important sections and add comments. All changes sync instantly for everyone.</p>
+              </div>
+            </div>
+            <div className="flex gap-4">
+              <div className="w-10 h-10 rounded-lg bg-gradient-to-br from-pink-500/20 to-purple-500/20 flex items-center justify-center flex-shrink-0">
+                <Users className="w-5 h-5 text-pink-400" />
+              </div>
+              <div>
+                <h4 className="font-medium mb-1">Shared Notes</h4>
+                <p className="text-sm text-white/60">Edit meeting notes together in real-time. Perfect for distributed teams and remote collaboration.</p>
+              </div>
+            </div>
+          </CardContent>
+        </Card>
+
+        <Card className="shadow-xl">
+          <CardHeader>
             <CardTitle>Tips & Tricks</CardTitle>
           </CardHeader>
           <CardContent className="space-y-2">
@@ -110,6 +154,7 @@ export default function HelpPage() {
             <p className="text-sm text-white/80">• Filter meetings by date, participants, or keywords</p>
             <p className="text-sm text-white/80">• Export meetings as PDF for easy sharing</p>
             <p className="text-sm text-white/80">• Track action item completion across all meetings</p>
+            <p className="text-sm text-white/80">• Share meetings with your team for collaborative review</p>
           </CardContent>
         </Card>
       </div>

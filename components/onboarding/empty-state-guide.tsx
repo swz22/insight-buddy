@@ -1,6 +1,6 @@
 "use client";
 
-import { Upload, Sparkles, FileText, Target, ArrowRight, PlayCircle } from "lucide-react";
+import { Upload, Sparkles, FileText, Target, ArrowRight, PlayCircle, Users } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
 import Link from "next/link";
@@ -35,6 +35,12 @@ export function EmptyStateGuide() {
       description: "Analytics & insights across meetings",
       color: "from-green-500 to-green-600",
     },
+    {
+      icon: Users,
+      title: "Collaborate Live",
+      description: "Share & annotate with your team",
+      color: "from-pink-500 to-pink-600",
+    },
   ];
 
   const handleViewDemo = () => {
@@ -42,7 +48,7 @@ export function EmptyStateGuide() {
   };
 
   return (
-    <div className="max-w-4xl mx-auto py-12">
+    <div className="max-w-5xl mx-auto py-12">
       <motion.div
         initial={{ opacity: 0, y: 20 }}
         animate={{ opacity: 1, y: 0 }}
@@ -57,7 +63,7 @@ export function EmptyStateGuide() {
         </p>
       </motion.div>
 
-      <div className="grid grid-cols-1 md:grid-cols-4 gap-4 mb-12">
+      <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-5 gap-4 mb-12">
         {steps.map((step, index) => {
           const Icon = step.icon;
           return (
@@ -76,7 +82,7 @@ export function EmptyStateGuide() {
                 <h3 className="font-semibold mb-2">{step.title}</h3>
                 <p className="text-sm text-white/60">{step.description}</p>
                 {index < steps.length - 1 && (
-                  <ArrowRight className="absolute -right-2 top-1/2 -translate-y-1/2 w-4 h-4 text-white/20 hidden md:block" />
+                  <ArrowRight className="absolute -right-2 top-1/2 -translate-y-1/2 w-4 h-4 text-white/20 hidden lg:block" />
                 )}
               </Card>
             </motion.div>

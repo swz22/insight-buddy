@@ -1,7 +1,7 @@
 "use client";
 
 import { useState } from "react";
-import { ArrowLeft, Info } from "lucide-react";
+import { ArrowLeft, Info, Users, MessageCircle } from "lucide-react";
 import Link from "next/link";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader } from "@/components/ui/card";
@@ -109,6 +109,34 @@ export default function DemoMeetingPage() {
           </CardContent>
         </Card>
 
+        <Card className="border-pink-500/20 bg-pink-500/5">
+          <CardContent className="p-4">
+            <div className="flex items-center justify-between">
+              <div className="flex items-center gap-4">
+                <div className="flex items-center gap-2">
+                  <Users className="w-4 h-4 text-pink-400" />
+                  <span className="text-sm text-white/80">
+                    <span className="font-medium">2 viewers</span> currently active
+                  </span>
+                  <div className="flex -space-x-2 ml-2">
+                    <div className="w-6 h-6 rounded-full bg-gradient-to-br from-purple-500 to-purple-600 border-2 border-black flex items-center justify-center">
+                      <span className="text-[10px] font-bold">JK</span>
+                    </div>
+                    <div className="w-6 h-6 rounded-full bg-gradient-to-br from-cyan-500 to-cyan-600 border-2 border-black flex items-center justify-center">
+                      <span className="text-[10px] font-bold">SC</span>
+                    </div>
+                  </div>
+                </div>
+                <div className="flex items-center gap-2">
+                  <MessageCircle className="w-4 h-4 text-pink-400" />
+                  <span className="text-sm text-white/80">3 comments added</span>
+                </div>
+              </div>
+              <p className="text-xs text-white/50">Try collaboration features when you upload your first meeting!</p>
+            </div>
+          </CardContent>
+        </Card>
+
         <Card className="shadow-xl">
           <CardHeader>
             <div className="flex gap-2">
@@ -131,7 +159,18 @@ export default function DemoMeetingPage() {
           <CardContent>
             {activeTab === "transcript" && (
               <div className="prose prose-invert max-w-none">
-                <div className="whitespace-pre-wrap text-white/80">{demoData.transcript}</div>
+                <div className="whitespace-pre-wrap text-white/80 relative">
+                  {demoData.transcript}
+                  <div className="absolute top-32 left-0 right-0 bg-yellow-400/10 border-l-2 border-yellow-400 p-2 rounded">
+                    <div className="flex items-start gap-2">
+                      <MessageCircle className="w-4 h-4 text-yellow-400 mt-0.5" />
+                      <div>
+                        <p className="text-xs font-medium text-yellow-400">Sarah Chen highlighted this</p>
+                        <p className="text-xs text-white/60 mt-1">Great metrics! This validates our focus on analytics.</p>
+                      </div>
+                    </div>
+                  </div>
+                </div>
               </div>
             )}
 
