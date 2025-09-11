@@ -64,11 +64,38 @@ h6 {
   font-family: var(--font-family-display);
 }
 
+::-webkit-scrollbar {
+  width: 6px;
+  height: 6px;
+}
+
+::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+::-webkit-scrollbar-thumb {
+  background-color: rgba(255, 255, 255, 0.08);
+  border-radius: 10px;
+  transition: background-color 0.2s ease;
+}
+
+::-webkit-scrollbar-thumb:hover {
+  background-color: rgba(255, 255, 255, 0.15);
+}
+
+::-webkit-scrollbar-corner {
+  background: transparent;
+}
+
+* {
+  scrollbar-width: thin;
+  scrollbar-color: rgba(255, 255, 255, 0.08) transparent;
+}
+
 @layer utilities {
-  /* Scrollbar styling */
   .custom-scrollbar {
     scrollbar-width: thin;
-    scrollbar-color: rgba(255, 255, 255, 0.2) transparent;
+    scrollbar-color: rgba(255, 255, 255, 0.08) transparent;
   }
 
   .custom-scrollbar::-webkit-scrollbar {
@@ -82,20 +109,19 @@ h6 {
   }
 
   .custom-scrollbar::-webkit-scrollbar-thumb {
-    background-color: rgba(255, 255, 255, 0.2);
+    background-color: rgba(255, 255, 255, 0.08);
     border-radius: 9999px;
     transition: background-color 0.2s;
   }
 
   .custom-scrollbar::-webkit-scrollbar-thumb:hover {
-    background-color: rgba(255, 255, 255, 0.3);
+    background-color: rgba(255, 255, 255, 0.15);
   }
 
   .custom-scrollbar::-webkit-scrollbar-corner {
     background: transparent;
   }
 
-  /* Glass morphism */
   .glass {
     background-color: rgba(255, 255, 255, 0.02);
     backdrop-filter: blur(12px);
@@ -121,7 +147,6 @@ h6 {
     -webkit-background-clip: text;
     -webkit-text-fill-color: transparent;
     background-clip: text;
-    text-fill-color: transparent;
   }
 
   .gradient-border {
@@ -137,10 +162,10 @@ h6 {
     background: linear-gradient(135deg, var(--color-purple-400), var(--color-cyan-400));
     -webkit-mask: linear-gradient(#fff 0 0) content-box, linear-gradient(#fff 0 0);
     -webkit-mask-composite: xor;
+    mask: linear-gradient(#fff 0 0) content-box, linear-gradient(#fff 0 0);
     mask-composite: exclude;
   }
 
-  /* Focus ring utilities */
   .focus-ring-purple {
     outline: 2px solid transparent;
     outline-offset: 2px;
@@ -159,7 +184,6 @@ h6 {
     outline-color: var(--color-cyan-500);
   }
 
-  /* Glow effects */
   .glow {
     box-shadow: 0 0 20px rgba(168, 85, 247, 0.4), 0 0 40px rgba(6, 182, 212, 0.3);
   }
@@ -172,147 +196,26 @@ h6 {
     box-shadow: 0 0 30px rgba(168, 85, 247, 0.6), 0 0 60px rgba(6, 182, 212, 0.4);
   }
 
-  /* Spring scale effect */
-  .spring-scale {
-    transition: transform 0.2s cubic-bezier(0.175, 0.885, 0.32, 1.275);
-  }
-
-  .spring-scale:active {
-    transform: scale(0.95);
-  }
-
-  /* Animate on scroll */
   .animate-fade-in {
-    animation: fadeIn 0.6s ease-out;
+    animation: fadeIn 0.5s ease-in-out;
   }
 
-  .animate-slide-up {
-    animation: slideUp 0.6s ease-out;
-  }
-
-  .animate-slide-in {
-    animation: slideIn 0.6s ease-out;
-  }
-
-  /* Stagger animation */
-  .stagger-animation {
-    animation: fadeInUp 0.5s ease-out;
-    animation-fill-mode: both;
-  }
-
-  .stagger-animation:nth-child(1) {
-    animation-delay: 0s;
-  }
-
-  .stagger-animation:nth-child(2) {
-    animation-delay: 0.1s;
-  }
-
-  .stagger-animation:nth-child(3) {
-    animation-delay: 0.2s;
-  }
-
-  /* Ripple effect */
-  .ripple {
-    position: relative;
-    overflow: hidden;
-  }
-
-  .ripple::before {
-    content: "";
-    position: absolute;
-    top: 50%;
-    left: 50%;
-    width: 0;
-    height: 0;
-    border-radius: 50%;
-    background: rgba(255, 255, 255, 0.5);
-    transform: translate(-50%, -50%);
-    transition: width 0.6s, height 0.6s;
-  }
-
-  .ripple:active::before {
-    width: 300px;
-    height: 300px;
-  }
-
-  /* Smooth border transitions */
-  .smooth-border {
-    background-color: rgba(0, 0, 0, 0.4);
-    backdrop-filter: blur(12px);
-    border: 1px solid rgba(255, 255, 255, 0.25);
-    transition: all 0.3s ease;
-  }
-
-  .smooth-border:hover {
-    border-color: rgba(6, 182, 212, 0.5);
-  }
-
-  .smooth-border:focus {
-    border-color: rgba(6, 182, 212, 1);
-    background-color: rgba(0, 0, 0, 0.6);
-    outline: none;
-  }
-
-  .smooth-border-purple {
-    background-color: rgba(255, 255, 255, 0.02);
-    backdrop-filter: blur(12px);
-    border: 1px solid rgba(255, 255, 255, 0.1);
-  }
-
-  .smooth-border-purple:hover {
-    border-color: rgba(196, 132, 252, 0.5);
-  }
-
-  .smooth-border-purple:focus {
-    border-color: rgba(196, 132, 252, 0.5);
-    background-color: rgba(196, 132, 252, 0.05);
+  @keyframes fadeIn {
+    from {
+      opacity: 0;
+      transform: translateY(10px);
+    }
+    to {
+      opacity: 1;
+      transform: translateY(0);
+    }
   }
 }
 
-@keyframes fadeIn {
-  from {
-    opacity: 0;
-  }
-  to {
-    opacity: 1;
-  }
+input[type="date"] {
+  color-scheme: dark;
 }
 
-@keyframes slideUp {
-  from {
-    opacity: 0;
-    transform: translateY(20px);
-  }
-  to {
-    opacity: 1;
-    transform: translateY(0);
-  }
-}
-
-@keyframes slideIn {
-  from {
-    opacity: 0;
-    transform: translateX(-20px);
-  }
-  to {
-    opacity: 1;
-    transform: translateX(0);
-  }
-}
-
-@keyframes fadeInUp {
-  from {
-    opacity: 0;
-    transform: translateY(30px);
-  }
-  to {
-    opacity: 1;
-    transform: translateY(0);
-  }
-}
-
-/* Custom date input styling */
 input[type="date"]::-webkit-calendar-picker-indicator {
   filter: invert(1);
   opacity: 0.6;
@@ -324,44 +227,15 @@ input[type="date"]::-webkit-calendar-picker-indicator:hover {
   opacity: 1;
 }
 
-/* Fix calendar indicator position */
-@media screen and (-webkit-min-device-pixel-ratio: 0) {
-  input[type="date"]::-webkit-date-and-time-value {
-    text-align: left;
-    position: relative;
-  }
-}
-
-/* Prevent text selection on date inputs */
-input[type="date"] {
-  -webkit-user-select: none;
-  -moz-user-select: none;
-  -ms-user-select: none;
-  user-select: none;
-}
-
-input[type="date"]::-webkit-datetime-edit {
-  padding: 0;
-  -webkit-user-select: none;
-}
-
+input[type="date"]::-webkit-datetime-edit,
+input[type="date"]::-webkit-datetime-edit-fields-wrapper,
 input[type="date"]::-webkit-datetime-edit-text,
 input[type="date"]::-webkit-datetime-edit-month-field,
 input[type="date"]::-webkit-datetime-edit-day-field,
 input[type="date"]::-webkit-datetime-edit-year-field {
   color: white;
-  -webkit-user-select: none;
 }
 
-/* Remove selection highlighting */
-input[type="date"]::-webkit-datetime-edit-month-field:focus,
-input[type="date"]::-webkit-datetime-edit-day-field:focus,
-input[type="date"]::-webkit-datetime-edit-year-field:focus {
-  background-color: transparent !important;
-  color: white !important;
-}
-
-input[type="date"]::selection,
 input[type="date"]::-webkit-datetime-edit::selection,
 input[type="date"]::-webkit-datetime-edit-fields-wrapper::selection,
 input[type="date"]::-webkit-datetime-edit-text::selection,
@@ -372,7 +246,6 @@ input[type="date"]::-webkit-datetime-edit-year-field::selection {
   color: white !important;
 }
 
-/* Prevent text selection on focus */
 input[type="date"]:focus::-webkit-datetime-edit,
 input[type="date"]:focus::-webkit-datetime-edit-fields-wrapper,
 input[type="date"]:focus::-webkit-datetime-edit-text,
@@ -383,7 +256,6 @@ input[type="date"]:focus::-webkit-datetime-edit-year-field {
   color: white !important;
 }
 
-/* Date field placeholder behavior */
 input[type="date"]:not(:valid):not(:focus) {
   color: transparent;
 }
@@ -420,13 +292,11 @@ input[type="date"] {
   z-index: 2;
 }
 
-/* Ensure calendar dropdown appears correctly */
 input[type="date"]::-webkit-calendar-picker-indicator {
   position: relative;
   z-index: 3;
 }
 
-/* Base focus outline styles */
 .focus-visible\:outline:focus-visible {
   outline-style: solid;
 }
