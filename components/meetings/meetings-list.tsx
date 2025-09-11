@@ -8,12 +8,13 @@ import { useMeetingFilters } from "@/hooks/use-meeting-filters";
 import { MeetingCard } from "./meeting-card";
 import { EditMeetingDialog } from "./edit-meeting-dialog";
 import { MeetingFilters } from "./meeting-filters";
+import { EmptyStateGuide } from "@/components/onboarding/empty-state-guide";
 import { useRouter } from "next/navigation";
 import { useQueryClient } from "@tanstack/react-query";
 import { Database } from "@/types/supabase";
 import Link from "next/link";
 import { useToast } from "@/hooks/use-toast";
-import { FileText } from "lucide-react";
+import { FileText, Plus } from "lucide-react";
 import { SkeletonCard } from "@/components/ui/skeleton";
 import { VirtualMeetingsList } from "@/components/meetings/virtual-meetings-list";
 import { useMeetingsRealtime } from "@/hooks/use-meetings-realtime";
@@ -34,7 +35,6 @@ export function MeetingsList({ userEmail }: MeetingsListProps) {
   const deleteMeeting = useDeleteMeeting();
   const [editingMeeting, setEditingMeeting] = useState<Meeting | null>(null);
 
-  // Enable Realtime subscriptions for instant updates
   useMeetingsRealtime({
     userId: user?.id,
     enabled: !!user?.id,
@@ -71,103 +71,126 @@ export function MeetingsList({ userEmail }: MeetingsListProps) {
     queryClient.setQueryData<Meeting[]>(["meetings"], (old) =>
       old ? old.map((m) => (m.id === updatedMeeting.id ? updatedMeeting : m)) : []
     );
-    queryClient.setQueryData<Meeting>(["meetings", updatedMeeting.id], updatedMeeting);
-    setEditingMeeting(null);
   };
 
-  return (
-    <>
-      <Card className="bg-white/[0.02] backdrop-blur-sm border-white/10 shadow-xl">
-        <CardHeader>
-          <div className="flex items-center justify-between">
-            <div>
-              <CardTitle className="text-2xl font-display">
-                Your <span className="gradient-text">Meetings</span>
-              </CardTitle>
-              <CardDescription className="text-white/60 mt-1">Welcome back, {userEmail.split("@")[0]}</CardDescription>
-            </div>
-            <Link href="/dashboard/upload">
-              <Button variant="glow" className="shadow-lg hover:shadow-xl transition-all">
-                <FileText className="w-4 h-4 mr-2" />
-                New Meeting
-              </Button>
-            </Link>
+  if (isLoading) {
+    return (
+      <div className="space-y-6 animate-fade-in">
+        <div className="flex items-center justify-between">
+          <div>
+            <h1 className="text-4xl font-bold font-display text-white">
+              Your <span className="gradient-text">Meetings</span>
+            </h1>
+            <p className="text-white/60 mt-2">Welcome back, {userEmail}</p>
           </div>
-        </CardHeader>
-        <CardContent>
-          <MeetingFilters
-            searchTerm={searchTerm}
-            onSearchChange={setSearchTerm}
-            dateRange={dateRange}
-            onDateRangeChange={setDateRange}
-            onClearFilters={clearFilters}
-            hasActiveFilters={hasActiveFilters}
-          />
+        </div>
+        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+          {[1, 2, 3].map((i) => (
+            <SkeletonCard key={i} />
+          ))}
+        </div>
+      </div>
+    );
+  }
 
-          {isLoading ? (
-            <div className="grid gap-4 mt-6">
-              <SkeletonCard />
-              <SkeletonCard />
-              <SkeletonCard />
-            </div>
-          ) : error ? (
-            <div className="text-center py-12">
-              <p className="text-red-400">Failed to load meetings</p>
-              <Button
-                onClick={() => queryClient.invalidateQueries({ queryKey: ["meetings"] })}
-                className="mt-4"
-                variant="outline"
-              >
-                Retry
-              </Button>
-            </div>
-          ) : filteredMeetings.length === 0 ? (
-            <div className="text-center py-12">
-              <FileText className="w-12 h-12 text-white/20 mx-auto mb-4" />
-              {hasActiveFilters ? (
-                <>
-                  <p className="text-white/60 mb-4">No meetings match your filters</p>
-                  <Button onClick={clearFilters} variant="outline" size="sm">
-                    Clear Filters
-                  </Button>
-                </>
-              ) : (
-                <>
-                  <p className="text-white/60 mb-4">No meetings yet</p>
-                  <Link href="/dashboard/upload">
-                    <Button variant="glow" className="shadow-lg">
-                      Upload Your First Meeting
-                    </Button>
-                  </Link>
-                </>
-              )}
-            </div>
-          ) : (
-            <div className="mt-6">
-              <div className="mb-4 text-sm text-white/50">
-                {filteredMeetings.length} {filteredMeetings.length === 1 ? "meeting" : "meetings"}
-                {hasActiveFilters && ` (filtered from ${meetings?.length || 0} total)`}
-              </div>
-              <VirtualMeetingsList
-                meetings={filteredMeetings}
-                onView={handleView}
-                onEdit={handleEdit}
-                onDelete={handleDelete}
-                onShare={handleShare}
-              />
-            </div>
-          )}
+  if (error) {
+    return (
+      <Card className="p-8 text-center">
+        <CardContent>
+          <p className="text-red-400 mb-4">Failed to load meetings</p>
+          <Button onClick={() => window.location.reload()}>Retry</Button>
         </CardContent>
       </Card>
+    );
+  }
+
+  if (!meetings || meetings.length === 0) {
+    return (
+      <div className="space-y-6 animate-fade-in">
+        <div className="text-center">
+          <h1 className="text-4xl font-bold font-display text-white mb-2">
+            Your <span className="gradient-text">Meetings</span>
+          </h1>
+          <p className="text-white/60">Welcome back, {userEmail}</p>
+        </div>
+        <EmptyStateGuide />
+      </div>
+    );
+  }
+
+  return (
+    <div className="space-y-6 animate-fade-in">
+      <div className="flex items-center justify-between">
+        <div>
+          <h1 className="text-4xl font-bold font-display text-white">
+            Your <span className="gradient-text">Meetings</span>
+          </h1>
+          <p className="text-white/60 mt-2">Welcome back, {userEmail}</p>
+        </div>
+        <Link href="/dashboard/upload">
+          <Button variant="glow" className="gap-2">
+            <Plus className="w-4 h-4" />
+            New Meeting
+          </Button>
+        </Link>
+      </div>
+
+      <MeetingFilters
+        searchTerm={searchTerm}
+        onSearchChange={setSearchTerm}
+        dateRange={dateRange}
+        onDateRangeChange={setDateRange}
+        onClearFilters={clearFilters}
+        hasActiveFilters={hasActiveFilters}
+      />
+
+      {filteredMeetings.length === 0 ? (
+        <Card className="p-12 text-center">
+          <CardContent>
+            <FileText className="w-12 h-12 text-white/20 mx-auto mb-4" />
+            <p className="text-white/60 mb-4">No meetings found matching your filters</p>
+            {hasActiveFilters && (
+              <Button variant="outline" onClick={clearFilters}>
+                Clear Filters
+              </Button>
+            )}
+          </CardContent>
+        </Card>
+      ) : filteredMeetings.length <= 9 ? (
+        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+          {filteredMeetings.map((meeting) => (
+            <MeetingCard
+              key={meeting.id}
+              meeting={meeting}
+              onView={handleView}
+              onEdit={handleEdit}
+              onDelete={handleDelete}
+              onShare={handleShare}
+            />
+          ))}
+        </div>
+      ) : (
+        <VirtualMeetingsList
+          meetings={filteredMeetings}
+          onView={handleView}
+          onEdit={handleEdit}
+          onDelete={handleDelete}
+          onShare={handleShare}
+        />
+      )}
 
       {editingMeeting && (
         <EditMeetingDialog
           meeting={editingMeeting}
-          isOpen={true}
+          isOpen={!!editingMeeting}
           onClose={() => setEditingMeeting(null)}
           onUpdate={handleUpdate}
         />
       )}
-    </>
+
+      <div className="text-center text-sm text-white/40 pt-4">
+        {filteredMeetings.length} of {meetings.length} meetings
+      </div>
+    </div>
   );
 }
