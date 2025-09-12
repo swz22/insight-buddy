@@ -77,7 +77,7 @@ export default function HelpPage() {
                 <span className="w-6 h-6 rounded-full bg-purple-500/20 text-purple-400 flex items-center justify-center flex-shrink-0 text-xs font-bold">
                   1
                 </span>
-                <span>Click "Upload" or drag a file to the dashboard</span>
+                <span>Click &quot;Upload&quot; or drag a file to the dashboard</span>
               </li>
               <li className="flex gap-3">
                 <span className="w-6 h-6 rounded-full bg-purple-500/20 text-purple-400 flex items-center justify-center flex-shrink-0 text-xs font-bold">
@@ -121,7 +121,7 @@ export default function HelpPage() {
               </div>
               <div>
                 <h4 className="font-medium mb-1">Real-time Presence</h4>
-                <p className="text-sm text-white/60">See who's viewing the meeting in real-time with live presence indicators.</p>
+                <p className="text-sm text-white/60">See who&apos;s viewing the meeting in real-time with live presence indicators.</p>
               </div>
             </div>
             <div className="flex gap-4">
