@@ -7,10 +7,14 @@ import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader } from "@/components/ui/card";
 import { cn } from "@/lib/utils";
 import { CollaborativeTranscript } from "@/components/collaboration/collaborative-transcript";
-import { motion } from "framer-motion";
+import { CommentFAB } from "@/components/collaboration/comment-fab";
+import { InlineCommentBox } from "@/components/collaboration/inline-comment-box";
+import { motion, AnimatePresence } from "framer-motion";
 
 export default function DemoMeetingPage() {
   const [activeTab, setActiveTab] = useState("transcript");
+  const [showCommentBox, setShowCommentBox] = useState(false);
+  const [commentPosition, setCommentPosition] = useState<{ x: number; y: number } | null>(null);
 
   const tabs = [
     { id: "transcript", label: "Transcript" },
@@ -73,7 +77,7 @@ export default function DemoMeetingPage() {
     ]
   };
 
-  const demoAnnotations = [
+  const [demoAnnotations, setDemoAnnotations] = useState([
     {
       id: "demo-annotation-1",
       meeting_id: "demo",
@@ -100,97 +104,162 @@ export default function DemoMeetingPage() {
       type: "comment" as const,
       content: "We should also consider PWA as an interim solution while developing the native app.",
       position: { line_number: 3 },
-      created_at: new Date(Date.now() - 60000).toISOString()
+      created_at: new Date(Date.now() - 120000).toISOString()
     }
-  ];
+  ]);
 
-  const handleAddHighlight = () => {};
-  const handleAddComment = () => {};
+  const handleAddComment = (position?: { x: number; y: number }) => {
+    if (position) {
+      setCommentPosition(position);
+    } else {
+      const centerX = window.innerWidth / 2;
+      const centerY = window.scrollY + window.innerHeight / 3;
+      setCommentPosition({ x: centerX, y: centerY });
+    }
+    setShowCommentBox(true);
+  };
+
+  const handleSubmitComment = (comment: string, position: { x: number; y: number }) => {
+    const newAnnotation = {
+      id: `demo-annotation-${Date.now()}`,
+      meeting_id: "demo",
+      share_token: "demo",
+      user_info: {
+        name: "Demo User",
+        color: "#8b5cf6",
+        sessionId: "demo-current"
+      },
+      type: "comment" as const,
+      content: comment,
+      position: { line_number: Math.floor(Math.random() * 6) + 1 },
+      created_at: new Date().toISOString()
+    };
+    
+    setDemoAnnotations([...demoAnnotations, newAnnotation]);
+    setShowCommentBox(false);
+    setCommentPosition(null);
+  };
+
+  const handleAddHighlight = (startLine: number, endLine: number, text: string) => {
+    const newAnnotation = {
+      id: `demo-annotation-${Date.now()}`,
+      meeting_id: "demo",
+      share_token: "demo",
+      user_info: {
+        name: "Demo User",
+        color: "#8b5cf6",
+        sessionId: "demo-current"
+      },
+      type: "highlight" as const,
+      content: text,
+      position: { start_line: startLine, end_line: endLine },
+      created_at: new Date().toISOString()
+    };
+    
+    setDemoAnnotations([...demoAnnotations, newAnnotation]);
+  };
+
+  const handleAddCommentToTranscript = (lineNumber: number, text: string) => {
+    const newAnnotation = {
+      id: `demo-annotation-${Date.now()}`,
+      meeting_id: "demo",
+      share_token: "demo",
+      user_info: {
+        name: "Demo User",
+        color: "#8b5cf6",
+        sessionId: "demo-current"
+      },
+      type: "comment" as const,
+      content: text,
+      position: { line_number: lineNumber },
+      created_at: new Date().toISOString()
+    };
+    
+    setDemoAnnotations([...demoAnnotations, newAnnotation]);
+  };
+
+  const handleDeleteAnnotation = (annotationId: string) => {
+    setDemoAnnotations(demoAnnotations.filter(a => a.id !== annotationId));
+  };
+
+  const handleEditAnnotation = (annotationId: string, newContent: string) => {
+    setDemoAnnotations(demoAnnotations.map(a => 
+      a.id === annotationId ? { ...a, content: newContent } : a
+    ));
+  };
+
+  const commentCount = demoAnnotations.filter(a => a.type === "comment").length;
 
   return (
-    <div className="max-w-7xl mx-auto py-6 sm:px-6 lg:px-8">
-      <div className="px-4 sm:px-0 space-y-6 animate-fade-in">
-        <div className="flex items-center justify-between">
-          <div className="flex-1">
-            <Link
-              href="/dashboard"
-              className="inline-flex items-center text-white/60 hover:text-white/90 transition-colors group mb-4"
-            >
-              <ArrowLeft className="w-4 h-4 mr-2 group-hover:-translate-x-1 transition-transform" />
-              Back to dashboard
-            </Link>
-            <div className="flex items-center gap-3 mb-2">
-              <h1 className="text-3xl font-bold">{demoData.title}</h1>
-              <span className="px-2 py-1 bg-purple-500/20 text-purple-400 text-xs rounded-full font-medium">
-                DEMO
-              </span>
-            </div>
-            <p className="text-white/60">{demoData.description}</p>
-          </div>
+    <div className="max-w-7xl mx-auto py-6 px-4 sm:px-6 lg:px-8">
+      <div className="space-y-6 animate-fade-in">
+        <div>
+          <Link
+            href="/dashboard"
+            className="inline-flex items-center text-white/60 hover:text-white/90 transition-colors group mb-4"
+          >
+            <ArrowLeft className="w-4 h-4 mr-2 group-hover:-translate-x-1 transition-transform" />
+            Back to dashboard
+          </Link>
+          <h1 className="text-3xl font-bold text-white">{demoData.title}</h1>
+          <p className="text-white/60 mt-2">{demoData.description}</p>
         </div>
 
-        <Card className="bg-gradient-to-r from-purple-500/10 to-cyan-500/10 border-purple-500/20">
-          <CardContent className="p-4">
-            <div className="flex items-center gap-3">
-              <Info className="w-5 h-5 text-purple-400" />
+        <motion.div
+          initial={{ opacity: 0, y: 10 }}
+          animate={{ opacity: 1, y: 0 }}
+          className="bg-gradient-to-r from-purple-500/10 to-cyan-500/10 rounded-lg p-4 border border-purple-500/20"
+        >
+          <div className="flex items-start gap-3">
+            <Info className="w-5 h-5 text-purple-400 mt-0.5" />
+            <div className="flex-1">
               <p className="text-sm text-white/80">
-                This is a demo meeting showing what your processed meetings will look like. Upload your own meeting to get started!
+                <span className="font-semibold text-purple-400">Interactive Demo:</span> This is a sample meeting to showcase collaboration features. 
+                Try clicking the floating comment button, highlighting text, or adding comments to experience real-time collaboration!
               </p>
-              <Link href="/dashboard/upload" className="ml-auto">
-                <Button variant="glow" size="sm">Upload Meeting</Button>
-              </Link>
             </div>
-          </CardContent>
-        </Card>
+          </div>
+        </motion.div>
 
-        <div className="flex items-center gap-6 text-sm text-white/60">
-          <div className="flex items-center gap-2">
-            <Users className="w-4 h-4" />
-            <span>2 viewers currently active</span>
-          </div>
-          <div className="flex items-center gap-2">
-            <MessageCircle className="w-4 h-4" />
-            <span>3 comments added</span>
-          </div>
-          <span className="ml-auto text-xs">Try collaboration features when you upload your first meeting!</span>
+        <div className="flex gap-2 border-b border-white/10 pb-1">
+          {tabs.map(tab => (
+            <button
+              key={tab.id}
+              onClick={() => setActiveTab(tab.id)}
+              className={cn(
+                "px-4 py-2 text-sm font-medium rounded-t-lg transition-all",
+                activeTab === tab.id
+                  ? "bg-white/10 text-white border-b-2 border-purple-500"
+                  : "text-white/60 hover:text-white/80"
+              )}
+            >
+              {tab.label}
+            </button>
+          ))}
         </div>
 
         <Card className="shadow-xl">
-          <CardHeader className="pb-0">
-            <div className="flex gap-2 border-b border-white/10">
-              {tabs.map((tab) => (
-                <button
-                  key={tab.id}
-                  onClick={() => setActiveTab(tab.id)}
-                  className={cn(
-                    "px-4 py-3 text-sm font-medium transition-all relative",
-                    activeTab === tab.id
-                      ? "text-white"
-                      : "text-white/60 hover:text-white"
-                  )}
-                >
-                  {tab.label}
-                  {activeTab === tab.id && (
-                    <motion.div
-                      layoutId="activeTab"
-                      className="absolute bottom-0 left-0 right-0 h-0.5 bg-gradient-to-r from-purple-500 to-cyan-500"
-                    />
-                  )}
-                </button>
-              ))}
-            </div>
-          </CardHeader>
-          <CardContent className="pt-6">
+          <CardContent className="p-6">
             {activeTab === "transcript" && (
-              <div className="relative">
+              <div className="space-y-4">
+                <div className="flex items-center gap-2 text-sm text-white/60 mb-4">
+                  <Users className="w-4 h-4" />
+                  <span>4 participants</span>
+                  <span className="mx-2">•</span>
+                  <MessageCircle className="w-4 h-4" />
+                  <span>{commentCount} comments</span>
+                </div>
+
                 <CollaborativeTranscript
                   transcript={demoData.transcript}
                   annotations={demoAnnotations}
                   onAddHighlight={handleAddHighlight}
-                  onAddComment={handleAddComment}
-                  currentUserColor="#3b82f6"
+                  onAddComment={handleAddCommentToTranscript}
+                  onDeleteAnnotation={handleDeleteAnnotation}
+                  onEditAnnotation={handleEditAnnotation}
+                  currentUserColor="#8b5cf6"
                   currentUserName="Demo User"
-                  currentSessionId="demo-current-user"
+                  currentSessionId="demo-current"
                 />
               </div>
             )}
@@ -198,10 +267,10 @@ export default function DemoMeetingPage() {
             {activeTab === "summary" && (
               <div className="space-y-6">
                 <div>
-                  <h4 className="text-sm font-medium text-white/70 mb-2">Overview</h4>
+                  <h3 className="text-lg font-semibold mb-3 text-white">Overview</h3>
                   <p className="text-white/80">{demoData.summary.overview}</p>
                 </div>
-                
+
                 <div>
                   <h4 className="text-sm font-medium text-white/70 mb-3">Key Points</h4>
                   <ul className="space-y-2">
@@ -278,6 +347,30 @@ export default function DemoMeetingPage() {
           </CardContent>
         </Card>
       </div>
+
+      {activeTab === "transcript" && (
+        <>
+          <CommentFAB
+            onAddComment={handleAddComment}
+            commentCount={commentCount}
+          />
+          
+          <AnimatePresence>
+            {showCommentBox && commentPosition && (
+              <InlineCommentBox
+                position={commentPosition}
+                onSubmit={handleSubmitComment}
+                onCancel={() => {
+                  setShowCommentBox(false);
+                  setCommentPosition(null);
+                }}
+                userName="Demo User"
+                userColor="#8b5cf6"
+              />
+            )}
+          </AnimatePresence>
+        </>
+      )}
     </div>
   );
 }
