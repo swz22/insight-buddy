@@ -6,7 +6,7 @@ import Link from "next/link";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader } from "@/components/ui/card";
 import { cn } from "@/lib/utils";
-import { CollaborativeTranscript } from "@/components/collaboration/collaborative-transcript";
+import { CommentableTranscript } from "@/components/comments/commentable-transcript";
 import { motion } from "framer-motion";
 
 export default function DemoMeetingPage() {
@@ -21,17 +21,43 @@ export default function DemoMeetingPage() {
   const demoData = {
     title: "Product Roadmap Planning Q1 2025",
     description: "Quarterly planning session to define product priorities and timeline",
-    transcript: `[00:00] Sarah Chen: Good morning everyone. Let's kick off our Q1 planning session. We have a lot to cover today regarding our product roadmap.
+    parsedTranscript: [
+      {
+        speaker: "Sarah Chen",
+        text: "Good morning everyone. Let's kick off our Q1 planning session. We have a lot to cover today regarding our product roadmap."
+      },
+      {
+        speaker: "Mike Johnson",
+        text: "Thanks Sarah. I've prepared an overview of our current metrics. We saw 40% growth in user engagement last quarter, particularly in our analytics features."
+      },
+      {
+        speaker: "Emily Davis",
+        text: "That's fantastic. Based on user feedback, I think we should prioritize the mobile experience. We're getting consistent requests for a native app."
+      },
+      {
+        speaker: "Alex Thompson",
+        text: "I agree with Emily. Our mobile web experience is decent, but a native app would significantly improve user retention. I can have the technical requirements ready by next week."
+      },
+      {
+        speaker: "Sarah Chen",
+        text: "Excellent points. Let's also discuss the AI integration timeline. Mike, where are we on that?"
+      },
+      {
+        speaker: "Mike Johnson",
+        text: "We're about 70% complete with the core AI features. The transcription accuracy is at 95%, and we're now working on the sentiment analysis component."
+      }
+    ],
+    transcript: `Sarah Chen: Good morning everyone. Let's kick off our Q1 planning session. We have a lot to cover today regarding our product roadmap.
 
-[00:15] Mike Johnson: Thanks Sarah. I've prepared an overview of our current metrics. We saw 40% growth in user engagement last quarter, particularly in our analytics features.
+Mike Johnson: Thanks Sarah. I've prepared an overview of our current metrics. We saw 40% growth in user engagement last quarter, particularly in our analytics features.
 
-[00:35] Emily Davis: That's fantastic. Based on user feedback, I think we should prioritize the mobile experience. We're getting consistent requests for a native app.
+Emily Davis: That's fantastic. Based on user feedback, I think we should prioritize the mobile experience. We're getting consistent requests for a native app.
 
-[00:52] Alex Thompson: I agree with Emily. Our mobile web experience is decent, but a native app would significantly improve user retention. I can have the technical requirements ready by next week.
+Alex Thompson: I agree with Emily. Our mobile web experience is decent, but a native app would significantly improve user retention. I can have the technical requirements ready by next week.
 
-[01:15] Sarah Chen: Excellent points. Let's also discuss the AI integration timeline. Mike, where are we on that?
+Sarah Chen: Excellent points. Let's also discuss the AI integration timeline. Mike, where are we on that?
 
-[01:28] Mike Johnson: We're about 70% complete with the core AI features. The transcription accuracy is at 95%, and we're now working on the sentiment analysis component.`,
+Mike Johnson: We're about 70% complete with the core AI features. The transcription accuracy is at 95%, and we're now working on the sentiment analysis component.`,
     summary: {
       overview: "Q1 planning session focused on product roadmap priorities, including mobile app development and AI feature integration.",
       keyPoints: [
@@ -73,118 +99,40 @@ export default function DemoMeetingPage() {
     ]
   };
 
-  const [demoAnnotations, setDemoAnnotations] = useState([
-    {
-      id: "demo-annotation-1",
-      meeting_id: "demo",
-      share_token: "demo",
-      user_info: {
-        name: "Sarah Chen",
-        color: "#fbbf24",
-        sessionId: "demo-session-1"
-      },
-      type: "highlight" as const,
-      content: "Great metrics! This validates our focus on analytics.",
-      position: { start_line: 2, end_line: 2 },
-      created_at: new Date(Date.now() - 300000).toISOString()
-    },
-    {
-      id: "demo-annotation-2",
-      meeting_id: "demo",
-      share_token: "demo",
-      user_info: {
-        name: "David Kim",
-        color: "#10b981",
-        sessionId: "demo-session-2"
-      },
-      type: "comment" as const,
-      content: "We should also consider PWA as an interim solution while developing the native app.",
-      position: { line_number: 3 },
-      created_at: new Date(Date.now() - 120000).toISOString()
-    }
-  ]);
-
-  const handleAddHighlight = (startLine: number, endLine: number, text: string) => {
-    const newAnnotation = {
-      id: `demo-annotation-${Date.now()}`,
-      meeting_id: "demo",
-      share_token: "demo",
-      user_info: {
-        name: "Demo User",
-        color: "#8b5cf6",
-        sessionId: "demo-current"
-      },
-      type: "highlight" as const,
-      content: text,
-      position: { start_line: startLine, end_line: endLine },
-      created_at: new Date().toISOString()
-    };
-    
-    setDemoAnnotations([...demoAnnotations, newAnnotation]);
-  };
-
-  const handleAddComment = (lineNumber: number, text: string) => {
-    const newAnnotation = {
-      id: `demo-annotation-${Date.now()}`,
-      meeting_id: "demo",
-      share_token: "demo",
-      user_info: {
-        name: "Demo User",
-        color: "#8b5cf6",
-        sessionId: "demo-current"
-      },
-      type: "comment" as const,
-      content: text,
-      position: { line_number: lineNumber },
-      created_at: new Date().toISOString()
-    };
-    
-    setDemoAnnotations([...demoAnnotations, newAnnotation]);
-  };
-
-  const handleDeleteAnnotation = (annotationId: string) => {
-    setDemoAnnotations(demoAnnotations.filter(a => a.id !== annotationId));
-  };
-
-  const handleEditAnnotation = (annotationId: string, newContent: string) => {
-    setDemoAnnotations(demoAnnotations.map(a => 
-      a.id === annotationId ? { ...a, content: newContent } : a
-    ));
-  };
-
-  const commentCount = demoAnnotations.filter(a => a.type === "comment").length;
-
   return (
-    <div className="max-w-7xl mx-auto py-6 px-4 sm:px-6 lg:px-8">
-      <div className="space-y-6 animate-fade-in">
-        <div>
-          <Link
-            href="/dashboard"
-            className="inline-flex items-center text-white/60 hover:text-white/90 transition-colors group mb-4"
+    <div className="container mx-auto px-4 py-6 max-w-6xl">
+      <Link
+        href="/dashboard"
+        className="inline-flex items-center text-white/60 hover:text-white/90 transition-colors mb-6 group"
+      >
+        <ArrowLeft className="w-4 h-4 mr-2 group-hover:-translate-x-1 transition-transform" />
+        Back to dashboard
+      </Link>
+
+      <div className="mb-6">
+        <h1 className="text-3xl font-bold font-display mb-2">{demoData.title}</h1>
+        <p className="text-white/60">{demoData.description}</p>
+      </div>
+
+      <Card className="shadow-xl mb-6">
+        <CardHeader>
+          <motion.div
+            initial={{ opacity: 0, y: -10 }}
+            animate={{ opacity: 1, y: 0 }}
+            className="bg-gradient-to-r from-purple-500/10 to-cyan-500/10 p-4 rounded-lg border border-purple-500/20"
           >
-            <ArrowLeft className="w-4 h-4 mr-2 group-hover:-translate-x-1 transition-transform" />
-            Back to dashboard
-          </Link>
-          <h1 className="text-3xl font-bold text-white">{demoData.title}</h1>
-          <p className="text-white/60 mt-2">{demoData.description}</p>
-        </div>
-
-        <motion.div
-          initial={{ opacity: 0, y: 10 }}
-          animate={{ opacity: 1, y: 0 }}
-          className="bg-gradient-to-r from-purple-500/10 to-cyan-500/10 rounded-lg p-4 border border-purple-500/20"
-        >
-          <div className="flex items-start gap-3">
-            <Info className="w-5 h-5 text-purple-400 mt-0.5" />
-            <div className="flex-1">
-              <p className="text-sm text-white/80">
-                <span className="font-semibold text-purple-400">Interactive Demo:</span> This is a sample meeting to showcase collaboration features. 
-                Try selecting text to add comments or highlights, or hover over the left margin to add line comments!
-              </p>
+            <div className="flex items-center gap-2 mb-2">
+              <Info className="w-5 h-5 text-purple-400" />
+              <h3 className="font-semibold text-purple-300">Interactive Demo</h3>
             </div>
-          </div>
-        </motion.div>
+            <p className="text-sm text-white/70">
+              This is a sample meeting to showcase collaboration features. Try selecting text to add comments or highlights!
+            </p>
+          </motion.div>
+        </CardHeader>
+      </Card>
 
+      <div>
         <div className="flex gap-2 border-b border-white/10 pb-1">
           {tabs.map(tab => (
             <button
@@ -209,21 +157,15 @@ export default function DemoMeetingPage() {
                 <div className="flex items-center gap-2 text-sm text-white/60 mb-4">
                   <Users className="w-4 h-4" />
                   <span>4 participants</span>
-                  <span className="mx-2">•</span>
-                  <MessageCircle className="w-4 h-4" />
-                  <span>{commentCount} comments</span>
                 </div>
 
-                <CollaborativeTranscript
+                <CommentableTranscript
+                  meetingId="demo-meeting"
                   transcript={demoData.transcript}
-                  annotations={demoAnnotations}
-                  onAddHighlight={handleAddHighlight}
-                  onAddComment={handleAddComment}
-                  onDeleteAnnotation={handleDeleteAnnotation}
-                  onEditAnnotation={handleEditAnnotation}
-                  currentUserColor="#8b5cf6"
-                  currentUserName="Demo User"
-                  currentSessionId="demo-current"
+                  parsedTranscript={demoData.parsedTranscript}
+                  isDemo={true}
+                  enabled={true}
+                  className="text-white/90"
                 />
               </div>
             )}
@@ -236,10 +178,10 @@ export default function DemoMeetingPage() {
                 </div>
 
                 <div>
-                  <h4 className="text-sm font-medium text-white/70 mb-3">Key Points</h4>
+                  <h3 className="text-lg font-semibold mb-3 text-white">Key Points</h3>
                   <ul className="space-y-2">
-                    {demoData.summary.keyPoints.map((point, i) => (
-                      <li key={i} className="flex items-start gap-2">
+                    {demoData.summary.keyPoints.map((point, index) => (
+                      <li key={index} className="flex items-start gap-2">
                         <span className="text-purple-400 mt-1">•</span>
                         <span className="text-white/80">{point}</span>
                       </li>
@@ -248,11 +190,11 @@ export default function DemoMeetingPage() {
                 </div>
 
                 <div>
-                  <h4 className="text-sm font-medium text-white/70 mb-3">Decisions Made</h4>
+                  <h3 className="text-lg font-semibold mb-3 text-white">Decisions Made</h3>
                   <ul className="space-y-2">
-                    {demoData.summary.decisions.map((decision, i) => (
-                      <li key={i} className="flex items-start gap-2">
-                        <span className="text-cyan-400 mt-1">•</span>
+                    {demoData.summary.decisions.map((decision, index) => (
+                      <li key={index} className="flex items-start gap-2">
+                        <span className="text-cyan-400 mt-1">✓</span>
                         <span className="text-white/80">{decision}</span>
                       </li>
                     ))}
@@ -260,11 +202,11 @@ export default function DemoMeetingPage() {
                 </div>
 
                 <div>
-                  <h4 className="text-sm font-medium text-white/70 mb-3">Next Steps</h4>
+                  <h3 className="text-lg font-semibold mb-3 text-white">Next Steps</h3>
                   <ul className="space-y-2">
-                    {demoData.summary.nextSteps.map((step, i) => (
-                      <li key={i} className="flex items-start gap-2">
-                        <span className="text-green-400 mt-1">•</span>
+                    {demoData.summary.nextSteps.map((step, index) => (
+                      <li key={index} className="flex items-start gap-2">
+                        <span className="text-green-400 mt-1">→</span>
                         <span className="text-white/80">{step}</span>
                       </li>
                     ))}
@@ -275,34 +217,29 @@ export default function DemoMeetingPage() {
 
             {activeTab === "action-items" && (
               <div className="space-y-4">
-                {demoData.actionItems.map((item, i) => (
-                  <div key={i} className="p-4 bg-white/[0.02] rounded-lg border border-white/10">
-                    <div className="flex items-start justify-between gap-4">
-                      <div className="flex-1">
-                        <p className="text-white/90 mb-2">{item.task}</p>
-                        <div className="flex flex-wrap gap-3 text-sm">
-                          <span className="text-white/60">
-                            Assigned to: <span className="text-white/80">{item.assignee}</span>
-                          </span>
-                          <span className="text-white/60">
-                            Due: <span className="text-white/80">{item.dueDate}</span>
-                          </span>
-                        </div>
-                      </div>
-                      <div className="flex items-center gap-2">
-                        <span
-                          className={cn(
-                            "px-2 py-1 text-xs rounded-full font-medium",
-                            item.priority === "high"
-                              ? "bg-red-500/20 text-red-400"
-                              : item.priority === "medium"
-                              ? "bg-yellow-500/20 text-yellow-400"
-                              : "bg-green-500/20 text-green-400"
-                          )}
-                        >
-                          {item.priority}
-                        </span>
-                      </div>
+                {demoData.actionItems.map((item, index) => (
+                  <div
+                    key={index}
+                    className="p-4 bg-white/[0.03] rounded-lg border border-white/10"
+                  >
+                    <div className="flex items-start justify-between mb-2">
+                      <h4 className="font-medium text-white">{item.task}</h4>
+                      <span
+                        className={cn(
+                          "px-2 py-1 text-xs rounded-full",
+                          item.priority === "high"
+                            ? "bg-red-500/20 text-red-400"
+                            : item.priority === "medium"
+                            ? "bg-yellow-500/20 text-yellow-400"
+                            : "bg-green-500/20 text-green-400"
+                        )}
+                      >
+                        {item.priority}
+                      </span>
+                    </div>
+                    <div className="flex items-center gap-4 text-sm text-white/60">
+                      <span>👤 {item.assignee}</span>
+                      <span>📅 {item.dueDate}</span>
                     </div>
                   </div>
                 ))}
