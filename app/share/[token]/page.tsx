@@ -12,6 +12,9 @@ import { useCollaboration } from "@/hooks/use-collaboration";
 import { PresenceAvatars } from "@/components/collaboration/presence-avatars";
 import { CollaborativeTranscript } from "@/components/collaboration/collaborative-transcript";
 import { CollaborativeNotes } from "@/components/collaboration/collaborative-notes";
+import { CommentFAB } from "@/components/collaboration/comment-fab";
+import { InlineCommentBox } from "@/components/collaboration/inline-comment-box";
+import { AnimatePresence } from "framer-motion";
 
 const formatDate = (date: Date): string => {
   const options: Intl.DateTimeFormatOptions = {
@@ -67,6 +70,8 @@ export default function SharePage() {
   const [activeTab, setActiveTab] = useState<"transcript" | "summary" | "actions">("transcript");
   const [userName, setUserName] = useState("");
   const [hasJoined, setHasJoined] = useState(false);
+  const [showCommentBox, setShowCommentBox] = useState(false);
+  const [commentPosition, setCommentPosition] = useState<{ x: number; y: number } | null>(null);
 
   const getSessionId = () => {
     if (typeof window === "undefined") return "";
@@ -103,6 +108,32 @@ export default function SharePage() {
   const onlineUsers = Object.values(presence).map((p) => p.user_info);
   const allUsers = hasJoined && meeting ? [userInfo, ...onlineUsers] : onlineUsers;
 
+  const handleAddComment = (position?: { x: number; y: number }) => {
+    if (position) {
+      setCommentPosition(position);
+    } else {
+      const centerX = window.innerWidth / 2;
+      const centerY = window.scrollY + window.innerHeight / 3;
+      setCommentPosition({ x: centerX, y: centerY });
+    }
+    setShowCommentBox(true);
+  };
+
+  const handleSubmitComment = (comment: string, position: { x: number; y: number }) => {
+    const transcriptElement = document.querySelector(".transcript-container");
+    if (transcriptElement) {
+      const rect = transcriptElement.getBoundingClientRect();
+      const relativeY = position.y - rect.top - window.scrollY;
+      const lineHeight = 28;
+      const lineNumber = Math.floor(relativeY / lineHeight);
+      addComment(lineNumber, comment);
+    }
+    setShowCommentBox(false);
+    setCommentPosition(null);
+  };
+
+  const commentCount = annotations.filter((a) => a.type === "comment").length;
+
   useEffect(() => {
     const loadSharedMeeting = async () => {
       try {
@@ -137,7 +168,7 @@ export default function SharePage() {
     setError(null);
 
     try {
-      const response = await fetch(`/api/public/shares/${token}/verify`, {
+      const response = await fetch(`/api/public/shares/${token}`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ password }),
@@ -151,29 +182,15 @@ export default function SharePage() {
         setRequiresPassword(false);
         setMeeting(data.meeting);
         setShareInfo(data.share);
-        setPassword("");
       }
-    } catch (err) {
-      setError("Failed to verify password");
     } finally {
       setIsVerifying(false);
     }
   };
 
-  const handleJoin = () => {
-    setHasJoined(true);
-  };
-
-  const formatDuration = (seconds: number | null) => {
-    if (!seconds) return "N/A";
-    const minutes = Math.floor(seconds / 60);
-    const remainingSeconds = seconds % 60;
-    return `${minutes}:${remainingSeconds.toString().padStart(2, "0")}`;
-  };
-
   if (isLoading) {
     return (
-      <div className="min-h-screen flex items-center justify-center bg-black">
+      <div className="min-h-screen bg-black flex items-center justify-center">
         <Loader2 className="w-8 h-8 animate-spin text-purple-500" />
       </div>
     );
@@ -181,14 +198,10 @@ export default function SharePage() {
 
   if (error) {
     return (
-      <div className="min-h-screen flex items-center justify-center bg-black p-4">
-        <Card className="max-w-md w-full shadow-xl">
-          <CardContent className="p-8 text-center">
-            <div className="w-16 h-16 bg-red-500/10 rounded-full flex items-center justify-center mx-auto mb-4">
-              <X className="w-8 h-8 text-red-500" />
-            </div>
-            <h2 className="text-xl font-semibold mb-2">Access Error</h2>
-            <p className="text-white/60">{error}</p>
+      <div className="min-h-screen bg-black flex items-center justify-center p-4">
+        <Card className="max-w-md w-full">
+          <CardContent className="p-6 text-center">
+            <p className="text-red-400 mb-4">{error}</p>
           </CardContent>
         </Card>
       </div>
@@ -197,38 +210,30 @@ export default function SharePage() {
 
   if (requiresPassword) {
     return (
-      <div className="min-h-screen flex items-center justify-center bg-black p-4">
-        <Card className="max-w-md w-full shadow-xl">
-          <CardHeader className="text-center">
-            <div className="w-16 h-16 bg-purple-500/10 rounded-full flex items-center justify-center mx-auto mb-4">
-              <Lock className="w-8 h-8 text-purple-500" />
-            </div>
-            <CardTitle>Password Required</CardTitle>
-            <CardDescription>This meeting is password protected</CardDescription>
+      <div className="min-h-screen bg-black flex items-center justify-center p-4">
+        <Card className="max-w-md w-full">
+          <CardHeader>
+            <CardTitle className="flex items-center gap-2">
+              <Lock className="w-5 h-5" />
+              Password Protected
+            </CardTitle>
+            <CardDescription>This meeting requires a password to access</CardDescription>
           </CardHeader>
           <CardContent>
-            <div className="space-y-4">
+            <form onSubmit={handlePasswordSubmit} className="space-y-4">
               <Input
                 type="password"
                 placeholder="Enter password"
                 value={password}
                 onChange={(e) => setPassword(e.target.value)}
-                autoFocus
                 disabled={isVerifying}
+                autoFocus
               />
-              <Button
-                type="button"
-                onClick={(e) => {
-                  e.preventDefault();
-                  handlePasswordSubmit(e as any);
-                }}
-                className="w-full"
-                disabled={isVerifying || !password}
-              >
-                {isVerifying ? <Loader2 className="w-4 h-4 mr-2 animate-spin" /> : null}
-                Verify Password
+              <Button type="submit" className="w-full" disabled={isVerifying || !password}>
+                {isVerifying ? <Loader2 className="w-4 h-4 mr-2 animate-spin" /> : <Lock className="w-4 h-4 mr-2" />}
+                {isVerifying ? "Verifying..." : "Access Meeting"}
               </Button>
-            </div>
+            </form>
           </CardContent>
         </Card>
       </div>
@@ -237,258 +242,255 @@ export default function SharePage() {
 
   if (!hasJoined) {
     return (
-      <div className="min-h-screen flex items-center justify-center bg-black p-4">
-        <Card className="max-w-md w-full shadow-xl">
-          <CardHeader className="text-center">
+      <div className="min-h-screen bg-black flex items-center justify-center p-4">
+        <Card className="max-w-md w-full">
+          <CardHeader>
             <CardTitle>Join Meeting</CardTitle>
             <CardDescription>Enter your name to join the collaborative session</CardDescription>
           </CardHeader>
-          <CardContent>
-            <div className="space-y-4">
-              <Input
-                type="text"
-                placeholder="Your name (optional)"
-                value={userName}
-                onChange={(e) => setUserName(e.target.value)}
-                autoFocus
-              />
-              <Button onClick={handleJoin} className="w-full">
-                Join as {userName || "Anonymous"}
-              </Button>
-            </div>
+          <CardContent className="space-y-4">
+            <Input
+              placeholder="Your name"
+              value={userName}
+              onChange={(e) => setUserName(e.target.value)}
+              onKeyDown={(e) => {
+                if (e.key === "Enter" && userName.trim()) {
+                  setHasJoined(true);
+                }
+              }}
+              autoFocus
+            />
+            <Button
+              onClick={() => setHasJoined(true)}
+              className="w-full"
+              disabled={!userName.trim()}
+            >
+              <Users className="w-4 h-4 mr-2" />
+              Join Meeting
+            </Button>
           </CardContent>
         </Card>
       </div>
     );
   }
 
-  if (!meeting) return null;
+  if (!meeting) {
+    return (
+      <div className="min-h-screen bg-black flex items-center justify-center">
+        <p className="text-white/60">Meeting not found</p>
+      </div>
+    );
+  }
 
   return (
     <div className="min-h-screen bg-black">
-      <div className="relative">
-        <div className="absolute inset-0 bg-gradient-to-br from-purple-900/20 via-black to-cyan-900/20" />
-        <div className="absolute inset-0 bg-[radial-gradient(ellipse_at_top_left,_var(--tw-gradient-stops))] from-purple-800/10 via-transparent to-transparent" />
-
-        <div className="relative z-10 container mx-auto px-4 py-8 max-w-7xl">
-          <div className="mb-8">
-            <div className="flex items-center justify-between mb-4">
-              <h1 className="text-3xl font-bold font-display">
-                <span className="gradient-text">{meeting.title}</span>
-              </h1>
-              <PresenceAvatars users={allUsers} currentUserId={userInfo.sessionId} />
+      <div className="sticky top-0 z-30 bg-black/80 backdrop-blur-xl border-b border-white/10">
+        <div className="max-w-5xl mx-auto px-4 py-4">
+          <div className="flex items-center justify-between mb-4">
+            <div>
+              <h1 className="text-2xl font-bold text-white">{meeting.title}</h1>
+              <div className="flex items-center gap-4 mt-2 text-sm text-white/60">
+                {meeting.recorded_at && (
+                  <span className="flex items-center gap-1">
+                    <Calendar className="w-4 h-4" />
+                    {formatDateShort(new Date(meeting.recorded_at))}
+                  </span>
+                )}
+                {meeting.duration && (
+                  <span className="flex items-center gap-1">
+                    <Clock className="w-4 h-4" />
+                    {Math.round(meeting.duration / 60)} min
+                  </span>
+                )}
+                {meeting.participants?.length > 0 && (
+                  <span className="flex items-center gap-1">
+                    <Users className="w-4 h-4" />
+                    {meeting.participants.length} participants
+                  </span>
+                )}
+              </div>
             </div>
-
-            {meeting.description && <p className="text-white/60 mb-4">{meeting.description}</p>}
-
-            <div className="flex flex-wrap gap-4 text-sm text-white/60">
-              {meeting.recorded_at && (
-                <div className="flex items-center gap-2">
-                  <Calendar className="w-4 h-4" />
-                  {formatDateShort(new Date(meeting.recorded_at))}
-                </div>
-              )}
-              {meeting.duration && (
-                <div className="flex items-center gap-2">
-                  <Clock className="w-4 h-4" />
-                  {formatDuration(meeting.duration)}
-                </div>
-              )}
-              {meeting.participants.length > 0 && (
-                <div className="flex items-center gap-2">
-                  <Users className="w-4 h-4" />
-                  {meeting.participants.join(", ")}
-                </div>
-              )}
-            </div>
+            <PresenceAvatars users={allUsers} maxDisplay={5} />
           </div>
 
           {meeting.audio_url && (
-            <div className="mb-8">
-              <AudioPlayer audioUrl={meeting.audio_url} />
+            <div className="mb-4">
+              <AudioPlayer audioUrl={meeting.audio_url} mini />
             </div>
           )}
 
-          <div className="mb-6 flex gap-2">
+          <div className="flex gap-2">
             {["transcript", "summary", "actions"].map((tab) => (
-              <Button
+              <button
                 key={tab}
-                variant={activeTab === tab ? "glow" : "glass"}
-                size="sm"
-                onClick={() => setActiveTab(tab as typeof activeTab)}
+                onClick={() => setActiveTab(tab as any)}
+                className={cn(
+                  "px-4 py-2 rounded-lg text-sm font-medium transition-all",
+                  activeTab === tab
+                    ? "bg-purple-600 text-white"
+                    : "text-white/60 hover:text-white hover:bg-white/10"
+                )}
               >
-                {tab === "actions" ? "Action Items" : tab.charAt(0).toUpperCase() + tab.slice(1)}
-              </Button>
+                {tab === "transcript" && <FileText className="w-4 h-4 inline mr-2" />}
+                {tab === "summary" && <Lightbulb className="w-4 h-4 inline mr-2" />}
+                {tab === "actions" && <ListChecks className="w-4 h-4 inline mr-2" />}
+                {tab.charAt(0).toUpperCase() + tab.slice(1).replace("-", " ")}
+              </button>
             ))}
           </div>
+        </div>
+      </div>
 
-          <div className="space-y-6">
-            <Card className="shadow-xl">
-              <CardContent className="p-6">
-                {activeTab === "transcript" && (
-                  <div className="space-y-4">
-                    {meeting.transcript ? (
-                      <CollaborativeTranscript
-                        transcript={meeting.transcript}
-                        annotations={annotations}
-                        onAddHighlight={addHighlight}
-                        onAddComment={addComment}
-                        onDeleteAnnotation={deleteAnnotation}
-                        onEditAnnotation={editAnnotation}
-                        currentUserColor={userInfo.color}
-                        currentUserName={userInfo.name}
-                        currentSessionId={userInfo.sessionId}
-                      />
-                    ) : (
-                      <div className="text-center py-12">
-                        <FileText className="w-12 h-12 text-white/20 mx-auto mb-4" />
-                        <p className="text-white/60">No transcript available</p>
-                      </div>
-                    )}
-                  </div>
+      <div className="max-w-5xl mx-auto px-4 py-8">
+        <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
+          <div className="lg:col-span-2">
+            {activeTab === "transcript" && (
+              <div className="transcript-container">
+                {meeting.transcript ? (
+                  <CollaborativeTranscript
+                    transcript={meeting.transcript}
+                    annotations={annotations}
+                    onAddHighlight={addHighlight}
+                    onAddComment={addComment}
+                    onDeleteAnnotation={deleteAnnotation}
+                    onEditAnnotation={editAnnotation}
+                    currentUserColor={userInfo.color}
+                    currentUserName={userInfo.name}
+                    currentSessionId={userInfo.sessionId}
+                  />
+                ) : (
+                  <Card>
+                    <CardContent className="p-12 text-center">
+                      <FileText className="w-12 h-12 text-white/20 mx-auto mb-4" />
+                      <p className="text-white/60">No transcript available</p>
+                    </CardContent>
+                  </Card>
                 )}
+              </div>
+            )}
 
-                {activeTab === "summary" && (
-                  <div className="space-y-4">
-                    {meeting.summary ? (
-                      <div className="prose prose-invert max-w-none">
-                        <h3 className="text-lg font-semibold mb-4 gradient-text">Meeting Summary</h3>
-                        <div className="space-y-4 text-white/80">
-                          {meeting.summary.overview && (
-                            <div>
-                              <h4 className="font-medium text-white mb-2">Overview</h4>
-                              <p>{meeting.summary.overview}</p>
-                            </div>
-                          )}
-                          {meeting.summary.key_points && meeting.summary.key_points.length > 0 && (
-                            <div>
-                              <h4 className="font-medium text-white mb-2">Key Points</h4>
-                              <ul className="list-disc pl-5 space-y-1">
-                                {meeting.summary.key_points.map((point: string, index: number) => (
-                                  <li key={index}>{point}</li>
-                                ))}
-                              </ul>
-                            </div>
-                          )}
-                          {meeting.summary.decisions && meeting.summary.decisions.length > 0 && (
-                            <div>
-                              <h4 className="font-medium text-white mb-2">Decisions Made</h4>
-                              <ul className="list-disc pl-5 space-y-1">
-                                {meeting.summary.decisions.map((decision: string, index: number) => (
-                                  <li key={index}>{decision}</li>
-                                ))}
-                              </ul>
-                            </div>
-                          )}
-                        </div>
+            {activeTab === "summary" && (
+              <Card>
+                <CardContent className="p-6">
+                  {meeting.summary ? (
+                    <div className="prose prose-invert max-w-none">
+                      <h3 className="text-lg font-semibold mb-4 gradient-text">Meeting Summary</h3>
+                      <div className="space-y-4 text-white/80">
+                        {meeting.summary.overview && (
+                          <div>
+                            <h4 className="font-medium text-white mb-2">Overview</h4>
+                            <p>{meeting.summary.overview}</p>
+                          </div>
+                        )}
+                        {meeting.summary.key_points && meeting.summary.key_points.length > 0 && (
+                          <div>
+                            <h4 className="font-medium text-white mb-2">Key Points</h4>
+                            <ul className="list-disc pl-5 space-y-1">
+                              {meeting.summary.key_points.map((point: string, index: number) => (
+                                <li key={index}>{point}</li>
+                              ))}
+                            </ul>
+                          </div>
+                        )}
+                        {meeting.summary.decisions && meeting.summary.decisions.length > 0 && (
+                          <div>
+                            <h4 className="font-medium text-white mb-2">Decisions Made</h4>
+                            <ul className="list-disc pl-5 space-y-1">
+                              {meeting.summary.decisions.map((decision: string, index: number) => (
+                                <li key={index}>{decision}</li>
+                              ))}
+                            </ul>
+                          </div>
+                        )}
                       </div>
-                    ) : (
-                      <div className="text-center py-12">
-                        <Lightbulb className="w-12 h-12 text-white/20 mx-auto mb-4" />
-                        <p className="text-white/60">No summary available</p>
-                      </div>
-                    )}
-                  </div>
-                )}
+                    </div>
+                  ) : (
+                    <div className="text-center py-12">
+                      <Lightbulb className="w-12 h-12 text-white/20 mx-auto mb-4" />
+                      <p className="text-white/60">No summary available</p>
+                    </div>
+                  )}
+                </CardContent>
+              </Card>
+            )}
 
-                {activeTab === "actions" && (
+            {activeTab === "actions" && (
+              <div className="space-y-4">
+                {meeting.action_items && meeting.action_items.length > 0 ? (
                   <div className="space-y-4">
-                    {meeting.action_items && meeting.action_items.length > 0 ? (
-                      <div className="space-y-4">
-                        {meeting.action_items.map((item: any, index: number) => (
-                          <Card key={index} className="bg-white/5">
-                            <CardContent className="p-4">
-                              <div className="flex items-start gap-4">
-                                <div
-                                  className={cn(
-                                    "w-2 h-2 rounded-full mt-2",
-                                    item.priority === "high"
-                                      ? "bg-red-500"
-                                      : item.priority === "medium"
-                                      ? "bg-yellow-500"
-                                      : "bg-green-500"
-                                  )}
-                                />
-                                <div className="flex-1">
-                                  <p className="text-white">{item.task}</p>
-                                  {item.assignee && (
-                                    <p className="text-sm text-white/60 mt-1">Assigned to: {item.assignee}</p>
-                                  )}
-                                  {item.due_date && (
-                                    <p className="text-sm text-white/60">
-                                      Due: {formatDateShort(new Date(item.due_date))}
-                                    </p>
-                                  )}
-                                </div>
-                                <span
-                                  className={cn(
-                                    "text-xs px-2 py-1 rounded-full",
-                                    item.priority === "high"
-                                      ? "bg-red-500/20 text-red-400"
-                                      : item.priority === "medium"
-                                      ? "bg-yellow-500/20 text-yellow-400"
-                                      : "bg-green-500/20 text-green-400"
-                                  )}
-                                >
-                                  {item.priority}
-                                </span>
+                    {meeting.action_items.map((item: any, index: number) => (
+                      <Card key={index} className="bg-white/5">
+                        <CardContent className="p-4">
+                          <div className="flex items-start gap-4">
+                            <div
+                              className={cn(
+                                "w-2 h-2 rounded-full mt-2",
+                                item.priority === "high"
+                                  ? "bg-red-500"
+                                  : item.priority === "medium"
+                                  ? "bg-yellow-500"
+                                  : "bg-green-500"
+                              )}
+                            />
+                            <div className="flex-1">
+                              <p className="text-white mb-2">{item.task}</p>
+                              <div className="flex gap-4 text-sm text-white/60">
+                                {item.assignee && <span>Assignee: {item.assignee}</span>}
+                                {item.due_date && <span>Due: {item.due_date}</span>}
+                                <span className="capitalize">Priority: {item.priority || "low"}</span>
                               </div>
-                            </CardContent>
-                          </Card>
-                        ))}
-                      </div>
-                    ) : (
-                      <div className="text-center py-12">
-                        <ListChecks className="w-12 h-12 text-white/20 mx-auto mb-4" />
-                        <p className="text-white/60">No action items found</p>
-                      </div>
-                    )}
+                            </div>
+                          </div>
+                        </CardContent>
+                      </Card>
+                    ))}
                   </div>
+                ) : (
+                  <Card>
+                    <CardContent className="p-12 text-center">
+                      <ListChecks className="w-12 h-12 text-white/20 mx-auto mb-4" />
+                      <p className="text-white/60">No action items available</p>
+                    </CardContent>
+                  </Card>
                 )}
-              </CardContent>
-            </Card>
+              </div>
+            )}
+          </div>
 
-            {/* Collaborative Notes */}
-            <Card className="shadow-xl">
+          <div className="space-y-4">
+            <Card>
               <CardHeader>
-                <CardTitle className="flex items-center gap-2">
-                  <FileText className="w-5 h-5" />
-                  Shared Notes
-                </CardTitle>
-                <CardDescription>Collaborate on notes with other viewers</CardDescription>
+                <CardTitle className="text-sm">Collaborative Notes</CardTitle>
               </CardHeader>
               <CardContent>
                 <CollaborativeNotes
-                  value={notes}
-                  onChange={updateNotes}
-                  lastEditedBy={null}
+                  notes={notes}
+                  onUpdateNotes={updateNotes}
                   currentUserName={userInfo.name}
+                  currentUserColor={userInfo.color}
                 />
               </CardContent>
             </Card>
 
-            {/* Share Information */}
             {shareInfo && (
-              <Card className="shadow-xl">
+              <Card className="bg-white/5">
                 <CardHeader>
-                  <CardTitle>Share Information</CardTitle>
+                  <CardTitle className="text-sm">Share Information</CardTitle>
                 </CardHeader>
-                <CardContent>
-                  <div className="grid grid-cols-1 md:grid-cols-3 gap-4 text-sm">
-                    <div>
-                      <p className="text-white/60 mb-1">Shared on</p>
-                      <p className="text-white">{formatDate(new Date(shareInfo.created_at))}</p>
+                <CardContent className="space-y-2 text-sm">
+                  <div className="flex justify-between">
+                    <span className="text-white/60">Created</span>
+                    <span>{formatDate(new Date(shareInfo.created_at))}</span>
+                  </div>
+                  {shareInfo.expires_at && (
+                    <div className="flex justify-between">
+                      <span className="text-white/60">Expires</span>
+                      <span>{formatDate(new Date(shareInfo.expires_at))}</span>
                     </div>
-                    <div>
-                      <p className="text-white/60 mb-1">Expires</p>
-                      <p className="text-white">
-                        {shareInfo.expires_at ? formatDate(new Date(shareInfo.expires_at)) : "Never"}
-                      </p>
-                    </div>
-                    <div>
-                      <p className="text-white/60 mb-1">Access count</p>
-                      <p className="text-white">{shareInfo.access_count} views</p>
-                    </div>
+                  )}
+                  <div className="flex justify-between">
+                    <span className="text-white/60">Views</span>
+                    <span>{shareInfo.access_count}</span>
                   </div>
                 </CardContent>
               </Card>
@@ -496,6 +498,31 @@ export default function SharePage() {
           </div>
         </div>
       </div>
+
+      {hasJoined && activeTab === "transcript" && (
+        <>
+          <CommentFAB
+            onAddComment={handleAddComment}
+            commentCount={commentCount}
+            disabled={!meeting.transcript}
+          />
+          
+          <AnimatePresence>
+            {showCommentBox && commentPosition && (
+              <InlineCommentBox
+                position={commentPosition}
+                onSubmit={handleSubmitComment}
+                onCancel={() => {
+                  setShowCommentBox(false);
+                  setCommentPosition(null);
+                }}
+                userName={userInfo.name}
+                userColor={userInfo.color}
+              />
+            )}
+          </AnimatePresence>
+        </>
+      )}
     </div>
   );
 }
