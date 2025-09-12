@@ -6,6 +6,10 @@ import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
 import { motion, AnimatePresence } from "framer-motion";
 import { formatDistanceToNow } from "date-fns";
+import { SelectionPopover } from "./selection-popover";
+import { LineCommentIndicator } from "./line-comment-indicator";
+import { CommentInputInline } from "./comment-input-inline";
+import { CommentSidebar } from "./comment-sidebar";
 
 interface UserInfo {
   name: string;
@@ -37,6 +41,7 @@ interface CollaborativeTranscriptProps {
   currentUserColor: string;
   currentUserName?: string;
   currentSessionId?: string;
+  showSidebar?: boolean;
 }
 
 export function CollaborativeTranscript({
@@ -47,342 +52,306 @@ export function CollaborativeTranscript({
   onDeleteAnnotation,
   onEditAnnotation,
   currentUserColor,
-  currentUserName,
+  currentUserName = "Anonymous",
   currentSessionId,
+  showSidebar = false,
 }: CollaborativeTranscriptProps) {
-  const [selectedLines, setSelectedLines] = useState<number[]>([]);
-  const [showCommentInput, setShowCommentInput] = useState<number | null>(null);
-  const [commentText, setCommentText] = useState("");
-  const [editingComment, setEditingComment] = useState<string | null>(null);
-  const [editText, setEditText] = useState("");
-  const transcriptRef = useRef<HTMLDivElement>(null);
+  const [hoveredLine, setHoveredLine] = useState<number | null>(null);
+  const [activeCommentLine, setActiveCommentLine] = useState<number | null>(null);
+  const [editingAnnotation, setEditingAnnotation] = useState<string | null>(null);
+  const [editContent, setEditContent] = useState("");
+  const [showCommentSidebar, setShowCommentSidebar] = useState(showSidebar);
+  const containerRef = useRef<HTMLElement>(null);
+
   const lines = transcript.split("\n");
-  const highlightsByLine = new Map<number, Annotation[]>();
-  const commentsByLine = new Map<number, Annotation[]>();
 
-  annotations.forEach((annotation) => {
-    if (annotation.type === "highlight" && annotation.position && "start_line" in annotation.position) {
-      for (let i = annotation.position.start_line; i <= annotation.position.end_line; i++) {
-        if (!highlightsByLine.has(i)) highlightsByLine.set(i, []);
-        highlightsByLine.get(i)!.push(annotation);
+  const getLineAnnotations = (lineNumber: number) => {
+    return annotations.filter((annotation) => {
+      if (!annotation.position) return false;
+      
+      if ("line_number" in annotation.position) {
+        return annotation.position.line_number === lineNumber;
       }
-    } else if (annotation.type === "comment" && annotation.position && "line_number" in annotation.position) {
-      const lineNum = annotation.position.line_number;
-      if (!commentsByLine.has(lineNum)) commentsByLine.set(lineNum, []);
-      commentsByLine.get(lineNum)!.push(annotation);
+      
+      if ("start_line" in annotation.position && "end_line" in annotation.position) {
+        return lineNumber >= annotation.position.start_line && lineNumber <= annotation.position.end_line;
+      }
+      
+      return false;
+    });
+  };
+
+  const handleSelectionComment = (text: string, range: Range) => {
+    const selection = window.getSelection();
+    if (!selection || !containerRef.current) return;
+
+    const lineElements = containerRef.current.querySelectorAll(".transcript-line");
+    let startLine = -1;
+    let endLine = -1;
+
+    lineElements.forEach((element, index) => {
+      if (selection.containsNode(element, true)) {
+        if (startLine === -1) startLine = index + 1;
+        endLine = index + 1;
+      }
+    });
+
+    if (startLine !== -1) {
+      setActiveCommentLine(startLine);
     }
-  });
+  };
 
-  useEffect(() => {
-    const handleSelection = () => {
-      const selection = window.getSelection();
-      if (!selection || selection.isCollapsed || !transcriptRef.current) {
-        setSelectedLines([]);
-        return;
+  const handleSelectionHighlight = (text: string, range: Range) => {
+    const selection = window.getSelection();
+    if (!selection || !containerRef.current) return;
+
+    const lineElements = containerRef.current.querySelectorAll(".transcript-line");
+    let startLine = -1;
+    let endLine = -1;
+
+    lineElements.forEach((element, index) => {
+      if (selection.containsNode(element, true)) {
+        if (startLine === -1) startLine = index + 1;
+        endLine = index + 1;
       }
+    });
 
-      const range = selection.getRangeAt(0);
-      const startElement =
-        range.startContainer.nodeType === Node.TEXT_NODE
-          ? range.startContainer.parentElement
-          : (range.startContainer as HTMLElement);
-      const endElement =
-        range.endContainer.nodeType === Node.TEXT_NODE
-          ? range.endContainer.parentElement
-          : (range.endContainer as HTMLElement);
-
-      const startLine = parseInt(startElement?.dataset.line || "0");
-      const endLine = parseInt(endElement?.dataset.line || "0");
-
-      if (startLine && endLine) {
-        const lines = [];
-        for (let i = Math.min(startLine, endLine); i <= Math.max(startLine, endLine); i++) {
-          lines.push(i);
-        }
-        setSelectedLines(lines);
-      }
-    };
-
-    document.addEventListener("mouseup", handleSelection);
-    document.addEventListener("selectionchange", handleSelection);
-
-    return () => {
-      document.removeEventListener("mouseup", handleSelection);
-      document.removeEventListener("selectionchange", handleSelection);
-    };
-  }, []);
-
-  const handleHighlight = () => {
-    if (selectedLines.length === 0) return;
-
-    const startLine = Math.min(...selectedLines);
-    const endLine = Math.max(...selectedLines);
-    const selectedText = lines.slice(startLine - 1, endLine).join("\n");
-
-    onAddHighlight(startLine, endLine, selectedText);
-    setSelectedLines([]);
-    window.getSelection()?.removeAllRanges();
+    if (startLine !== -1 && endLine !== -1) {
+      onAddHighlight(startLine, endLine, text);
+    }
   };
 
-  const handleComment = (lineNumber: number) => {
-    if (!commentText.trim()) return;
-
-    onAddComment(lineNumber, commentText);
-    setCommentText("");
-    setShowCommentInput(null);
+  const handleSelectionNote = (text: string, range: Range) => {
+    handleSelectionComment(text, range);
   };
 
-  const startEditingComment = (annotation: Annotation) => {
-    setEditingComment(annotation.id);
-    setEditText(annotation.content);
+  const handleLineComment = (lineNumber: number) => {
+    setActiveCommentLine(lineNumber);
   };
 
-  const saveEditedComment = (annotationId: string) => {
-    if (!editText.trim() || !onEditAnnotation) return;
-
-    onEditAnnotation(annotationId, editText);
-    setEditingComment(null);
-    setEditText("");
+  const handleSubmitComment = (content: string) => {
+    if (activeCommentLine !== null) {
+      onAddComment(activeCommentLine, content);
+      setActiveCommentLine(null);
+    }
   };
 
-  const canModifyAnnotation = (annotation: Annotation) => {
-    if (!currentSessionId) return false;
-    return annotation.user_info.sessionId === currentSessionId;
+  const handleJumpToComment = (comment: any) => {
+    if (!comment.position || !containerRef.current) return;
+    
+    let targetLine = 0;
+    if ("line_number" in comment.position) {
+      targetLine = comment.position.line_number;
+    } else if ("start_line" in comment.position) {
+      targetLine = comment.position.start_line;
+    }
+    
+    const lineElement = containerRef.current.querySelector(`.transcript-line[data-line="${targetLine}"]`);
+    if (lineElement) {
+      lineElement.scrollIntoView({ behavior: "smooth", block: "center" });
+      
+      lineElement.classList.add("highlight-flash");
+      setTimeout(() => {
+        lineElement.classList.remove("highlight-flash");
+      }, 2000);
+    }
   };
+
+  const handleEditStart = (annotation: Annotation) => {
+    setEditingAnnotation(annotation.id);
+    setEditContent(annotation.content);
+  };
+
+  const handleEditSave = (annotationId: string) => {
+    if (onEditAnnotation && editContent.trim()) {
+      onEditAnnotation(annotationId, editContent.trim());
+    }
+    setEditingAnnotation(null);
+    setEditContent("");
+  };
+
+  const handleEditCancel = () => {
+    setEditingAnnotation(null);
+    setEditContent("");
+  };
+
+  const highlights = annotations.filter((a) => a.type === "highlight");
+  const comments = annotations.filter((a) => a.type === "comment");
 
   return (
-    <div className="relative">
-      {/* Selection toolbar */}
-      <AnimatePresence>
-        {selectedLines.length > 0 && (
-          <motion.div
-            initial={{ opacity: 0, y: 10 }}
-            animate={{ opacity: 1, y: 0 }}
-            exit={{ opacity: 0, y: 10 }}
-            className="absolute top-0 left-0 right-0 flex justify-center z-20 pointer-events-none"
-          >
-            <div className="bg-black/90 backdrop-blur-sm rounded-lg shadow-lg p-2 flex gap-2 pointer-events-auto">
-              <Button size="sm" variant="ghost" onClick={handleHighlight} className="text-white/90 hover:bg-white/10">
-                <Highlighter className="w-4 h-4 mr-2" />
-                Highlight
-              </Button>
-              <Button
-                size="sm"
-                variant="ghost"
-                onClick={() => setShowCommentInput(selectedLines[0])}
-                className="text-white/90 hover:bg-white/10"
-              >
-                <MessageCircle className="w-4 h-4 mr-2" />
-                Comment
-              </Button>
-            </div>
-          </motion.div>
-        )}
-      </AnimatePresence>
+    <div className="flex gap-4">
+      <div className="flex-1">
+        <SelectionPopover
+          onComment={handleSelectionComment}
+          onHighlight={handleSelectionHighlight}
+          onNote={handleSelectionNote}
+          containerRef={containerRef as React.RefObject<HTMLElement>}
+        />
+        
+        <div ref={containerRef as React.RefObject<HTMLDivElement>} className="space-y-1">
+          {lines.map((line, index) => {
+            const lineNumber = index + 1;
+            const lineAnnotations = getLineAnnotations(lineNumber);
+            const lineComments = lineAnnotations.filter((a) => a.type === "comment");
+            const lineHighlights = lineAnnotations.filter((a) => a.type === "highlight");
+            const isHighlighted = lineHighlights.length > 0;
 
-      <div ref={transcriptRef} className="space-y-1 select-text">
-        {lines.map((line, index) => {
-          const lineNumber = index + 1;
-          const lineHighlights = highlightsByLine.get(lineNumber) || [];
-          const lineComments = commentsByLine.get(lineNumber) || [];
-          const isSelected = selectedLines.includes(lineNumber);
-
-          return (
-            <div key={lineNumber} className="group relative">
-              <div className="absolute -left-16 top-0 flex items-center gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
-                <span className="text-xs text-white/30 select-none w-8 text-right">{lineNumber}</span>
-                <button
-                  onClick={() => setShowCommentInput(lineNumber)}
-                  className="p-1 rounded hover:bg-white/10 transition-colors"
-                  title="Add comment"
+            return (
+              <div key={index} className="group">
+                <div
+                  className="flex items-start gap-2"
+                  onMouseEnter={() => setHoveredLine(lineNumber)}
+                  onMouseLeave={() => setHoveredLine(null)}
                 >
-                  <MessageCircle className="w-3 h-3 text-white/40" />
-                </button>
-              </div>
-
-              <div
-                data-line={lineNumber}
-                className={cn(
-                  "relative px-2 py-0.5 rounded transition-all",
-                  isSelected && "bg-blue-500/20",
-                  lineHighlights.length > 0 && "has-highlights"
-                )}
-              >
-                {/* Highlight backgrounds */}
-                {lineHighlights.map((highlight) => (
-                  <div key={highlight.id} className="group/highlight relative">
-                    <div
-                      className="absolute inset-0 rounded opacity-20 mix-blend-multiply"
-                      style={{
-                        backgroundColor: highlight.user_info.color,
-                      }}
+                  <div className="w-8 flex items-center justify-center">
+                    <LineCommentIndicator
+                      lineNumber={lineNumber}
+                      comments={lineComments.map(a => ({
+                        id: a.id,
+                        user_info: a.user_info,
+                        content: a.content,
+                        created_at: a.created_at
+                      }))}
+                      onAddComment={handleLineComment}
+                      isHovered={hoveredLine === lineNumber}
                     />
-
-                    {/* Highlight tooltip */}
-                    <div className="absolute -top-8 left-0 bg-black/90 text-white text-xs px-2 py-1 rounded opacity-0 group-hover/highlight:opacity-100 transition-opacity whitespace-nowrap pointer-events-none z-10">
-                      Highlighted by {highlight.user_info.name}
-                      <div className="text-white/50 text-xs">
-                        {formatDistanceToNow(new Date(highlight.created_at), { addSuffix: true })}
-                      </div>
-                    </div>
                   </div>
-                ))}
-
-                {/* Text content */}
-                <span className="relative z-10">{line || " "}</span>
-
-                {/* Comment indicators */}
-                {lineComments.length > 0 && (
-                  <div className="inline-flex items-center ml-2">
-                    <div className="relative">
-                      <MessageCircle className="w-4 h-4 text-yellow-400 fill-yellow-400/20" />
-                      <span className="absolute -top-1 -right-1 text-xs bg-yellow-400 text-black rounded-full w-4 h-4 flex items-center justify-center font-medium">
-                        {lineComments.length}
-                      </span>
-                    </div>
+                  
+                  <div
+                    className={cn(
+                      "transcript-line flex-1 px-3 py-1 rounded transition-all select-text",
+                      isHighlighted && "bg-yellow-500/10 border-l-2 border-yellow-500/50",
+                      hoveredLine === lineNumber && "bg-white/[0.02]"
+                    )}
+                    data-line={lineNumber}
+                  >
+                    <p className="text-sm text-white/80 leading-7">{line || "\u00A0"}</p>
                   </div>
-                )}
-              </div>
+                </div>
 
-              {/* Comments for this line */}
-              {lineComments.length > 0 && (
-                <div className="ml-8 mt-2 space-y-2">
-                  {lineComments.map((comment) => (
+                <AnimatePresence>
+                  {activeCommentLine === lineNumber && (
                     <motion.div
-                      key={comment.id}
-                      initial={{ opacity: 0, y: -10 }}
-                      animate={{ opacity: 1, y: 0 }}
-                      className="bg-white/5 rounded-lg p-3 border border-white/10"
+                      initial={{ opacity: 0, height: 0 }}
+                      animate={{ opacity: 1, height: "auto" }}
+                      exit={{ opacity: 0, height: 0 }}
+                      className="ml-10 mt-2"
                     >
-                      <div className="flex items-start gap-2">
-                        <div
-                          className="w-6 h-6 rounded-full flex items-center justify-center text-xs font-medium text-white shrink-0"
-                          style={{ backgroundColor: comment.user_info.color }}
-                        >
-                          {comment.user_info.name.charAt(0).toUpperCase()}
-                        </div>
-                        <div className="flex-1">
-                          <div className="flex items-baseline justify-between gap-2 mb-1">
-                            <div className="flex items-baseline gap-2">
-                              <span className="text-sm font-medium text-white/90">{comment.user_info.name}</span>
-                              <span className="text-xs text-white/40">
-                                {formatDistanceToNow(new Date(comment.created_at), { addSuffix: true })}
-                              </span>
+                      <CommentInputInline
+                        onSubmit={handleSubmitComment}
+                        onCancel={() => setActiveCommentLine(null)}
+                        userName={currentUserName}
+                        userColor={currentUserColor}
+                      />
+                    </motion.div>
+                  )}
+                </AnimatePresence>
+
+                {lineComments.length > 0 && (
+                  <div className="ml-10 mt-2 space-y-2">
+                    {lineComments.map((annotation) => (
+                      <div
+                        key={annotation.id}
+                        className="p-3 bg-white/[0.03] rounded-lg border border-white/10"
+                      >
+                        <div className="flex items-start justify-between gap-2">
+                          <div className="flex items-start gap-2 flex-1">
+                            <div
+                              className="w-6 h-6 rounded-full flex items-center justify-center text-[10px] font-bold text-white flex-shrink-0"
+                              style={{ backgroundColor: annotation.user_info.color }}
+                            >
+                              {annotation.user_info.name[0].toUpperCase()}
                             </div>
-
-                            {/* Edit/Delete buttons */}
-                            {canModifyAnnotation(comment) && (
-                              <div className="flex gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
-                                {editingComment !== comment.id && (
-                                  <>
-                                    <button
-                                      onClick={() => startEditingComment(comment)}
-                                      className="p-1 rounded hover:bg-white/10 transition-colors"
-                                      title="Edit comment"
-                                    >
-                                      <Edit2 className="w-3 h-3 text-white/40 hover:text-white/60" />
-                                    </button>
-                                    {onDeleteAnnotation && (
-                                      <button
-                                        onClick={() => onDeleteAnnotation(comment.id)}
-                                        className="p-1 rounded hover:bg-red-500/20 transition-colors"
-                                        title="Delete comment"
-                                      >
-                                        <Trash2 className="w-3 h-3 text-white/40 hover:text-red-400" />
-                                      </button>
-                                    )}
-                                  </>
-                                )}
+                            <div className="flex-1">
+                              <div className="flex items-center gap-2 mb-1">
+                                <span className="text-xs text-white/60">{annotation.user_info.name}</span>
+                                <span className="text-xs text-white/40">
+                                  {formatDistanceToNow(new Date(annotation.created_at), { addSuffix: true })}
+                                </span>
                               </div>
-                            )}
+                              {editingAnnotation === annotation.id ? (
+                                <div className="space-y-2">
+                                  <input
+                                    type="text"
+                                    value={editContent}
+                                    onChange={(e) => setEditContent(e.target.value)}
+                                    className="w-full bg-white/5 border border-white/10 rounded px-2 py-1 text-sm text-white"
+                                    autoFocus
+                                  />
+                                  <div className="flex gap-2">
+                                    <Button
+                                      size="sm"
+                                      variant="ghost"
+                                      onClick={() => handleEditSave(annotation.id)}
+                                      className="h-7 px-2"
+                                    >
+                                      <Check className="w-3 h-3" />
+                                    </Button>
+                                    <Button
+                                      size="sm"
+                                      variant="ghost"
+                                      onClick={handleEditCancel}
+                                      className="h-7 px-2"
+                                    >
+                                      <X className="w-3 h-3" />
+                                    </Button>
+                                  </div>
+                                </div>
+                              ) : (
+                                <p className="text-sm text-white/80">{annotation.content}</p>
+                              )}
+                            </div>
                           </div>
-
-                          {editingComment === comment.id ? (
-                            <div className="space-y-2">
-                              <textarea
-                                value={editText}
-                                onChange={(e) => setEditText(e.target.value)}
-                                className="w-full bg-white/10 rounded p-2 text-sm text-white placeholder:text-white/40 outline-none resize-none"
-                                rows={2}
-                                autoFocus
-                              />
-                              <div className="flex gap-2">
-                                <Button
-                                  size="sm"
-                                  variant="glow"
-                                  onClick={() => saveEditedComment(comment.id)}
-                                  disabled={!editText.trim()}
-                                >
-                                  <Check className="w-3 h-3 mr-1" />
-                                  Save
-                                </Button>
+                          {annotation.user_info.sessionId === currentSessionId && !editingAnnotation && (
+                            <div className="flex gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
+                              {onEditAnnotation && (
                                 <Button
                                   size="sm"
                                   variant="ghost"
-                                  onClick={() => {
-                                    setEditingComment(null);
-                                    setEditText("");
-                                  }}
+                                  onClick={() => handleEditStart(annotation)}
+                                  className="h-7 w-7 p-0"
                                 >
-                                  <X className="w-3 h-3 mr-1" />
-                                  Cancel
+                                  <Edit2 className="w-3 h-3" />
                                 </Button>
-                              </div>
+                              )}
+                              {onDeleteAnnotation && (
+                                <Button
+                                  size="sm"
+                                  variant="ghost"
+                                  onClick={() => onDeleteAnnotation(annotation.id)}
+                                  className="h-7 w-7 p-0 hover:text-red-400"
+                                >
+                                  <Trash2 className="w-3 h-3" />
+                                </Button>
+                              )}
                             </div>
-                          ) : (
-                            <p className="text-sm text-white/80">{comment.content}</p>
                           )}
                         </div>
                       </div>
-                    </motion.div>
-                  ))}
-                </div>
-              )}
-
-              {/* Comment input */}
-              {showCommentInput === lineNumber && (
-                <motion.div
-                  initial={{ opacity: 0, height: 0 }}
-                  animate={{ opacity: 1, height: "auto" }}
-                  exit={{ opacity: 0, height: 0 }}
-                  className="ml-8 mt-2"
-                >
-                  <div className="bg-white/5 rounded-lg p-3 border border-white/10">
-                    <textarea
-                      value={commentText}
-                      onChange={(e) => setCommentText(e.target.value)}
-                      placeholder="Add a comment..."
-                      className="w-full bg-transparent text-sm text-white placeholder:text-white/40 outline-none resize-none"
-                      rows={2}
-                      autoFocus
-                    />
-                    <div className="flex gap-2 mt-2">
-                      <Button
-                        size="sm"
-                        variant="glow"
-                        onClick={() => handleComment(lineNumber)}
-                        disabled={!commentText.trim()}
-                      >
-                        Add Comment
-                      </Button>
-                      <Button
-                        size="sm"
-                        variant="ghost"
-                        onClick={() => {
-                          setShowCommentInput(null);
-                          setCommentText("");
-                        }}
-                      >
-                        Cancel
-                      </Button>
-                    </div>
+                    ))}
                   </div>
-                </motion.div>
-              )}
-            </div>
-          );
-        })}
+                )}
+              </div>
+            );
+          })}
+        </div>
       </div>
+
+      {showCommentSidebar && (
+        <CommentSidebar
+          comments={comments.map(a => ({
+            id: a.id,
+            user_info: a.user_info,
+            content: a.content,
+            position: a.position,
+            created_at: a.created_at,
+            context: lines[(a.position && "line_number" in a.position ? a.position.line_number : 1) - 1]
+          }))}
+          currentUserName={currentUserName}
+          onJumpToComment={handleJumpToComment}
+          className="sticky top-0 h-[calc(100vh-200px)]"
+        />
+      )}
     </div>
   );
 }
