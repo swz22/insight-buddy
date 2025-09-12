@@ -7,14 +7,10 @@ import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader } from "@/components/ui/card";
 import { cn } from "@/lib/utils";
 import { CollaborativeTranscript } from "@/components/collaboration/collaborative-transcript";
-import { CommentFAB } from "@/components/collaboration/comment-fab";
-import { InlineCommentBox } from "@/components/collaboration/inline-comment-box";
-import { motion, AnimatePresence } from "framer-motion";
+import { motion } from "framer-motion";
 
 export default function DemoMeetingPage() {
   const [activeTab, setActiveTab] = useState("transcript");
-  const [showCommentBox, setShowCommentBox] = useState(false);
-  const [commentPosition, setCommentPosition] = useState<{ x: number; y: number } | null>(null);
 
   const tabs = [
     { id: "transcript", label: "Transcript" },
@@ -108,38 +104,6 @@ export default function DemoMeetingPage() {
     }
   ]);
 
-  const handleAddComment = (position?: { x: number; y: number }) => {
-    if (position) {
-      setCommentPosition(position);
-    } else {
-      const centerX = window.innerWidth / 2;
-      const centerY = window.scrollY + window.innerHeight / 3;
-      setCommentPosition({ x: centerX, y: centerY });
-    }
-    setShowCommentBox(true);
-  };
-
-  const handleSubmitComment = (comment: string, position: { x: number; y: number }) => {
-    const newAnnotation = {
-      id: `demo-annotation-${Date.now()}`,
-      meeting_id: "demo",
-      share_token: "demo",
-      user_info: {
-        name: "Demo User",
-        color: "#8b5cf6",
-        sessionId: "demo-current"
-      },
-      type: "comment" as const,
-      content: comment,
-      position: { line_number: Math.floor(Math.random() * 6) + 1 },
-      created_at: new Date().toISOString()
-    };
-    
-    setDemoAnnotations([...demoAnnotations, newAnnotation]);
-    setShowCommentBox(false);
-    setCommentPosition(null);
-  };
-
   const handleAddHighlight = (startLine: number, endLine: number, text: string) => {
     const newAnnotation = {
       id: `demo-annotation-${Date.now()}`,
@@ -159,7 +123,7 @@ export default function DemoMeetingPage() {
     setDemoAnnotations([...demoAnnotations, newAnnotation]);
   };
 
-  const handleAddCommentToTranscript = (lineNumber: number, text: string) => {
+  const handleAddComment = (lineNumber: number, text: string) => {
     const newAnnotation = {
       id: `demo-annotation-${Date.now()}`,
       meeting_id: "demo",
@@ -215,7 +179,7 @@ export default function DemoMeetingPage() {
             <div className="flex-1">
               <p className="text-sm text-white/80">
                 <span className="font-semibold text-purple-400">Interactive Demo:</span> This is a sample meeting to showcase collaboration features. 
-                Try clicking the floating comment button, highlighting text, or adding comments to experience real-time collaboration!
+                Try selecting text to add comments or highlights, or hover over the left margin to add line comments!
               </p>
             </div>
           </div>
@@ -254,7 +218,7 @@ export default function DemoMeetingPage() {
                   transcript={demoData.transcript}
                   annotations={demoAnnotations}
                   onAddHighlight={handleAddHighlight}
-                  onAddComment={handleAddCommentToTranscript}
+                  onAddComment={handleAddComment}
                   onDeleteAnnotation={handleDeleteAnnotation}
                   onEditAnnotation={handleEditAnnotation}
                   currentUserColor="#8b5cf6"
@@ -347,30 +311,6 @@ export default function DemoMeetingPage() {
           </CardContent>
         </Card>
       </div>
-
-      {activeTab === "transcript" && (
-        <>
-          <CommentFAB
-            onAddComment={handleAddComment}
-            commentCount={commentCount}
-          />
-          
-          <AnimatePresence>
-            {showCommentBox && commentPosition && (
-              <InlineCommentBox
-                position={commentPosition}
-                onSubmit={handleSubmitComment}
-                onCancel={() => {
-                  setShowCommentBox(false);
-                  setCommentPosition(null);
-                }}
-                userName="Demo User"
-                userColor="#8b5cf6"
-              />
-            )}
-          </AnimatePresence>
-        </>
-      )}
     </div>
   );
 }
