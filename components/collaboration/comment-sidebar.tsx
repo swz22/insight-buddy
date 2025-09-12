@@ -156,7 +156,9 @@ export function CommentSidebar({
 
                     {comment.context && (
                       <div className="mb-2 p-2 bg-white/[0.03] rounded border-l-2 border-purple-500/50">
-                        <p className="text-xs text-white/50 italic truncate">"{comment.context}"</p>
+                        <p className="text-xs text-white/50 italic truncate">
+                          &ldquo;{comment.context}&rdquo;
+                        </p>
                       </div>
                     )}
 

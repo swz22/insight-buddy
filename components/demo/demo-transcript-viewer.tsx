@@ -138,7 +138,7 @@ export function DemoTranscriptViewer({ transcript, className }: DemoTranscriptVi
             className="mt-6 p-4 bg-gradient-to-r from-purple-500/5 to-cyan-500/5 rounded-lg border border-white/10"
           >
             <p className="text-sm text-white/70 text-center">
-              👆 Click "Try Comments" above to experience the interactive comment system
+              👆 Click &ldquo;Try Comments&rdquo; above to experience the interactive comment system
             </p>
           </motion.div>
         )}
