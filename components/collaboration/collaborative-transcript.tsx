@@ -188,7 +188,7 @@ export function CollaborativeTranscript({
           containerRef={containerRef as React.RefObject<HTMLElement>}
         />
         
-        <div ref={containerRef as React.RefObject<HTMLDivElement>} className="space-y-1">
+        <div ref={containerRef as React.RefObject<HTMLDivElement>} className="space-y-0">
           {lines.map((line, index) => {
             const lineNumber = index + 1;
             const lineAnnotations = getLineAnnotations(lineNumber);
@@ -199,11 +199,11 @@ export function CollaborativeTranscript({
             return (
               <div key={index} className="group">
                 <div
-                  className="flex items-start gap-2"
+                  className="flex items-start"
                   onMouseEnter={() => setHoveredLine(lineNumber)}
                   onMouseLeave={() => setHoveredLine(null)}
                 >
-                  <div className="w-8 flex items-center justify-center">
+                  <div className="w-8 flex items-center justify-center py-1">
                     <LineCommentIndicator
                       lineNumber={lineNumber}
                       comments={lineComments.map(a => ({
@@ -219,13 +219,13 @@ export function CollaborativeTranscript({
                   
                   <div
                     className={cn(
-                      "transcript-line flex-1 px-3 py-1 rounded transition-all select-text",
+                      "transcript-line flex-1 px-3 py-1 transition-all select-text",
                       isHighlighted && "bg-yellow-500/10 border-l-2 border-yellow-500/50",
                       hoveredLine === lineNumber && "bg-white/[0.02]"
                     )}
                     data-line={lineNumber}
                   >
-                    <p className="text-sm text-white/80 leading-7">{line || "\u00A0"}</p>
+                    <p className="text-sm text-white/80 leading-normal">{line || "\u00A0"}</p>
                   </div>
                 </div>
 
@@ -235,7 +235,7 @@ export function CollaborativeTranscript({
                       initial={{ opacity: 0, height: 0 }}
                       animate={{ opacity: 1, height: "auto" }}
                       exit={{ opacity: 0, height: 0 }}
-                      className="ml-10 mt-2"
+                      className="ml-10 my-2"
                     >
                       <CommentInputInline
                         onSubmit={handleSubmitComment}
@@ -248,7 +248,7 @@ export function CollaborativeTranscript({
                 </AnimatePresence>
 
                 {lineComments.length > 0 && (
-                  <div className="ml-10 mt-2 space-y-2">
+                  <div className="ml-10 my-2 space-y-2">
                     {lineComments.map((annotation) => (
                       <div
                         key={annotation.id}
