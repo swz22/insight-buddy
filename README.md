@@ -48,20 +48,3 @@
 **AI Services:** AssemblyAI (transcription), OpenAI GPT-3.5 (summaries)  
 **State:** TanStack Query, Zustand, React Hook Form + Zod  
 **Audio:** WaveSurfer.js  
-
-## Installation
-
-```bash
-# Clone repository
-git clone https://github.com/yourusername/insight-buddy.git
-cd insight-buddy
-
-# Install dependencies
-npm install
-
-# Setup environment variables
-cp .env.example .env.local
-
-# Run development server
-npm run dev
-```
